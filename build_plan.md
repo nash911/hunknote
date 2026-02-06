@@ -45,7 +45,7 @@ aicommit/
 
 ---
 
-## Milestone 0 — Setup (5–10 min)
+## Milestone 0 ✅ — Setup (5–10 min)
 
 ### Agent task
 1. Initialize a new repo folder `aicommit/`.
@@ -67,7 +67,7 @@ aicommit/
 
 ---
 
-## Milestone 1 — Git context collector (15–20 min)
+## Milestone 1 ✅ — Git context collector (15–20 min)
 
 ### Agent task
 Create `aicommit/git_ctx.py` with functions:
@@ -115,7 +115,7 @@ Create `aicommit/git_ctx.py` with functions:
 
 ---
 
-## Milestone 2 — Commit JSON schema + rendering (10–15 min)
+## Milestone 2 ✅ — Commit JSON schema + rendering (10–15 min)
 
 ### Agent task
 Create `aicommit/formatters.py`:
@@ -142,7 +142,7 @@ Create `aicommit/formatters.py`:
 
 ---
 
-## Milestone 3 — LLM call (JSON output) (20–25 min)
+## Milestone 3 ✅ — LLM call (JSON output) (20–25 min)
 
 ### Agent task
 Create `aicommit/llm.py`:
@@ -176,7 +176,7 @@ Create `aicommit/llm.py`:
 
 ---
 
-## Milestone 4 — CLI + file writing (15–20 min)
+## Milestone 4 ✅ — CLI + file writing (15–20 min)
 
 ### Agent task
 Create `aicommit/cli.py` with Typer:
@@ -207,7 +207,7 @@ Main flow:
 
 ---
 
-## Milestone 5 — `--edit` in gedit (10–12 min)
+## Milestone 5 ✅ — `--edit` in gedit (10–12 min)
 
 ### Agent task
 In `cli.py`:
@@ -226,7 +226,7 @@ In `cli.py`:
 
 ---
 
-## Milestone 6 — Tool-native commit flag `-c/--commit` (10–12 min)
+## Milestone 6 ✅ — Tool-native commit flag `-c/--commit` (10–12 min)
 
 ### Agent task
 Implement commit behavior in the tool itself:
