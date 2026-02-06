@@ -102,18 +102,24 @@ def main(
     json_output: bool = typer.Option(
         False,
         "--json",
+        is_flag=True,
+        flag_value=True,
         help="Print raw JSON output for debugging",
     ),
     edit: bool = typer.Option(
         False,
         "--edit",
         "-e",
+        is_flag=True,
+        flag_value=True,
         help="Open the generated message file in an editor for manual edits",
     ),
     commit: bool = typer.Option(
         False,
         "--commit",
         "-c",
+        is_flag=True,
+        flag_value=True,
         help="Perform the commit using the generated message",
     ),
 ) -> None:

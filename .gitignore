@@ -209,3 +209,4 @@ __marimo__/
 # Project-specific ignore patterns
 temp/
 .idea/
+.tmp/
