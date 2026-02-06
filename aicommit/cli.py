@@ -3,7 +3,6 @@
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import typer
@@ -95,6 +94,16 @@ def _open_editor(file_path: Path) -> None:
 
 @app.command()
 def main(
+    max_diff_chars: int = typer.Option(
+        50000,
+        "--max-diff-chars",
+        help="Maximum characters for the staged diff",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print raw JSON output for debugging",
+    ),
     edit: bool = typer.Option(
         False,
         "--edit",
@@ -106,16 +115,6 @@ def main(
         "--commit",
         "-c",
         help="Perform the commit using the generated message",
-    ),
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        help="Print raw JSON output for debugging",
-    ),
-    max_diff_chars: int = typer.Option(
-        50000,
-        "--max-diff-chars",
-        help="Maximum characters for the staged diff",
     ),
 ) -> None:
     """Generate an AI-powered git commit message from staged changes."""
