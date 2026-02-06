@@ -252,7 +252,7 @@ The tool internally calls `git commit -F ...`.
 
 ---
 
-## Milestone 7 — Polish (remaining time)
+## Milestone 7 ✅ — Polish (remaining time)
 
 ### Agent task (only if time remains)
 - Add `git-aicommit` console script entrypoint so you can run:
