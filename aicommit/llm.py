@@ -2,6 +2,7 @@
 
 import json
 import os
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from anthropic import Anthropic
@@ -25,6 +26,16 @@ class MissingAPIKeyError(LLMError):
 class JSONParseError(LLMError):
     """Raised when the LLM response cannot be parsed as valid JSON."""
     pass
+
+
+@dataclass
+class LLMResult:
+    """Result from an LLM generation call, including token usage."""
+
+    commit_json: CommitMessageJSON
+    model: str
+    input_tokens: int
+    output_tokens: int
 
 
 # System prompt for the LLM
@@ -107,14 +118,14 @@ def _parse_json_response(raw_response: str) -> dict:
         )
 
 
-def generate_commit_json(context_bundle: str) -> CommitMessageJSON:
+def generate_commit_json(context_bundle: str) -> LLMResult:
     """Generate a commit message JSON from the git context bundle.
 
     Args:
         context_bundle: The formatted git context string from build_context_bundle().
 
     Returns:
-        A validated CommitMessageJSON object.
+        An LLMResult containing the validated CommitMessageJSON and token usage.
 
     Raises:
         MissingAPIKeyError: If ANTHROPIC_API_KEY is not set.
@@ -144,6 +155,10 @@ def generate_commit_json(context_bundle: str) -> CommitMessageJSON:
         # Extract the text response
         raw_response = message.content[0].text
 
+        # Extract token usage
+        input_tokens = message.usage.input_tokens
+        output_tokens = message.usage.output_tokens
+
     except Exception as e:
         raise LLMError(f"Anthropic API call failed: {e}")
 
@@ -152,10 +167,18 @@ def generate_commit_json(context_bundle: str) -> CommitMessageJSON:
 
     # Validate with Pydantic model
     try:
-        return CommitMessageJSON(**parsed)
+        commit_json = CommitMessageJSON(**parsed)
     except Exception as e:
         raise JSONParseError(
             f"LLM response does not match expected schema.\n"
             f"Error: {e}\n"
             f"Parsed JSON: {parsed}"
         )
+
+    return LLMResult(
+        commit_json=commit_json,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+

@@ -3,18 +3,34 @@
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import typer
 
+from aicommit.cache import (
+    CacheMetadata,
+    compute_context_hash,
+    extract_staged_files,
+    get_diff_preview,
+    get_message_file,
+    invalidate_cache,
+    is_cache_valid,
+    load_cache_metadata,
+    load_cached_message,
+    save_cache,
+    update_message_cache,
+)
 from aicommit.formatters import render_commit_message
 from aicommit.git_ctx import (
     GitError,
     NoStagedChangesError,
     build_context_bundle,
     get_repo_root,
+    get_staged_diff,
+    get_status,
 )
-from aicommit.llm import LLMError, MissingAPIKeyError, generate_commit_json
+from aicommit.llm import LLMError, LLMResult, MissingAPIKeyError, generate_commit_json
 
 app = typer.Typer(
     name="aicommit",
@@ -22,21 +38,6 @@ app = typer.Typer(
     add_completion=False,
 )
 
-
-def _get_message_file_path(repo_root: Path) -> Path:
-    """Get the path for the commit message file.
-
-    Creates .tmp directory if it does not exist.
-
-    Args:
-        repo_root: The root directory of the git repository.
-
-    Returns:
-        Path to the message file: <repo_root>/.tmp/aicommit_<pid>.txt
-    """
-    tmp_dir = repo_root / ".tmp"
-    tmp_dir.mkdir(exist_ok=True)
-    return tmp_dir / f"aicommit_{os.getpid()}.txt"
 
 
 def _find_editor() -> list[str]:
@@ -92,6 +93,78 @@ def _open_editor(file_path: Path) -> None:
         raise typer.Exit(1)
 
 
+def _display_debug_info(
+    repo_root: Path,
+    metadata: CacheMetadata,
+    current_message: str,
+    cache_valid: bool,
+) -> None:
+    """Display debug information about the cache.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        metadata: The cache metadata.
+        current_message: The current commit message (may be edited).
+        cache_valid: Whether the cache is currently valid.
+    """
+    typer.echo("=" * 60)
+    typer.echo("                  AICOMMIT DEBUG INFO")
+    typer.echo("=" * 60)
+    typer.echo()
+
+    # Cache status
+    status = "VALID (using cached message)" if cache_valid else "INVALID (will regenerate)"
+    typer.echo(f"Cache Status: {status}")
+    typer.echo(f"Cache Key: {metadata.context_hash[:16]}...")
+
+    # Parse and format timestamp
+    try:
+        generated_dt = datetime.fromisoformat(metadata.generated_at)
+        formatted_time = generated_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    except (ValueError, AttributeError):
+        formatted_time = metadata.generated_at
+
+    typer.echo(f"Generated At: {formatted_time}")
+    typer.echo(f"LLM Model: {metadata.model}")
+    typer.echo(f"Tokens: {metadata.input_tokens} input / {metadata.output_tokens} output")
+    typer.echo()
+
+    # Staged files
+    typer.echo("Staged Files:")
+    for f in metadata.staged_files:
+        typer.echo(f"  - {f}")
+    typer.echo()
+
+    # Diff preview
+    typer.echo("Diff Preview:")
+    for line in metadata.diff_preview.split("\n")[:15]:
+        typer.echo(f"  {line}")
+    if len(metadata.diff_preview.split("\n")) > 15:
+        typer.echo("  ...")
+    typer.echo()
+
+    # Message edit status
+    if current_message.strip() != metadata.original_message.strip():
+        typer.echo("Message Edit Status: MODIFIED")
+        typer.echo()
+        typer.echo("Original AI Message:")
+        for line in metadata.original_message.strip().split("\n"):
+            typer.echo(f"  {line}")
+        typer.echo()
+        typer.echo("Current Message:")
+        for line in current_message.strip().split("\n"):
+            typer.echo(f"  {line}")
+    else:
+        typer.echo("Message Edit Status: UNMODIFIED")
+        typer.echo()
+        typer.echo("Current Message:")
+        for line in current_message.strip().split("\n"):
+            typer.echo(f"  {line}")
+
+    typer.echo()
+    typer.echo("=" * 60)
+
+
 @app.command()
 def main(
     max_diff_chars: int = typer.Option(
@@ -105,6 +178,22 @@ def main(
         is_flag=True,
         flag_value=True,
         help="Print raw JSON output for debugging",
+    ),
+    regenerate: bool = typer.Option(
+        False,
+        "--regenerate",
+        "-r",
+        is_flag=True,
+        flag_value=True,
+        help="Force regenerate the commit message, ignoring cache",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        "-d",
+        is_flag=True,
+        flag_value=True,
+        help="Show full metadata of the cached aicommit message",
     ),
     edit: bool = typer.Option(
         False,
@@ -132,37 +221,76 @@ def main(
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
 
-        # Step 3: Generate commit message via LLM
-        typer.echo("Generating commit message...", err=True)
-        commit_json = generate_commit_json(context_bundle)
+        # Step 3: Compute context hash
+        current_hash = compute_context_hash(context_bundle)
 
-        # Step 4: If --json flag, print raw JSON and exit
-        if json_output:
-            typer.echo(commit_json.model_dump_json(indent=2))
+        # Step 4: Extract staged files and diff preview for metadata
+        status_output = get_status()
+        staged_files = extract_staged_files(status_output)
+        staged_diff = get_staged_diff(max_chars=max_diff_chars)
+        diff_preview = get_diff_preview(staged_diff, max_chars=500)
+
+        # Step 5: Check cache validity (unless --regenerate or --json)
+        cache_valid = not regenerate and not json_output and is_cache_valid(repo_root, current_hash)
+
+        if cache_valid:
+            # Use cached message
+            typer.echo("Using cached commit message...", err=True)
+            message = load_cached_message(repo_root)
+            metadata = load_cache_metadata(repo_root)
+        else:
+            # Generate new message via LLM
+            typer.echo("Generating commit message...", err=True)
+            llm_result = generate_commit_json(context_bundle)
+
+            # Handle --json flag: print raw JSON and exit
+            if json_output:
+                typer.echo(llm_result.commit_json.model_dump_json(indent=2))
+                raise typer.Exit(0)
+
+            # Render the commit message
+            message = render_commit_message(llm_result.commit_json)
+
+            # Save to cache
+            save_cache(
+                repo_root=repo_root,
+                context_hash=current_hash,
+                message=message,
+                model=llm_result.model,
+                input_tokens=llm_result.input_tokens,
+                output_tokens=llm_result.output_tokens,
+                staged_files=staged_files,
+                diff_preview=diff_preview,
+            )
+            metadata = load_cache_metadata(repo_root)
+
+        # Step 6: Handle --debug flag
+        if debug:
+            if metadata:
+                _display_debug_info(repo_root, metadata, message, cache_valid)
+            else:
+                typer.echo("No cache metadata found.", err=True)
             raise typer.Exit(0)
 
-        # Step 5: Render the commit message
-        message = render_commit_message(commit_json)
+        # Step 7: Get message file path
+        message_file = get_message_file(repo_root)
 
-        # Step 6: Write message to file
-        message_file = _get_message_file_path(repo_root)
-        message_file.write_text(message)
-        typer.echo(f"Message saved to: {message_file}", err=True)
-
-        # Step 7: If --edit flag, open editor
+        # Step 8: If --edit flag, open editor
         if edit:
             _open_editor(message_file)
             # Re-read the file after editing
             message = message_file.read_text()
+            # Update the message cache (but keep original metadata for diff comparison)
+            update_message_cache(repo_root, message)
             typer.echo("Message updated from editor.", err=True)
 
-        # Step 8: Print the final message to stdout
+        # Step 9: Print the final message to stdout
         typer.echo("")
         typer.echo("=" * 60)
         typer.echo(message)
         typer.echo("=" * 60)
 
-        # Step 9: If --commit flag, perform the commit
+        # Step 10: If --commit flag, perform the commit
         if commit:
             typer.echo("")
             typer.echo("Committing...", err=True)
@@ -174,6 +302,8 @@ def main(
             if result.returncode == 0:
                 typer.echo("Commit successful!", err=True)
                 typer.echo(result.stdout)
+                # Invalidate cache after successful commit
+                invalidate_cache(repo_root)
             else:
                 typer.echo("Commit failed!", err=True)
                 typer.echo(result.stderr, err=True)

@@ -6,8 +6,10 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 
 - **Automatic commit message generation** from staged git changes
 - **Structured output**: Title line + bullet-point body following git best practices
+- **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Editor integration**: Review and edit generated messages before committing
 - **One-command commits**: Generate and commit in a single step
+- **Debug mode**: Inspect cache metadata and token usage
 
 ## Installation
 
@@ -56,12 +58,14 @@ aicommit
 | `--json` | Print raw JSON output for debugging |
 | `-e, --edit` | Open the generated message in an editor for manual edits |
 | `-c, --commit` | Automatically commit using the generated message |
+| `-r, --regenerate` | Force regenerate, ignoring cached message |
+| `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
 | `--max-diff-chars` | Maximum characters for staged diff (default: 50000) |
 
 ### Examples
 
 ```bash
-# Generate commit message (print only)
+# Generate commit message (print only, cached for reuse)
 aicommit
 
 # Generate and open in editor
@@ -72,6 +76,12 @@ aicommit -c
 
 # Edit message then commit
 aicommit -e -c
+
+# Force regeneration (ignore cache)
+aicommit -r
+
+# Debug: view cache metadata and token usage
+aicommit -d
 
 # Debug: see raw JSON from LLM
 aicommit --json
@@ -86,13 +96,28 @@ git aicommit
 git aicommit -e -c
 ```
 
+## Caching Behavior
+
+The tool caches generated commit messages to avoid redundant API calls:
+
+- **Same staged changes** → Uses cached message (no API call)
+- **Different staged changes** → Regenerates automatically
+- **After commit** → Cache is invalidated
+- **Use `-r` flag** → Force regeneration
+
+Cache files are stored in `<repo>/.tmp/`:
+- `aicommit_message.txt` - The cached commit message
+- `aicommit_context_hash.txt` - Hash of the git context
+- `aicommit_metadata.json` - Full metadata (tokens, model, timestamp)
+
 ## How It Works
 
 1. Collects git context: branch name, status, last 5 commits, and staged diff
-2. Sends context to Claude AI with a prompt optimized for commit messages
-3. Parses the structured JSON response (title + bullet points)
-4. Renders into standard git commit message format
-5. Optionally opens editor and/or commits
+2. Computes a hash of the context to check cache validity
+3. If cache is valid, uses cached message; otherwise calls Claude AI
+4. Parses the structured JSON response (title + bullet points)
+5. Renders into standard git commit message format
+6. Optionally opens editor and/or commits
 
 ## Output Format
 
