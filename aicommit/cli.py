@@ -1,5 +1,6 @@
 """CLI entry point for aicommit."""
 
+import difflib
 import os
 import shutil
 import subprocess
@@ -37,6 +38,56 @@ app = typer.Typer(
     help="AI-powered git commit message generator using LLMs",
     add_completion=False,
 )
+
+
+def _generate_message_diff(original: str, current: str) -> str:
+    """Generate a git diff-style comparison between two messages.
+
+    Args:
+        original: The original AI-generated message.
+        current: The current (possibly edited) message.
+
+    Returns:
+        A git diff-style string showing the differences.
+    """
+    original_lines = original.strip().splitlines(keepends=True)
+    current_lines = current.strip().splitlines(keepends=True)
+
+    # Add newlines if missing for proper diff output
+    if original_lines and not original_lines[-1].endswith("\n"):
+        original_lines[-1] += "\n"
+    if current_lines and not current_lines[-1].endswith("\n"):
+        current_lines[-1] += "\n"
+
+    diff = difflib.unified_diff(
+        original_lines,
+        current_lines,
+        fromfile="a/original_message",
+        tofile="b/current_message",
+        lineterm="",
+    )
+
+    return "".join(diff)
+
+
+def _get_current_branch_safe() -> str:
+    """Safely get the current branch name without raising errors.
+
+    Returns:
+        The branch name, or 'unknown' if it cannot be determined.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return "unknown"
+    except Exception:
+        return "unknown"
 
 
 
@@ -147,13 +198,13 @@ def _display_debug_info(
     if current_message.strip() != metadata.original_message.strip():
         typer.echo("Message Edit Status: MODIFIED")
         typer.echo()
-        typer.echo("Original AI Message:")
-        for line in metadata.original_message.strip().split("\n"):
-            typer.echo(f"  {line}")
-        typer.echo()
-        typer.echo("Current Message:")
-        for line in current_message.strip().split("\n"):
-            typer.echo(f"  {line}")
+        typer.echo("Message Diff:")
+        diff_output = _generate_message_diff(metadata.original_message, current_message)
+        if diff_output:
+            for line in diff_output.splitlines():
+                typer.echo(f"  {line}")
+        else:
+            typer.echo("  (no visible differences)")
     else:
         typer.echo("Message Edit Status: UNMODIFIED")
         typer.echo()
@@ -309,8 +360,16 @@ def main(
                 typer.echo(result.stderr, err=True)
                 raise typer.Exit(1)
 
-    except NoStagedChangesError as e:
-        typer.echo(f"Error: {e}", err=True)
+    except NoStagedChangesError:
+        # Display a git-style message for no staged changes
+        typer.echo("On branch " + _get_current_branch_safe(), err=True)
+        typer.echo("", err=True)
+        typer.echo("nothing to commit (no changes staged for commit)", err=True)
+        typer.echo("", err=True)
+        typer.echo("Stage your changes first with:", err=True)
+        typer.echo("  git add <file>...", err=True)
+        typer.echo("", err=True)
+        typer.echo("Then run aicommit again.", err=True)
         raise typer.Exit(1)
     except MissingAPIKeyError as e:
         typer.echo(f"Error: {e}", err=True)
