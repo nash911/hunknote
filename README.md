@@ -143,10 +143,53 @@ The tool caches generated commit messages to avoid redundant API calls:
 - **After commit** → Cache is invalidated
 - **Use `-r` flag** → Force regeneration
 
-Cache files are stored in `<repo>/.tmp/`:
+Cache files are stored in `<repo>/.aicommit/`:
 - `aicommit_message.txt` - The cached commit message
 - `aicommit_context_hash.txt` - Hash of the git context
 - `aicommit_metadata.json` - Full metadata (tokens, model, timestamp)
+- `config.yaml` - Repository-specific configuration
+
+**Gitignore recommendation:** Add these to your `.gitignore`:
+```
+# aicommit cache files (but keep config.yaml for shared settings)
+.aicommit/aicommit_*.txt
+.aicommit/aicommit_*.json
+```
+
+## Configuration
+
+Each repository can have its own `.aicommit/config.yaml` file for customization.
+The file is auto-created with defaults on first run.
+
+### Ignore Patterns
+
+The `ignore` section lists file patterns to exclude from the diff sent to the LLM.
+This reduces token usage and focuses the commit message on actual code changes.
+
+```yaml
+ignore:
+  # Lock files (auto-generated)
+  - poetry.lock
+  - package-lock.json
+  - yarn.lock
+  - pnpm-lock.yaml
+  - Cargo.lock
+  - Gemfile.lock
+  - composer.lock
+  - go.sum
+  # Build artifacts
+  - "*.min.js"
+  - "*.min.css"
+  - "*.map"
+  # Binary and generated files
+  - "*.pyc"
+  - "*.pyo"
+  # IDE files
+  - ".idea/*"
+  - ".vscode/*"
+```
+
+You can add custom patterns using glob syntax (e.g., `build/*`, `*.generated.ts`).
 
 ## How It Works
 

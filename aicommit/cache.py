@@ -23,15 +23,15 @@ class CacheMetadata(BaseModel):
 
 
 def get_cache_dir(repo_root: Path) -> Path:
-    """Return the .tmp directory, creating it if needed.
+    """Return the .aicommit directory, creating it if needed.
 
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to the .tmp cache directory.
+        Path to the .aicommit cache directory.
     """
-    cache_dir = repo_root / ".tmp"
+    cache_dir = repo_root / ".aicommit"
     cache_dir.mkdir(exist_ok=True)
     return cache_dir
 
