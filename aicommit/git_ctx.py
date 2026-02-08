@@ -78,6 +78,41 @@ def get_status() -> str:
     return _run_git_command(["status", "--porcelain=v1", "-b"])
 
 
+def get_staged_status() -> str:
+    """Get git status filtered to only show staged files.
+
+    The porcelain format uses two columns:
+    - First column: staged status (index)
+    - Second column: worktree status
+
+    We only include lines where the first column indicates a staged change.
+
+    Returns:
+        Filtered status showing only staged files.
+    """
+    full_status = _run_git_command(["status", "--porcelain=v1", "-b"])
+    lines = full_status.split("\n")
+    filtered_lines = []
+
+    for line in lines:
+        if not line:
+            continue
+        # Keep the branch line (starts with ##)
+        if line.startswith("##"):
+            filtered_lines.append(line)
+            continue
+        # Skip lines that are too short
+        if len(line) < 2:
+            continue
+        # Check first column (index/staged status)
+        # If first char is not space and not '?', it's staged
+        first_col = line[0]
+        if first_col != " " and first_col != "?":
+            filtered_lines.append(line)
+
+    return "\n".join(filtered_lines)
+
+
 def get_last_commits(n: int = 5) -> list[str]:
     """Get the last n commit subjects.
 
@@ -97,8 +132,26 @@ def get_last_commits(n: int = 5) -> list[str]:
         return []
 
 
+# Files to exclude from the staged diff sent to LLM
+# These are typically auto-generated and don't need commit message descriptions
+DIFF_EXCLUDE_PATTERNS = [
+    "poetry.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "Cargo.lock",
+    "Gemfile.lock",
+    "composer.lock",
+    "go.sum",
+]
+
+
 def get_staged_diff(max_chars: int = 50000) -> str:
-    """Get the staged diff, truncated if necessary.
+    """Get the staged diff, excluding lock files and truncating if necessary.
+
+    Lock files (poetry.lock, package-lock.json, etc.) are excluded because
+    they are auto-generated and inflate the diff without adding useful context
+    for commit message generation.
 
     Args:
         max_chars: Maximum characters for the diff output.
@@ -109,12 +162,25 @@ def get_staged_diff(max_chars: int = 50000) -> str:
     Raises:
         NoStagedChangesError: If there are no staged changes.
     """
-    diff = _run_git_command(["diff", "--staged"])
+    # Build exclusion args for git diff
+    exclude_args = []
+    for pattern in DIFF_EXCLUDE_PATTERNS:
+        exclude_args.extend([":(exclude)" + pattern])
+
+    # Get diff excluding lock files
+    diff = _run_git_command(["diff", "--staged", "--"] + exclude_args)
 
     if not diff:
-        raise NoStagedChangesError(
-            "No staged changes found. Stage your changes first with: git add <files>"
-        )
+        # Check if there are staged changes at all (might all be lock files)
+        full_diff = _run_git_command(["diff", "--staged"])
+        if full_diff:
+            # There are changes but they're all in excluded files
+            # Return a note about this
+            diff = "(Only lock file changes staged - no code changes to describe)"
+        else:
+            raise NoStagedChangesError(
+                "No staged changes found. Stage your changes first with: git add <files>"
+            )
 
     if len(diff) > max_chars:
         diff = diff[:max_chars] + "\n...[truncated]\n"
@@ -137,7 +203,8 @@ def build_context_bundle(max_chars: int = 50000) -> str:
     """
     # Get all context pieces
     branch = get_branch()
-    status = get_status()
+    # Use staged-only status to avoid confusing LLM with unstaged/untracked files
+    status = get_staged_status()
     last_commits = get_last_commits(n=5)
     staged_diff = get_staged_diff(max_chars=max_chars)
 
@@ -148,7 +215,7 @@ def build_context_bundle(max_chars: int = 50000) -> str:
     bundle = f"""[BRANCH]
 {branch}
 
-[STATUS]
+[STAGED_STATUS]
 {status}
 
 [LAST_5_COMMITS]
