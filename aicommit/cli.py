@@ -313,13 +313,6 @@ def main(
         "--max-diff-chars",
         help="Maximum characters for the staged diff",
     ),
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        is_flag=True,
-        flag_value=True,
-        help="Print raw JSON output for debugging",
-    ),
     regenerate: bool = typer.Option(
         False,
         "--regenerate",
@@ -375,8 +368,8 @@ def main(
         staged_diff = get_staged_diff(max_chars=max_diff_chars)
         diff_preview = get_diff_preview(staged_diff, max_chars=500)
 
-        # Step 5: Check cache validity (unless --regenerate or --json)
-        cache_valid = not regenerate and not json_output and is_cache_valid(repo_root, current_hash)
+        # Step 5: Check cache validity (unless --regenerate)
+        cache_valid = not regenerate and is_cache_valid(repo_root, current_hash)
 
         if cache_valid:
             # Use cached message
@@ -388,10 +381,6 @@ def main(
             typer.echo("Generating commit message...", err=True)
             llm_result = generate_commit_json(context_bundle)
 
-            # Handle --json flag: print raw JSON and exit
-            if json_output:
-                typer.echo(llm_result.commit_json.model_dump_json(indent=2))
-                raise typer.Exit(0)
 
             # Render the commit message
             message = render_commit_message(llm_result.commit_json)

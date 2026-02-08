@@ -93,7 +93,6 @@ aicommit
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Print raw JSON output for debugging |
 | `-e, --edit` | Open the generated message in an editor for manual edits |
 | `-c, --commit` | Automatically commit using the generated message |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
@@ -137,9 +136,6 @@ aicommit -r
 
 # Debug: view cache metadata and token usage
 aicommit -d
-
-# Debug: see raw JSON from LLM
-aicommit --json
 ```
 
 ### Git Subcommand
