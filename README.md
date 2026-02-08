@@ -100,6 +100,23 @@ aicommit
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
 | `--max-diff-chars` | Maximum characters for staged diff (default: 50000) |
 
+### Ignore Pattern Management
+
+Manage which files are excluded from the diff sent to the LLM:
+
+```bash
+# List all ignore patterns
+aicommit ignore list
+
+# Add a new pattern
+aicommit ignore add "*.log"
+aicommit ignore add "build/*"
+aicommit ignore add "dist/*"
+
+# Remove a pattern
+aicommit ignore remove "*.log"
+```
+
 ### Examples
 
 ```bash
