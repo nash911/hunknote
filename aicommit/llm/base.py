@@ -36,8 +36,9 @@ class LLMResult:
 
 
 # System prompt for the LLM (shared across all providers)
-SYSTEM_PROMPT = """You are an expert software engineer. Write concise, high-signal git commit messages.
-IMPORTANT: Only describe changes that are ACTUALLY present in the staged diff. Do NOT infer, suggest, or mention files or changes that are not explicitly shown in the diff."""
+SYSTEM_PROMPT = """You are an expert software engineer writing git commit messages.
+Be precise: only describe changes actually shown in the diff.
+The [FILE_CHANGES] section tells you which files are NEW vs MODIFIED - use this to write accurate descriptions."""
 
 # User prompt template (shared across all providers)
 USER_PROMPT_TEMPLATE = """Given the following git context, produce a JSON object with exactly these keys:
@@ -45,11 +46,15 @@ USER_PROMPT_TEMPLATE = """Given the following git context, produce a JSON object
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
 
 Rules:
-- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary before or after.
-- Do not mention "diff", "git", or tool instructions.
-- Prefer user-visible impact and rationale over implementation minutiae.
-- Title must be in imperative mood (e.g., "Add feature" not "Added feature").
-- CRITICAL: Only describe changes that are ACTUALLY in the [STAGED_DIFF] section below. The [STAGED_STATUS] shows only files being committed. Do NOT hallucinate or infer changes that are not shown.
+- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
+- Title in imperative mood (e.g., "Add feature" not "Added feature").
+- Only describe changes shown in the diff. Do not infer or assume other changes.
+- [FILE_CHANGES] shows:
+  * NEW files (created in this commit)
+  * MODIFIED files (already existed)
+  * DELETED files (removed in this commit)
+  * RENAMED files (moved/renamed in this commit).
+  Use these to write accurate descriptions.
 
 GIT CONTEXT:
 {context_bundle}"""

@@ -271,12 +271,15 @@ def build_context_bundle(max_chars: int = 50000) -> str:
     # Format commits as bullet list
     commits_formatted = "\n".join(f"- {commit}" for commit in last_commits) if last_commits else "- (no commits yet)"
 
+    # Parse status to create a clear file change summary
+    file_changes = _parse_file_changes(status)
+
     # Build the context bundle
     bundle = f"""[BRANCH]
 {branch}
 
-[STAGED_STATUS]
-{status}
+[FILE_CHANGES]
+{file_changes}
 
 [LAST_5_COMMITS]
 {commits_formatted}
@@ -285,3 +288,65 @@ def build_context_bundle(max_chars: int = 50000) -> str:
 {staged_diff}"""
 
     return bundle
+
+
+def _parse_file_changes(status: str) -> str:
+    """Parse git status into a human-readable file change summary.
+
+    This helps the LLM understand which files are NEW (didn't exist before)
+    versus MODIFIED (already existed and are being changed).
+
+    Args:
+        status: Git status in porcelain format.
+
+    Returns:
+        Human-readable summary of file changes.
+    """
+    new_files = []
+    modified_files = []
+    deleted_files = []
+    renamed_files = []
+
+    for line in status.split("\n"):
+        if not line or line.startswith("##"):
+            continue
+        if len(line) < 3:
+            continue
+
+        status_code = line[0]
+        filename = line[3:]
+
+        # Handle renames: "R  old -> new"
+        if " -> " in filename:
+            old_name, new_name = filename.split(" -> ")
+            renamed_files.append(f"{old_name} -> {new_name}")
+            continue
+
+        if status_code == "A":
+            new_files.append(filename)
+        elif status_code == "M":
+            modified_files.append(filename)
+        elif status_code == "D":
+            deleted_files.append(filename)
+
+    # Build summary
+    lines = []
+    if new_files:
+        lines.append("New files (did not exist before this commit):")
+        for f in new_files:
+            lines.append(f"  + {f}")
+    if modified_files:
+        lines.append("Modified files (already existed, now changed):")
+        for f in modified_files:
+            lines.append(f"  ~ {f}")
+    if deleted_files:
+        lines.append("Deleted files:")
+        for f in deleted_files:
+            lines.append(f"  - {f}")
+    if renamed_files:
+        lines.append("Renamed files:")
+        for f in renamed_files:
+            lines.append(f"  > {f}")
+
+    return "\n".join(lines) if lines else "(no files)"
+
