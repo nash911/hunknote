@@ -8,9 +8,12 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
+- **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
 - **Editor integration**: Review and edit generated messages before committing
 - **One-command commits**: Generate and commit in a single step
-- **Debug mode**: Inspect cache metadata and token usage
+- **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
+- **Debug mode**: Inspect cache metadata, token usage, and file change details
+- **Comprehensive test suite**: 199 unit tests covering all modules
 
 ## Installation
 
@@ -21,6 +24,25 @@ cd ai_commit
 
 # Install with Poetry (requires Python 3.12+)
 poetry install
+
+# Or install in development mode with test dependencies
+poetry install --with dev
+```
+
+## Quick Start
+
+```bash
+# Set your API key (example with Anthropic)
+export ANTHROPIC_API_KEY=your_key_here
+
+# Stage your changes
+git add <files>
+
+# Generate a commit message
+aicommit
+
+# Or generate, edit, and commit in one step
+aicommit -e -c
 ```
 
 ## Configuration
@@ -62,8 +84,8 @@ Edit `aicommit/config.py` to change the provider and model:
 from aicommit.config import LLMProvider
 
 # Change these values to switch providers
-ACTIVE_PROVIDER = LLMProvider.OPENAI  # or ANTHROPIC, GOOGLE, MISTRAL, COHERE, GROQ, OPENROUTER
-ACTIVE_MODEL = "gpt-4o"  # model name for the selected provider
+ACTIVE_PROVIDER = LLMProvider.GOOGLE  # or ANTHROPIC, OPENAI, MISTRAL, COHERE, GROQ, OPENROUTER
+ACTIVE_MODEL = "gemini-2.0-flash"     # model name for the selected provider
 ```
 
 ### Supported Providers and Models
@@ -72,7 +94,7 @@ ACTIVE_MODEL = "gpt-4o"  # model name for the selected provider
 |----------|--------|------------------|
 | **Anthropic** | claude-sonnet-4-20250514, claude-3-5-sonnet-latest, claude-3-5-haiku-latest, claude-3-opus-latest | `ANTHROPIC_API_KEY` |
 | **OpenAI** | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo | `OPENAI_API_KEY` |
-| **Google** | gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | `GOOGLE_API_KEY` |
+| **Google** | gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | `GOOGLE_API_KEY` |
 | **Mistral** | mistral-large-latest, mistral-medium-latest, mistral-small-latest, codestral-latest | `MISTRAL_API_KEY` |
 | **Cohere** | command-r-plus, command-r, command | `COHERE_API_KEY` |
 | **Groq** | llama-3.3-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768 | `GROQ_API_KEY` |
@@ -147,6 +169,25 @@ git aicommit
 git aicommit -e -c
 ```
 
+## How It Works
+
+1. **Collects git context**: branch name, file changes (new vs modified), last 5 commits, and staged diff
+2. **Computes a hash** of the context to check cache validity
+3. **Checks cache**: If valid, uses cached message; otherwise calls the configured LLM
+4. **Parses the response**: Extracts structured JSON (title + bullet points) from LLM response
+5. **Renders the message**: Formats into standard git commit message format
+6. **Optionally opens editor** and/or commits
+
+### Intelligent File Change Detection
+
+The tool distinguishes between:
+- **New files** (did not exist before this commit)
+- **Modified files** (already existed, now changed)
+- **Deleted files**
+- **Renamed files**
+
+This context helps the LLM generate accurate descriptions - for example, it won't say "implement caching" when you're just adding tests for existing caching functionality.
+
 ## Caching Behavior
 
 The tool caches generated commit messages to avoid redundant API calls:
@@ -169,7 +210,7 @@ Cache files are stored in `<repo>/.aicommit/`:
 .aicommit/aicommit_*.json
 ```
 
-## Configuration
+## Repository Configuration
 
 Each repository can have its own `.aicommit/config.yaml` file for customization.
 The file is auto-created with defaults on first run.
@@ -197,21 +238,17 @@ ignore:
   # Binary and generated files
   - "*.pyc"
   - "*.pyo"
+  - "*.so"
+  - "*.dll"
+  - "*.exe"
   # IDE files
   - ".idea/*"
   - ".vscode/*"
+  - "*.swp"
+  - "*.swo"
 ```
 
 You can add custom patterns using glob syntax (e.g., `build/*`, `*.generated.ts`).
-
-## How It Works
-
-1. Collects git context: branch name, status, last 5 commits, and staged diff
-2. Computes a hash of the context to check cache validity
-3. If cache is valid, uses cached message; otherwise calls the configured LLM
-4. Parses the structured JSON response (title + bullet points)
-5. Renders into standard git commit message format
-6. Optionally opens editor and/or commits
 
 ## Output Format
 
@@ -225,11 +262,75 @@ Add user authentication feature
 - Create user model with password hashing
 ```
 
+## Development
+
+### Running Tests
+
+The project includes a comprehensive test suite with 199 tests:
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_formatters.py
+
+# Run specific test
+pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
+```
+
+### Test Coverage
+
+| Module | Tests | Description |
+|--------|-------|-------------|
+| `formatters.py` | 25 | Commit message formatting and validation |
+| `cache.py` | 35 | Caching utilities and metadata |
+| `user_config.py` | 22 | YAML config file management |
+| `git_ctx.py` | 29 | Git context collection and filtering |
+| `llm/base.py` | 27 | JSON parsing, schema validation |
+| `llm/*.py` providers | 23 | All LLM provider classes |
+| `cli.py` | 17 | CLI commands |
+| `config.py` | 22 | Configuration constants |
+
+### Project Structure
+
+```
+aicommit/
+├── __init__.py
+├── cli.py              # CLI entry point and commands
+├── config.py           # LLM provider configuration
+├── cache.py            # Caching utilities
+├── formatters.py       # Commit message formatting
+├── git_ctx.py          # Git context collection
+├── user_config.py      # Repository config management
+└── llm/
+    ├── __init__.py     # Provider factory
+    ├── base.py         # Base classes and prompts
+    ├── anthropic_provider.py
+    ├── openai_provider.py
+    ├── google_provider.py
+    ├── mistral_provider.py
+    ├── cohere_provider.py
+    ├── groq_provider.py
+    └── openrouter_provider.py
+```
+
 ## Requirements
 
 - Python 3.12+
 - Git
 - API key for at least one supported LLM provider
+
+## Dependencies
+
+- `typer` (>=0.21.0) - CLI framework
+- `pydantic` (>=2.5.0) - Data validation
+- `python-dotenv` - Environment variable management
+- `pyyaml` - YAML configuration
+- LLM SDKs: `anthropic`, `openai`, `google-genai`, `mistralai`, `cohere`, `groq`
 
 ## License
 
