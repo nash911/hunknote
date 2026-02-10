@@ -148,15 +148,58 @@ class BaseLLMProvider(ABC):
 
     @abstractmethod
     def get_api_key(self) -> str:
-        """Get the API key from environment.
+        """Get the API key from environment or credentials file.
+
+        Checks in order:
+        1. Environment variable
+        2. ~/.aicommit/credentials file
+        3. Repo-level .env file (if loaded)
 
         Returns:
             The API key string.
 
         Raises:
-            MissingAPIKeyError: If the API key is not set.
+            MissingAPIKeyError: If the API key is not found.
         """
         pass
+
+    def _get_api_key_with_fallback(self, env_var_name: str, provider_name: str) -> str:
+        """Helper to get API key with fallback to credentials file.
+
+        Args:
+            env_var_name: Environment variable name to check.
+            provider_name: Human-readable provider name for error messages.
+
+        Returns:
+            The API key string.
+
+        Raises:
+            MissingAPIKeyError: If the API key is not found.
+        """
+        import os
+
+        # First check environment variable
+        api_key = os.getenv(env_var_name)
+        if api_key:
+            return api_key
+
+        # Then check credentials file
+        try:
+            from aicommit.global_config import get_credential
+            api_key = get_credential(env_var_name)
+            if api_key:
+                return api_key
+        except Exception:
+            # If global_config isn't available, continue to error
+            pass
+
+        # Not found anywhere
+        raise MissingAPIKeyError(
+            f"{provider_name} API key not found. Set it using:\n"
+            f"  1. Environment variable: export {env_var_name}=your_key_here\n"
+            f"  2. Run: aicommit config set-key {provider_name.lower()}\n"
+            f"  3. Manually add to ~/.aicommit/credentials"
+        )
 
     def build_user_prompt(self, context_bundle: str) -> str:
         """Build the user prompt from the context bundle.

@@ -43,21 +43,15 @@ class OpenRouterProvider(BaseLLMProvider):
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.OPENROUTER]
 
     def get_api_key(self) -> str:
-        """Get the OpenRouter API key from environment.
+        """Get the OpenRouter API key from environment or credentials file.
 
         Returns:
             The API key string.
 
         Raises:
-            MissingAPIKeyError: If OPENROUTER_API_KEY is not set.
+            MissingAPIKeyError: If OPENROUTER_API_KEY is not found.
         """
-        api_key = os.environ.get(self.api_key_env_var)
-        if not api_key:
-            raise MissingAPIKeyError(
-                f"{self.api_key_env_var} environment variable is not set. "
-                f"Please set it with: export {self.api_key_env_var}=your_key"
-            )
-        return api_key
+        return self._get_api_key_with_fallback(self.api_key_env_var, "OpenRouter")
 
     def generate(self, context_bundle: str) -> LLMResult:
         """Generate a commit message using OpenRouter.

@@ -1,7 +1,7 @@
 """Configuration for aicommit LLM providers.
 
-Edit ACTIVE_PROVIDER and ACTIVE_MODEL below to change the LLM used for
-generating commit messages.
+Configuration is now loaded from ~/.aicommit/config.yaml
+Use 'aicommit config' commands to modify settings.
 """
 
 from enum import Enum
@@ -20,33 +20,56 @@ class LLMProvider(Enum):
 
 
 # ============================================================
-# USER CONFIGURATION - Edit these values to change LLM provider
+# DEFAULT FALLBACK VALUES
 # ============================================================
+# These are used only if ~/.aicommit/config.yaml doesn't exist
 
-# Active provider - change this to switch providers
-# Options: LLMProvider.ANTHROPIC, LLMProvider.OPENAI, LLMProvider.GOOGLE,
-#          LLMProvider.MISTRAL, LLMProvider.COHERE, LLMProvider.GROQ,
-#          LLMProvider.OPENROUTER
-# ACTIVE_PROVIDER = LLMProvider.ANTHROPIC
-ACTIVE_PROVIDER = LLMProvider.GOOGLE
-# ACTIVE_PROVIDER = LLMProvider.OPENAI
+DEFAULT_PROVIDER = LLMProvider.GOOGLE
+DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MAX_TOKENS = 1500
+DEFAULT_TEMPERATURE = 0.3
 
-# Active model - change this to use a different model
-# See below for available models per provider
-# ACTIVE_MODEL = "claude-sonnet-4-20250514"
-ACTIVE_MODEL = "gemini-2.0-flash"
-# ACTIVE_MODEL = "gpt-4.1-nano"
 
 # ============================================================
-# PROVIDER SETTINGS
+# ACTIVE CONFIGURATION (loaded from global config)
 # ============================================================
 
-# Maximum tokens for LLM response
-# Note: For Gemini thinking models, this is automatically multiplied
-MAX_TOKENS = 1500
+# Initially set to defaults - will be overridden by load_config()
+ACTIVE_PROVIDER = DEFAULT_PROVIDER
+ACTIVE_MODEL = DEFAULT_MODEL
+MAX_TOKENS = DEFAULT_MAX_TOKENS
+TEMPERATURE = DEFAULT_TEMPERATURE
 
-# Temperature for LLM response (lower = more deterministic)
-TEMPERATURE = 0.3
+
+def load_config():
+    """Load configuration from global config file.
+
+    This should be called by the CLI before using the LLM.
+    """
+    global ACTIVE_PROVIDER, ACTIVE_MODEL, MAX_TOKENS, TEMPERATURE
+
+    try:
+        # Import here to avoid circular dependency
+        from aicommit import global_config
+
+        provider = global_config.get_active_provider()
+        model = global_config.get_active_model()
+        max_tokens = global_config.get_max_tokens()
+        temperature = global_config.get_temperature()
+
+        if provider:
+            ACTIVE_PROVIDER = provider
+        if model:
+            ACTIVE_MODEL = model
+        if max_tokens is not None:
+            MAX_TOKENS = max_tokens
+        if temperature is not None:
+            TEMPERATURE = temperature
+
+    except (ImportError, Exception):
+        # Use defaults if global_config isn't available or has issues
+        pass
+
 
 # ============================================================
 # AVAILABLE MODELS PER PROVIDER
@@ -145,10 +168,3 @@ def get_api_key_env_var(provider: LLMProvider) -> str:
     """
     return API_KEY_ENV_VARS[provider]
 
-
-# ============================================================
-# FUTURE FEATURES (NOT YET IMPLEMENTED)
-# ============================================================
-# - Support for ~/.config/aicommit/config file
-# - Support for local models (Ollama, LM Studio)
-# - Support for ~/.aicommit/credentials file for API keys

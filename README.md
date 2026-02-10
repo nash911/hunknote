@@ -32,8 +32,12 @@ poetry install --with dev
 ## Quick Start
 
 ```bash
-# Set your API key (example with Anthropic)
-export ANTHROPIC_API_KEY=your_key_here
+# Initialize configuration (interactive setup)
+aicommit init
+# This will prompt you to:
+# 1. Select an LLM provider (Anthropic, OpenAI, Google, etc.)
+# 2. Choose a model
+# 3. Enter your API key
 
 # Stage your changes
 git add <files>
@@ -47,12 +51,87 @@ aicommit -e -c
 
 ## Configuration
 
-### Setting Up API Keys
+### Initial Setup
 
-Set the API key for your chosen provider as an environment variable:
+Run the interactive configuration wizard:
 
 ```bash
-# Anthropic (default)
+aicommit init
+```
+
+This creates a global configuration at `~/.aicommit/` with:
+- `config.yaml` - Provider, model, and preference settings
+- `credentials` - Securely stored API keys (read-only permissions)
+
+### Managing Configuration
+
+View current configuration:
+
+```bash
+aicommit config show
+```
+
+Change provider or model:
+
+```bash
+# Interactive model selection
+aicommit config set-provider google
+
+# Or specify model directly
+aicommit config set-provider anthropic --model claude-sonnet-4-20250514
+```
+
+Update API keys:
+
+```bash
+aicommit config set-key google
+aicommit config set-key anthropic
+```
+
+List available providers and models:
+
+```bash
+aicommit config list-providers
+aicommit config list-models google
+aicommit config list-models  # Show all providers and models
+```
+
+### Manual Configuration
+
+Alternatively, you can manually edit `~/.aicommit/config.yaml`:
+
+```yaml
+provider: google
+model: gemini-2.0-flash
+max_tokens: 1500
+temperature: 0.3
+editor: gedit  # Optional: preferred editor for -e flag
+
+default_ignore:  # Optional: patterns to ignore in all repos
+  - poetry.lock
+  - package-lock.json
+  - "*.min.js"
+```
+
+And add API keys to `~/.aicommit/credentials`:
+
+```
+GOOGLE_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_anthropic_key
+OPENAI_API_KEY=your_openai_key
+```
+
+### Setting Up API Keys (Alternative Methods)
+
+API keys are checked in this order:
+1. Environment variables (highest priority - useful for CI/CD)
+2. `~/.aicommit/credentials` file (recommended for local development)
+3. Project `.env` file (lowest priority)
+
+Set via environment variable:
+
+```bash
+# Anthropic
 export ANTHROPIC_API_KEY=your_key_here
 
 # OpenAI
@@ -74,19 +153,7 @@ export GROQ_API_KEY=your_key_here
 export OPENROUTER_API_KEY=your_key_here
 ```
 
-Or create a `.env` file in your project root with the appropriate key.
-
-### Changing the LLM Provider
-
-Edit `aicommit/config.py` to change the provider and model:
-
-```python
-from aicommit.config import LLMProvider
-
-# Change these values to switch providers
-ACTIVE_PROVIDER = LLMProvider.GOOGLE  # or ANTHROPIC, OPENAI, MISTRAL, COHERE, GROQ, OPENROUTER
-ACTIVE_MODEL = "gemini-2.0-flash"     # model name for the selected provider
-```
+Or create a `.env` file in your project root.
 
 ### Supported Providers and Models
 
@@ -136,6 +203,32 @@ aicommit ignore add "dist/*"
 
 # Remove a pattern
 aicommit ignore remove "*.log"
+```
+
+### Configuration Commands
+
+Manage global configuration stored in `~/.aicommit/`:
+
+```bash
+# View current configuration
+aicommit config show
+
+# Set or update API key for a provider
+aicommit config set-key google
+aicommit config set-key anthropic
+
+# Change provider and model
+aicommit config set-provider google
+aicommit config set-provider anthropic --model claude-sonnet-4-20250514
+
+# List available providers
+aicommit config list-providers
+
+# List models for a specific provider
+aicommit config list-models google
+
+# List all providers and their models
+aicommit config list-models
 ```
 
 ### Examples
