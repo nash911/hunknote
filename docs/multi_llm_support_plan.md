@@ -37,7 +37,7 @@ OpenRouter provides access to 200+ models through a single API. Key models avail
 
 ## Configuration System
 
-### New File: `aicommit/config.py`
+### New File: `hunknote/config.py`
 
 The active provider and model are configured directly in `config.py`. Users edit this file to change providers.
 
@@ -61,7 +61,7 @@ ACTIVE_MODEL = "claude-sonnet-4-20250514"
 ```
 
 ### Future Enhancement (Not in MVP)
-- Support `~/.config/aicommit/config` file for user configuration
+- Support `~/.config/hunknote/config` file for user configuration
 - CLI command to configure provider/model
 
 ---
@@ -71,7 +71,7 @@ ACTIVE_MODEL = "claude-sonnet-4-20250514"
 ### Provider Abstraction Layer
 
 ```
-aicommit/
+hunknote/
 ├── llm/
 │   ├── __init__.py       # Factory function + exports
 │   ├── base.py           # Abstract base class for LLM providers
@@ -174,13 +174,13 @@ groq = "^0.9.0"
 ## Usage
 
 ```bash
-# Edit aicommit/config.py to set provider and model:
+# Edit hunknote/config.py to set provider and model:
 # ACTIVE_PROVIDER = LLMProvider.OPENAI
 # ACTIVE_MODEL = "gpt-4o"
 
 # Then run as usual
-aicommit
-aicommit -e -c
+hunknote
+hunknote -e -c
 ```
 
 ---
@@ -228,9 +228,9 @@ Each provider implementation will:
 
 1. **Local models support:** Not in MVP. Add Ollama/LM Studio support in future phase.
 
-2. **Configuration method:** Edit `config.py` directly for MVP. Add `~/.config/aicommit/config` file support later.
+2. **Configuration method:** Edit `config.py` directly for MVP. Add `~/.config/hunknote/config` file support later.
 
-3. **API key storage:** Environment variables only for MVP. Add `~/.aicommit/credentials` file support later.
+3. **API key storage:** Environment variables only for MVP. Add `~/.hunknote/credentials` file support later.
 
 4. **CLI flags:** No `--provider` or `--list-models` flags. Configuration is done via `config.py` only.
 

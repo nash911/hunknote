@@ -1,12 +1,12 @@
 # Phase 1 & 2 Implementation Summary
 
 ## Overview
-Successfully implemented global configuration support for aicommit, enabling it to be distributed as a standalone CLI tool.
+Successfully implemented global configuration support for hunknote, enabling it to be distributed as a standalone CLI tool.
 
 ## What Was Implemented
 
-### 1. Global Configuration Module (`aicommit/global_config.py`)
-- **Configuration directory**: `~/.aicommit/`
+### 1. Global Configuration Module (`hunknote/global_config.py`)
+- **Configuration directory**: `~/.hunknote/`
 - **Configuration files**:
   - `config.yaml`: Stores provider, model, and preference settings
   - `credentials`: Stores API keys securely (with restricted permissions)
@@ -17,7 +17,7 @@ Successfully implemented global configuration support for aicommit, enabling it 
   - `is_configured()`: Check if configuration exists
   - `initialize_default_config()`: Create default configuration
 
-### 2. Updated Configuration System (`aicommit/config.py`)
+### 2. Updated Configuration System (`hunknote/config.py`)
 - **Backwards compatible**: Uses defaults if global config doesn't exist
 - **Lazy loading**: Loads configuration on demand to avoid circular imports
 - **`load_config()` function**: Called by CLI to load global settings
@@ -35,19 +35,19 @@ All provider classes now support credential file loading:
 
 **API Key Resolution Order**:
 1. Environment variable (highest priority)
-2. `~/.aicommit/credentials` file
+2. `~/.hunknote/credentials` file
 3. Project `.env` file (if loaded)
 
 ### 4. New CLI Commands
 
-#### `aicommit init`
+#### `hunknote init`
 Interactive configuration wizard:
 - Prompts for LLM provider selection
 - Prompts for model selection
 - Prompts for API key
-- Saves everything to `~/.aicommit/`
+- Saves everything to `~/.hunknote/`
 
-#### `aicommit config` subcommands
+#### `hunknote config` subcommands
 - `show`: Display current configuration
 - `set-key <provider>`: Set/update API key for a provider
 - `set-provider <provider>`: Change active provider and model
@@ -56,7 +56,7 @@ Interactive configuration wizard:
 
 ### 5. Updated Documentation
 - **README.md**: Added comprehensive configuration documentation
-  - Quick Start updated to use `aicommit init`
+  - Quick Start updated to use `hunknote init`
   - Configuration management section
   - API key fallback explanation
   - Examples for all new commands
@@ -64,11 +64,11 @@ Interactive configuration wizard:
 ## File Structure
 
 ```
-~/.aicommit/                      # Global configuration directory
+~/.hunknote/                      # Global configuration directory
 ├── config.yaml                   # User preferences
 └── credentials                   # API keys (chmod 600)
 
-aicommit/
+hunknote/
 ├── global_config.py              # NEW: Global config management
 ├── config.py                     # UPDATED: Loads from global config
 ├── cli.py                        # UPDATED: Added init and config commands
@@ -86,7 +86,7 @@ aicommit/
 ## Testing
 
 All existing functionality remains intact:
-- ✅ Basic `aicommit` command works with defaults
+- ✅ Basic `hunknote` command works with defaults
 - ✅ No staged changes shows proper git-style message
 - ✅ All config commands work correctly
 - ✅ Import of global_config module succeeds
@@ -96,7 +96,7 @@ All existing functionality remains intact:
 
 ### Before (Developer Setup)
 ```bash
-# Edit aicommit/config.py manually
+# Edit hunknote/config.py manually
 ACTIVE_PROVIDER = LLMProvider.GOOGLE
 ACTIVE_MODEL = "gemini-2.0-flash"
 
@@ -107,13 +107,13 @@ export GOOGLE_API_KEY=your_key
 ### After (End User Setup)
 ```bash
 # One-time setup
-aicommit init
+hunknote init
 # Interactive prompts guide the user
 
 # Use anywhere
 cd any-repo
 git add .
-aicommit
+hunknote
 ```
 
 ## Benefits

@@ -1,17 +1,17 @@
-"""Cohere provider implementation."""
+"""Mistral AI provider implementation."""
 
 import os
 
-import cohere
+from mistralai import Mistral
 
-from aicommit.config import (
+from hunknote.config import (
     ACTIVE_MODEL,
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,
     TEMPERATURE,
 )
-from aicommit.llm.base import (
+from hunknote.llm.base import (
     SYSTEM_PROMPT,
     BaseLLMProvider,
     LLMError,
@@ -22,31 +22,31 @@ from aicommit.llm.base import (
 )
 
 
-class CohereProvider(BaseLLMProvider):
-    """Cohere LLM provider."""
+class MistralProvider(BaseLLMProvider):
+    """Mistral AI LLM provider."""
 
     def __init__(self, model: str | None = None):
-        """Initialize the Cohere provider.
+        """Initialize the Mistral provider.
 
         Args:
-            model: The model to use. Defaults to command-r-plus.
+            model: The model to use. Defaults to mistral-large-latest.
         """
-        self.model = model or "command-r-plus"
-        self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.COHERE]
+        self.model = model or "mistral-large-latest"
+        self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.MISTRAL]
 
     def get_api_key(self) -> str:
-        """Get the Cohere API key from environment or credentials file.
+        """Get the Mistral API key from environment or credentials file.
 
         Returns:
             The API key string.
 
         Raises:
-            MissingAPIKeyError: If COHERE_API_KEY is not found.
+            MissingAPIKeyError: If MISTRAL_API_KEY is not found.
         """
-        return self._get_api_key_with_fallback(self.api_key_env_var, "Cohere")
+        return self._get_api_key_with_fallback(self.api_key_env_var, "Mistral")
 
     def generate(self, context_bundle: str) -> LLMResult:
-        """Generate a commit message using Cohere.
+        """Generate a commit message using Mistral AI.
 
         Args:
             context_bundle: The formatted git context string.
@@ -61,15 +61,15 @@ class CohereProvider(BaseLLMProvider):
         """
         api_key = self.get_api_key()
 
-        # Create the Cohere client
-        client = cohere.ClientV2(api_key=api_key)
+        # Create the Mistral client
+        client = Mistral(api_key=api_key)
 
         # Build the user prompt
         user_prompt = self.build_user_prompt(context_bundle)
 
         try:
-            # Call the Cohere API using chat endpoint
-            response = client.chat(
+            # Call the Mistral API
+            response = client.chat.complete(
                 model=self.model,
                 max_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
@@ -80,16 +80,16 @@ class CohereProvider(BaseLLMProvider):
             )
 
             # Extract the text response
-            raw_response = response.message.content[0].text
+            raw_response = response.choices[0].message.content
 
             # Extract token usage
-            input_tokens = response.usage.tokens.input_tokens
-            output_tokens = response.usage.tokens.output_tokens
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
 
         except MissingAPIKeyError:
             raise
         except Exception as e:
-            raise LLMError(f"Cohere API call failed: {e}")
+            raise LLMError(f"Mistral API call failed: {e}")
 
         # Parse and validate the JSON response
         parsed = parse_json_response(raw_response)

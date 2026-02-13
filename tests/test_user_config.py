@@ -1,9 +1,9 @@
-"""Tests for aicommit.user_config module."""
+"""Tests for hunknote.user_config module."""
 
 import pytest
 import yaml
 
-from aicommit.user_config import (
+from hunknote.user_config import (
     DEFAULT_CONFIG,
     add_ignore_pattern,
     get_config_file,
@@ -21,10 +21,10 @@ class TestGetConfigFile:
         """Test that correct config path is returned."""
         config_file = get_config_file(temp_dir)
         assert config_file.name == "config.yaml"
-        assert config_file.parent.name == ".aicommit"
+        assert config_file.parent.name == ".hunknote"
 
     def test_creates_directory(self, temp_dir):
-        """Test that .aicommit directory is created."""
+        """Test that .hunknote directory is created."""
         config_file = get_config_file(temp_dir)
         assert config_file.parent.exists()
 
@@ -118,7 +118,7 @@ class TestSaveConfig:
         config = {"ignore": []}
         save_config(temp_dir, config)
 
-        assert (temp_dir / ".aicommit").exists()
+        assert (temp_dir / ".hunknote").exists()
 
 
 class TestGetIgnorePatterns:

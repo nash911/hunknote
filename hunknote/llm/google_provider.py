@@ -5,13 +5,13 @@ import os
 from google import genai
 from google.genai import types
 
-from aicommit.config import (
+from hunknote.config import (
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,
     TEMPERATURE,
 )
-from aicommit.llm.base import (
+from hunknote.llm.base import (
     SYSTEM_PROMPT,
     BaseLLMProvider,
     LLMError,

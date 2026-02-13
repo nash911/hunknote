@@ -4,7 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from aicommit.formatters import CommitMessageJSON
+from hunknote.formatters import CommitMessageJSON
 
 
 class LLMError(Exception):
@@ -152,7 +152,7 @@ class BaseLLMProvider(ABC):
 
         Checks in order:
         1. Environment variable
-        2. ~/.aicommit/credentials file
+        2. ~/.hunknote/credentials file
         3. Repo-level .env file (if loaded)
 
         Returns:
@@ -185,7 +185,7 @@ class BaseLLMProvider(ABC):
 
         # Then check credentials file
         try:
-            from aicommit.global_config import get_credential
+            from hunknote.global_config import get_credential
             api_key = get_credential(env_var_name)
             if api_key:
                 return api_key
@@ -197,8 +197,8 @@ class BaseLLMProvider(ABC):
         raise MissingAPIKeyError(
             f"{provider_name} API key not found. Set it using:\n"
             f"  1. Environment variable: export {env_var_name}=your_key_here\n"
-            f"  2. Run: aicommit config set-key {provider_name.lower()}\n"
-            f"  3. Manually add to ~/.aicommit/credentials"
+            f"  2. Run: hunknote config set-key {provider_name.lower()}\n"
+            f"  3. Manually add to ~/.hunknote/credentials"
         )
 
     def build_user_prompt(self, context_bundle: str) -> str:

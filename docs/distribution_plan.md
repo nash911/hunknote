@@ -1,24 +1,24 @@
-# Distribution Plan: Shipping aicommit as a Standalone CLI Tool
+# Distribution Plan: Shipping hunknote as a Standalone CLI Tool
 
 ## Overview
 
-This document outlines the plan to ship `aicommit` as a standalone CLI tool installable via:
-- `apt-get install aicommit` on Debian/Ubuntu Linux
-- `brew install aicommit` on macOS
+This document outlines the plan to ship `hunknote` as a standalone CLI tool installable via:
+- `apt-get install hunknote` on Debian/Ubuntu Linux
+- `brew install hunknote` on macOS
 
 ## Current State
 
 - Python 3.12+ CLI tool using Poetry for dependency management
 - Multiple LLM provider support (Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter)
 - Configuration currently stored in:
-  - `aicommit/config.py` (provider/model selection)
-  - `<repo>/.aicommit/config.yaml` (per-repo ignore patterns)
+  - `hunknote/config.py` (provider/model selection)
+  - `<repo>/.hunknote/config.yaml` (per-repo ignore patterns)
   - Environment variables for API keys
 
 ## Goals
 
 1. **Global installation**: Install once, use in any git repository
-2. **User configuration**: Store settings in `~/.aicommit/` (home directory)
+2. **User configuration**: Store settings in `~/.hunknote/` (home directory)
 3. **Easy setup**: Simple commands to configure API keys and preferences
 4. **Package distribution**: Available via apt and brew
 
@@ -29,7 +29,7 @@ This document outlines the plan to ship `aicommit` as a standalone CLI tool inst
 ### 1.1 Configuration Directory Structure
 
 ```
-~/.aicommit/
+~/.hunknote/
 ├── config.yaml       # Global settings (provider, model, preferences)
 ├── credentials       # API keys (secured file permissions)
 └── cache/            # Optional: global cache for cross-repo usage
@@ -38,7 +38,7 @@ This document outlines the plan to ship `aicommit` as a standalone CLI tool inst
 ### 1.2 config.yaml Format
 
 ```yaml
-# ~/.aicommit/config.yaml
+# ~/.hunknote/config.yaml
 provider: google                    # anthropic, openai, google, mistral, cohere, groq, openrouter
 model: gemini-2.0-flash            # Model name for the selected provider
 
@@ -57,7 +57,7 @@ default_ignore:
 ### 1.3 credentials File Format
 
 ```
-# ~/.aicommit/credentials
+# ~/.hunknote/credentials
 # This file should have restricted permissions (chmod 600)
 
 ANTHROPIC_API_KEY=sk-ant-...
@@ -73,35 +73,35 @@ OPENROUTER_API_KEY=sk-or-...
 
 ```bash
 # Initialize configuration (interactive setup)
-aicommit init
+hunknote init
 
 # Set/update API key for a provider
-aicommit config set-key anthropic
-aicommit config set-key google
+hunknote config set-key anthropic
+hunknote config set-key google
 
 # Set provider and model
-aicommit config set-provider google
-aicommit config set-model gemini-2.0-flash
+hunknote config set-provider google
+hunknote config set-model gemini-2.0-flash
 
 # View current configuration
-aicommit config show
+hunknote config show
 
 # List available providers and models
-aicommit config list-providers
-aicommit config list-models [provider]
+hunknote config list-providers
+hunknote config list-models [provider]
 ```
 
 ---
 
 ## Phase 2: Code Changes
 
-### 2.1 New Module: `aicommit/global_config.py`
+### 2.1 New Module: `hunknote/global_config.py`
 
-Handles reading/writing global configuration from `~/.aicommit/`:
+Handles reading/writing global configuration from `~/.hunknote/`:
 
 ```python
 # Key functions:
-- get_global_config_dir() -> Path       # Returns ~/.aicommit/
+- get_global_config_dir() -> Path       # Returns ~/.hunknote/
 - load_global_config() -> dict          # Loads config.yaml
 - save_global_config(config: dict)      # Saves config.yaml
 - load_credentials() -> dict            # Loads API keys from credentials file
@@ -110,7 +110,7 @@ Handles reading/writing global configuration from `~/.aicommit/`:
 - get_active_model() -> str             # Gets model from config
 ```
 
-### 2.2 Update `aicommit/config.py`
+### 2.2 Update `hunknote/config.py`
 
 Change from hardcoded values to loading from global config:
 
@@ -129,14 +129,14 @@ ACTIVE_MODEL = _global_config.get("model", "gemini-2.0-flash")
 
 Modify API key loading to check:
 1. Environment variable (highest priority - for CI/CD)
-2. `~/.aicommit/credentials` file
+2. `~/.hunknote/credentials` file
 3. Repo-level `.env` file (lowest priority)
 
-### 2.4 Update CLI (`aicommit/cli.py`)
+### 2.4 Update CLI (`hunknote/cli.py`)
 
 Add new subcommand groups:
-- `aicommit init` - Interactive setup wizard
-- `aicommit config` - Configuration management
+- `hunknote init` - Interactive setup wizard
+- `hunknote config` - Configuration management
 
 ---
 
@@ -147,13 +147,13 @@ Add new subcommand groups:
 1. Update `pyproject.toml` with complete metadata:
    ```toml
    [tool.poetry]
-   name = "aicommit-cli"
+   name = "hunknote"
    version = "1.0.0"
    description = "AI-powered git commit message generator"
    authors = ["Your Name <email@example.com>"]
    license = "MIT"
-   homepage = "https://github.com/username/aicommit"
-   repository = "https://github.com/username/aicommit"
+   homepage = "https://github.com/username/hunknote"
+   repository = "https://github.com/username/hunknote"
    keywords = ["git", "commit", "ai", "llm", "cli"]
    classifiers = [
        "Development Status :: 4 - Beta",
@@ -176,10 +176,10 @@ Add new subcommand groups:
 Once on PyPI:
 ```bash
 # Using pipx (recommended - isolated environment)
-pipx install aicommit-cli
+pipx install hunknote
 
 # Using pip
-pip install aicommit-cli
+pip install hunknote
 ```
 
 ---
@@ -188,15 +188,15 @@ pip install aicommit-cli
 
 ### 4.1 Create Homebrew Formula
 
-Create a formula at `Formula/aicommit.rb`:
+Create a formula at `Formula/hunknote.rb`:
 
 ```ruby
 class Aicommit < Formula
   include Language::Python::Virtualenv
 
   desc "AI-powered git commit message generator"
-  homepage "https://github.com/username/aicommit"
-  url "https://files.pythonhosted.org/packages/.../aicommit-cli-1.0.0.tar.gz"
+  homepage "https://github.com/username/hunknote"
+  url "https://files.pythonhosted.org/packages/.../hunknote-1.0.0.tar.gz"
   sha256 "..."
   license "MIT"
 
@@ -209,7 +209,7 @@ class Aicommit < Formula
   end
 
   test do
-    system "#{bin}/aicommit", "--help"
+    system "#{bin}/hunknote", "--help"
   end
 end
 ```
@@ -218,10 +218,10 @@ end
 
 **Option A: Personal Tap (Easiest)**
 ```bash
-# Create a tap repository: homebrew-aicommit
+# Create a tap repository: homebrew-hunknote
 # Users install with:
-brew tap username/aicommit
-brew install aicommit
+brew tap username/hunknote
+brew install hunknote
 ```
 
 **Option B: Homebrew Core (Requires approval)**
@@ -236,24 +236,24 @@ brew install aicommit
 
 Structure:
 ```
-aicommit_1.0.0-1/
+hunknote_1.0.0-1/
 ├── DEBIAN/
 │   ├── control           # Package metadata
 │   ├── postinst          # Post-installation script
 │   └── prerm             # Pre-removal script
 ├── usr/
 │   ├── bin/
-│   │   └── aicommit      # Entry point script
+│   │   └── hunknote      # Entry point script
 │   └── lib/
-│       └── aicommit/     # Python package
+│       └── hunknote/     # Python package
 └── etc/
-    └── aicommit/         # Default config (optional)
+    └── hunknote/         # Default config (optional)
 ```
 
 ### 5.2 control File
 
 ```
-Package: aicommit
+Package: hunknote
 Version: 1.0.0-1
 Section: devel
 Priority: optional
@@ -271,16 +271,16 @@ Description: AI-powered git commit message generator
 ```bash
 # Create a PPA on Launchpad
 # Users install with:
-sudo add-apt-repository ppa:username/aicommit
+sudo add-apt-repository ppa:username/hunknote
 sudo apt update
-sudo apt install aicommit
+sudo apt install hunknote
 ```
 
 **Option B: GitHub Releases with .deb files**
 ```bash
 # Users download and install:
-wget https://github.com/username/aicommit/releases/download/v1.0.0/aicommit_1.0.0-1_all.deb
-sudo dpkg -i aicommit_1.0.0-1_all.deb
+wget https://github.com/username/hunknote/releases/download/v1.0.0/hunknote_1.0.0-1_all.deb
+sudo dpkg -i hunknote_1.0.0-1_all.deb
 ```
 
 **Option C: Official Debian/Ubuntu repos (Requires approval)**
@@ -301,9 +301,9 @@ Using **PyInstaller** or **Nuitka** to create standalone executables:
 
 ```bash
 # Using PyInstaller
-pyinstaller --onefile --name aicommit aicommit/cli.py
+pyinstaller --onefile --name hunknote hunknote/cli.py
 
-# Output: dist/aicommit (single executable)
+# Output: dist/hunknote (single executable)
 ```
 
 ### 6.3 Distribution
@@ -317,15 +317,20 @@ pyinstaller --onefile --name aicommit aicommit/cli.py
 
 ### ✅ Immediate (Phase 1-2): Global Config Support - COMPLETED
 1. ✅ Create `global_config.py` module
-2. ✅ Add `~/.aicommit/` configuration support
-3. ✅ Add `aicommit init` and `aicommit config` commands
+2. ✅ Add `~/.hunknote/` configuration support
+3. ✅ Add `hunknote init` and `hunknote config` commands
 4. ✅ Update API key loading to use credentials file
 5. Update tests (in progress)
 
-### Short-term (Phase 3): PyPI
-1. Finalize package metadata
-2. Publish to PyPI
-3. Document `pipx install aicommit-cli`
+### ✅ Short-term (Phase 3): PyPI - COMPLETED
+1. ✅ Finalize package metadata in pyproject.toml
+2. ✅ Create LICENSE file (MIT)
+3. ✅ Create MANIFEST.in for package inclusion
+4. ✅ Create comprehensive PyPI distribution guide
+5. ✅ Create release checklist
+6. ✅ Test build process successfully
+7. ✅ Update README with pipx/pip installation instructions
+8. Package is ready to publish to PyPI (requires PyPI account and API token)
 
 ### Medium-term (Phase 4-5): Package Managers
 1. Create Homebrew tap and formula
@@ -357,36 +362,36 @@ This approach provides:
 
 ```bash
 # macOS Installation
-brew tap username/aicommit
-brew install aicommit
+brew tap username/hunknote
+brew install hunknote
 
 # Ubuntu/Debian Installation
 # Option 1: Download .deb from releases
-wget https://github.com/.../aicommit_1.0.0_all.deb
-sudo dpkg -i aicommit_1.0.0_all.deb
+wget https://github.com/.../hunknote_1.0.0_all.deb
+sudo dpkg -i hunknote_1.0.0_all.deb
 
 # Option 2: Use PPA
-sudo add-apt-repository ppa:username/aicommit
-sudo apt install aicommit
+sudo add-apt-repository ppa:username/hunknote
+sudo apt install hunknote
 
 # First-time Setup (same on all platforms)
-aicommit init
+hunknote init
 # Interactive prompts:
 # > Select LLM provider: [google]
 # > Enter your Google API key: [AI...]
-# > Configuration saved to ~/.aicommit/
+# > Configuration saved to ~/.hunknote/
 
 # Usage (in any git repo)
 cd my-project
 git add .
-aicommit
+hunknote
 ```
 
 ---
 
 ## Questions to Resolve
 
-1. **Package name**: `aicommit` vs `aicommit-cli` vs `ai-commit`?
+1. **Package name**: `hunknote` vs `hunknote` vs `ai-commit`?
 2. **Minimum Python version**: Keep 3.12+ or support 3.10+?
 3. **Binary distribution**: Worth the added complexity?
 4. **Update mechanism**: How should users update?
@@ -396,6 +401,6 @@ aicommit
 ## Next Steps
 
 Once this plan is approved, I will implement:
-1. Phase 1: Global configuration module (`~/.aicommit/`)
+1. Phase 1: Global configuration module (`~/.hunknote/`)
 2. Phase 2: New CLI commands (`init`, `config`)
 3. Update documentation and tests

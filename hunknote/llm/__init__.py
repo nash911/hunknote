@@ -1,13 +1,13 @@
-"""LLM provider module for aicommit.
+"""LLM provider module for hunknote.
 
 This module provides a unified interface to multiple LLM providers.
-The active provider is configured in aicommit/config.py.
+The active provider is configured in hunknote/config.py.
 """
 
 from dotenv import load_dotenv
 
-from aicommit.config import ACTIVE_MODEL, ACTIVE_PROVIDER, LLMProvider
-from aicommit.llm.base import (
+from hunknote.config import ACTIVE_MODEL, ACTIVE_PROVIDER, LLMProvider
+from hunknote.llm.base import (
     BaseLLMProvider,
     JSONParseError,
     LLMError,
@@ -37,37 +37,37 @@ def get_provider(
     model = model or ACTIVE_MODEL
 
     if provider == LLMProvider.ANTHROPIC:
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         return AnthropicProvider(model=model)
 
     elif provider == LLMProvider.OPENAI:
-        from aicommit.llm.openai_provider import OpenAIProvider
+        from hunknote.llm.openai_provider import OpenAIProvider
 
         return OpenAIProvider(model=model)
 
     elif provider == LLMProvider.GOOGLE:
-        from aicommit.llm.google_provider import GoogleProvider
+        from hunknote.llm.google_provider import GoogleProvider
 
         return GoogleProvider(model=model)
 
     elif provider == LLMProvider.MISTRAL:
-        from aicommit.llm.mistral_provider import MistralProvider
+        from hunknote.llm.mistral_provider import MistralProvider
 
         return MistralProvider(model=model)
 
     elif provider == LLMProvider.COHERE:
-        from aicommit.llm.cohere_provider import CohereProvider
+        from hunknote.llm.cohere_provider import CohereProvider
 
         return CohereProvider(model=model)
 
     elif provider == LLMProvider.GROQ:
-        from aicommit.llm.groq_provider import GroqProvider
+        from hunknote.llm.groq_provider import GroqProvider
 
         return GroqProvider(model=model)
 
     elif provider == LLMProvider.OPENROUTER:
-        from aicommit.llm.openrouter_provider import OpenRouterProvider
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
 
         return OpenRouterProvider(model=model)
 

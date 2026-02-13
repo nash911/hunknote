@@ -4,13 +4,13 @@ import os
 
 from anthropic import Anthropic
 
-from aicommit.config import (
+from hunknote.config import (
     ACTIVE_MODEL,
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,
 )
-from aicommit.llm.base import (
+from hunknote.llm.base import (
     SYSTEM_PROMPT,
     BaseLLMProvider,
     LLMError,

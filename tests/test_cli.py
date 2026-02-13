@@ -1,24 +1,24 @@
-"""Tests for aicommit.cli module."""
+"""Tests for hunknote.cli module."""
 
 from unittest.mock import MagicMock
 
 import pytest
 from typer.testing import CliRunner
 
-from aicommit.cli import app
+from hunknote.cli import app
 
 
 runner = CliRunner()
 
 
 class TestIgnoreListCommand:
-    """Tests for aicommit ignore list command."""
+    """Tests for hunknote ignore list command."""
 
     def test_lists_patterns(self, mocker, temp_dir):
         """Test listing ignore patterns."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "aicommit.cli.get_ignore_patterns",
+            "hunknote.cli.get_ignore_patterns",
             return_value=["poetry.lock", "*.log", "build/*"]
         )
 
@@ -32,8 +32,8 @@ class TestIgnoreListCommand:
 
     def test_shows_empty_message(self, mocker, temp_dir):
         """Test message when no patterns configured."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.get_ignore_patterns", return_value=[])
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=[])
 
         result = runner.invoke(app, ["ignore", "list"])
 
@@ -42,9 +42,9 @@ class TestIgnoreListCommand:
 
     def test_handles_git_error(self, mocker):
         """Test handling of git error."""
-        from aicommit.git_ctx import GitError
+        from hunknote.git_ctx import GitError
 
-        mocker.patch("aicommit.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "list"])
 
@@ -53,13 +53,13 @@ class TestIgnoreListCommand:
 
 
 class TestIgnoreAddCommand:
-    """Tests for aicommit ignore add command."""
+    """Tests for hunknote ignore add command."""
 
     def test_adds_pattern(self, mocker, temp_dir):
         """Test adding a pattern."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.get_ignore_patterns", return_value=[])
-        mock_add = mocker.patch("aicommit.cli.add_ignore_pattern")
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=[])
+        mock_add = mocker.patch("hunknote.cli.add_ignore_pattern")
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -70,8 +70,8 @@ class TestIgnoreAddCommand:
 
     def test_existing_pattern_message(self, mocker, temp_dir):
         """Test message when pattern already exists."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.get_ignore_patterns", return_value=["*.log"])
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=["*.log"])
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -80,9 +80,9 @@ class TestIgnoreAddCommand:
 
     def test_handles_git_error(self, mocker):
         """Test handling of git error."""
-        from aicommit.git_ctx import GitError
+        from hunknote.git_ctx import GitError
 
-        mocker.patch("aicommit.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -90,12 +90,12 @@ class TestIgnoreAddCommand:
 
 
 class TestIgnoreRemoveCommand:
-    """Tests for aicommit ignore remove command."""
+    """Tests for hunknote ignore remove command."""
 
     def test_removes_pattern(self, mocker, temp_dir):
         """Test removing a pattern."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.remove_ignore_pattern", return_value=True)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.remove_ignore_pattern", return_value=True)
 
         result = runner.invoke(app, ["ignore", "remove", "*.log"])
 
@@ -105,8 +105,8 @@ class TestIgnoreRemoveCommand:
 
     def test_pattern_not_found(self, mocker, temp_dir):
         """Test message when pattern not found."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.remove_ignore_pattern", return_value=False)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.remove_ignore_pattern", return_value=False)
 
         result = runner.invoke(app, ["ignore", "remove", "nonexistent"])
 
@@ -115,9 +115,9 @@ class TestIgnoreRemoveCommand:
 
     def test_handles_git_error(self, mocker):
         """Test handling of git error."""
-        from aicommit.git_ctx import GitError
+        from hunknote.git_ctx import GitError
 
-        mocker.patch("aicommit.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "remove", "*.log"])
 
@@ -125,7 +125,7 @@ class TestIgnoreRemoveCommand:
 
 
 class TestMainCommand:
-    """Tests for main aicommit command."""
+    """Tests for main hunknote command."""
 
     def test_shows_help(self):
         """Test that help is displayed."""
@@ -138,11 +138,11 @@ class TestMainCommand:
 
     def test_no_staged_changes_error(self, mocker, temp_dir):
         """Test error when no staged changes."""
-        from aicommit.git_ctx import NoStagedChangesError
+        from hunknote.git_ctx import NoStagedChangesError
 
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "aicommit.cli.build_context_bundle",
+            "hunknote.cli.build_context_bundle",
             side_effect=NoStagedChangesError("No staged changes")
         )
 
@@ -154,18 +154,18 @@ class TestMainCommand:
 
     def test_missing_api_key_error(self, mocker, temp_dir):
         """Test error when API key is missing."""
-        from aicommit.llm.base import MissingAPIKeyError
+        from hunknote.llm.base import MissingAPIKeyError
 
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.build_context_bundle", return_value="context")
-        mocker.patch("aicommit.cli.compute_context_hash", return_value="hash")
-        mocker.patch("aicommit.cli.get_status", return_value="## main")
-        mocker.patch("aicommit.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("aicommit.cli.get_staged_diff", return_value="diff")
-        mocker.patch("aicommit.cli.get_diff_preview", return_value="preview")
-        mocker.patch("aicommit.cli.is_cache_valid", return_value=False)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.is_cache_valid", return_value=False)
         mocker.patch(
-            "aicommit.cli.generate_commit_json",
+            "hunknote.cli.generate_commit_json",
             side_effect=MissingAPIKeyError("ANTHROPIC_API_KEY not set")
         )
 
@@ -176,17 +176,17 @@ class TestMainCommand:
 
     def test_uses_cached_message(self, mocker, temp_dir):
         """Test that cached message is used when valid."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.build_context_bundle", return_value="context")
-        mocker.patch("aicommit.cli.compute_context_hash", return_value="hash")
-        mocker.patch("aicommit.cli.get_status", return_value="## main")
-        mocker.patch("aicommit.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("aicommit.cli.get_staged_diff", return_value="diff")
-        mocker.patch("aicommit.cli.get_diff_preview", return_value="preview")
-        mocker.patch("aicommit.cli.is_cache_valid", return_value=True)
-        mocker.patch("aicommit.cli.load_cached_message", return_value="Cached message\n\n- Bullet")
-        mocker.patch("aicommit.cli.load_cache_metadata", return_value=MagicMock())
-        mocker.patch("aicommit.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.load_cached_message", return_value="Cached message\n\n- Bullet")
+        mocker.patch("hunknote.cli.load_cache_metadata", return_value=MagicMock())
+        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
 
         result = runner.invoke(app, [])
 
@@ -195,17 +195,17 @@ class TestMainCommand:
 
     def test_regenerate_flag_bypasses_cache(self, mocker, temp_dir):
         """Test that --regenerate flag bypasses cache."""
-        mocker.patch("aicommit.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("aicommit.cli.build_context_bundle", return_value="context")
-        mocker.patch("aicommit.cli.compute_context_hash", return_value="hash")
-        mocker.patch("aicommit.cli.get_status", return_value="## main")
-        mocker.patch("aicommit.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("aicommit.cli.get_staged_diff", return_value="diff")
-        mocker.patch("aicommit.cli.get_diff_preview", return_value="preview")
-        mock_is_valid = mocker.patch("aicommit.cli.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
+        mock_is_valid = mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
 
-        from aicommit.formatters import CommitMessageJSON
-        from aicommit.llm.base import LLMResult
+        from hunknote.formatters import CommitMessageJSON
+        from hunknote.llm.base import LLMResult
 
         mock_result = LLMResult(
             commit_json=CommitMessageJSON(title="New message", body_bullets=["Change"]),
@@ -213,10 +213,10 @@ class TestMainCommand:
             input_tokens=100,
             output_tokens=50,
         )
-        mocker.patch("aicommit.cli.generate_commit_json", return_value=mock_result)
-        mocker.patch("aicommit.cli.save_cache")
-        mocker.patch("aicommit.cli.load_cache_metadata", return_value=MagicMock())
-        mocker.patch("aicommit.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.generate_commit_json", return_value=mock_result)
+        mocker.patch("hunknote.cli.save_cache")
+        mocker.patch("hunknote.cli.load_cache_metadata", return_value=MagicMock())
+        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
 
         result = runner.invoke(app, ["--regenerate"])
 
@@ -230,7 +230,7 @@ class TestHelperFunctions:
 
     def test_generate_message_diff_same(self):
         """Test diff of identical messages."""
-        from aicommit.cli import _generate_message_diff
+        from hunknote.cli import _generate_message_diff
 
         original = "Same message"
         current = "Same message"
@@ -242,7 +242,7 @@ class TestHelperFunctions:
 
     def test_generate_message_diff_different(self):
         """Test diff of different messages."""
-        from aicommit.cli import _generate_message_diff
+        from hunknote.cli import _generate_message_diff
 
         original = "Original message"
         current = "Modified message"
@@ -255,7 +255,7 @@ class TestHelperFunctions:
 
     def test_find_editor_returns_list(self, mocker):
         """Test that _find_editor returns a list."""
-        from aicommit.cli import _find_editor
+        from hunknote.cli import _find_editor
 
         mocker.patch("shutil.which", return_value="/usr/bin/nano")
 

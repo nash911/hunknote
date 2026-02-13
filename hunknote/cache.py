@@ -1,7 +1,13 @@
-"""Caching utilities for aicommit to prevent redundant LLM API calls."""
+"""Caching utilities for hunknote to prevent redundant LLM API calls.
+
+Backward compatibility:
+- Falls back to .aicommit/ if .hunknote/ doesn't exist
+- Warns users about deprecated paths
+"""
 
 import hashlib
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -22,54 +28,136 @@ class CacheMetadata(BaseModel):
     diff_preview: str
 
 
+# Backward compatibility tracking
+_CACHE_MIGRATION_WARNED = set()
+
+
+def _warn_deprecated_cache_path(repo_root: Path) -> None:
+    """Warn user about deprecated cache path.
+
+    Args:
+        repo_root: The repository root directory.
+    """
+    repo_key = str(repo_root.absolute())
+    if repo_key not in _CACHE_MIGRATION_WARNED:
+        old_path = repo_root / ".aicommit"
+        new_path = repo_root / ".hunknote"
+        print(f"\n⚠️  WARNING: Using deprecated cache directory", file=sys.stderr)
+        print(f"   Repo: {repo_root}", file=sys.stderr)
+        print(f"   Old: {old_path}", file=sys.stderr)
+        print(f"   New: {new_path}", file=sys.stderr)
+        print(f"   Run 'hunknote migrate' to update your cache.", file=sys.stderr)
+        print(f"   (This warning will only show once per repo)\n", file=sys.stderr)
+        _CACHE_MIGRATION_WARNED.add(repo_key)
+
+
 def get_cache_dir(repo_root: Path) -> Path:
-    """Return the .aicommit directory, creating it if needed.
+    """Return the .hunknote directory, creating it if needed.
+
+    Falls back to .aicommit/ for backward compatibility.
 
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to the .aicommit cache directory.
+        Path to the .hunknote cache directory (or .aicommit for backward compatibility).
     """
-    cache_dir = repo_root / ".aicommit"
-    cache_dir.mkdir(exist_ok=True)
-    return cache_dir
+    new_dir = repo_root / ".hunknote"
+    old_dir = repo_root / ".aicommit"
+
+    # If new directory exists, use it
+    if new_dir.exists():
+        return new_dir
+
+    # If old directory exists but new doesn't, use old and warn
+    if old_dir.exists():
+        _warn_deprecated_cache_path(repo_root)
+        return old_dir
+
+    # Neither exists, create and return new
+    new_dir.mkdir(exist_ok=True)
+    return new_dir
 
 
 def get_message_file(repo_root: Path) -> Path:
     """Return path to the cached message file.
 
+    Falls back to aicommit_message.txt for backward compatibility.
+
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to aicommit_message.txt.
+        Path to hunknote_message.txt (or aicommit_message.txt for backward compatibility).
     """
-    return get_cache_dir(repo_root) / "aicommit_message.txt"
+    cache_dir = get_cache_dir(repo_root)
+    new_file = cache_dir / "hunknote_message.txt"
+    old_file = cache_dir / "aicommit_message.txt"
+
+    # If new file exists, use it
+    if new_file.exists():
+        return new_file
+
+    # If old file exists, use it (will be migrated later)
+    if old_file.exists():
+        return old_file
+
+    # Neither exists, return new
+    return new_file
 
 
 def get_hash_file(repo_root: Path) -> Path:
     """Return path to the context hash file.
 
+    Falls back to aicommit_context_hash.txt for backward compatibility.
+
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to aicommit_context_hash.txt.
+        Path to hunknote_context_hash.txt (or aicommit_context_hash.txt for backward compatibility).
     """
-    return get_cache_dir(repo_root) / "aicommit_context_hash.txt"
+    cache_dir = get_cache_dir(repo_root)
+    new_file = cache_dir / "hunknote_context_hash.txt"
+    old_file = cache_dir / "aicommit_context_hash.txt"
+
+    # If new file exists, use it
+    if new_file.exists():
+        return new_file
+
+    # If old file exists, use it (will be migrated later)
+    if old_file.exists():
+        return old_file
+
+    # Neither exists, return new
+    return new_file
 
 
 def get_metadata_file(repo_root: Path) -> Path:
     """Return path to the metadata JSON file.
 
+    Falls back to aicommit_metadata.json for backward compatibility.
+
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to aicommit_metadata.json.
+        Path to hunknote_metadata.json (or aicommit_metadata.json for backward compatibility).
     """
-    return get_cache_dir(repo_root) / "aicommit_metadata.json"
+    cache_dir = get_cache_dir(repo_root)
+    new_file = cache_dir / "hunknote_metadata.json"
+    old_file = cache_dir / "aicommit_metadata.json"
+
+    # If new file exists, use it
+    if new_file.exists():
+        return new_file
+
+    # If old file exists, use it (will be migrated later)
+    if old_file.exists():
+        return old_file
+
+    # Neither exists, return new
+    return new_file
 
 
 def compute_context_hash(context_bundle: str) -> str:

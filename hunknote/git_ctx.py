@@ -4,7 +4,7 @@ import fnmatch
 import subprocess
 from pathlib import Path
 
-from aicommit.user_config import get_ignore_patterns
+from hunknote.user_config import get_ignore_patterns
 
 
 class GitError(Exception):
@@ -137,7 +137,7 @@ def get_last_commits(n: int = 5) -> list[str]:
 
 # Default files to exclude from the staged diff sent to LLM
 # These are typically auto-generated and don't need commit message descriptions
-# Note: This list is used as fallback; actual patterns come from .aicommit/config.yaml
+# Note: This list is used as fallback; actual patterns come from .hunknote/config.yaml
 DEFAULT_DIFF_EXCLUDE_PATTERNS = [
     "poetry.lock",
     "package-lock.json",
@@ -190,7 +190,7 @@ def _should_exclude_file(filename: str, patterns: list[str]) -> bool:
 def get_staged_diff(max_chars: int = 50000, repo_root: Path = None) -> str:
     """Get the staged diff, excluding ignored files and truncating if necessary.
 
-    Files matching patterns in .aicommit/config.yaml ignore list are excluded
+    Files matching patterns in .hunknote/config.yaml ignore list are excluded
     because they are typically auto-generated and inflate the diff without
     adding useful context for commit message generation.
 

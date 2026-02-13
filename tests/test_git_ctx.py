@@ -1,4 +1,4 @@
-"""Tests for aicommit.git_ctx module."""
+"""Tests for hunknote.git_ctx module."""
 
 import subprocess
 from pathlib import Path
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aicommit.git_ctx import (
+from hunknote.git_ctx import (
     DEFAULT_DIFF_EXCLUDE_PATTERNS,
     GitError,
     NoStagedChangesError,
@@ -261,7 +261,7 @@ class TestGetStagedDiff:
         mock_result.returncode = 0
 
         mocker.patch("subprocess.run", return_value=mock_result)
-        mocker.patch("aicommit.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
 
         with pytest.raises(NoStagedChangesError):
             get_staged_diff()
@@ -272,12 +272,12 @@ class TestGetStagedDiff:
 
         # Mock _get_staged_files_list
         mocker.patch(
-            "aicommit.git_ctx._get_staged_files_list",
+            "hunknote.git_ctx._get_staged_files_list",
             return_value=["file.py"]
         )
-        mocker.patch("aicommit.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "aicommit.git_ctx.get_ignore_patterns",
+            "hunknote.git_ctx.get_ignore_patterns",
             return_value=[]
         )
 
@@ -293,12 +293,12 @@ class TestGetStagedDiff:
     def test_returns_message_if_only_ignored_files(self, mocker, temp_dir):
         """Test message when only ignored files are staged."""
         mocker.patch(
-            "aicommit.git_ctx._get_staged_files_list",
+            "hunknote.git_ctx._get_staged_files_list",
             return_value=["poetry.lock"]
         )
-        mocker.patch("aicommit.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "aicommit.git_ctx.get_ignore_patterns",
+            "hunknote.git_ctx.get_ignore_patterns",
             return_value=["poetry.lock"]
         )
 
@@ -311,10 +311,10 @@ class TestBuildContextBundle:
 
     def test_contains_all_sections(self, mocker, temp_dir):
         """Test that bundle contains all required sections."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nA  file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=["Commit 1", "Commit 2"])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff content")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nA  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=["Commit 1", "Commit 2"])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff content")
 
         bundle = build_context_bundle()
 
@@ -325,10 +325,10 @@ class TestBuildContextBundle:
 
     def test_includes_branch(self, mocker, temp_dir):
         """Test that branch is included."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="feature/test")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## feature/test\nA  file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=[])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="feature/test")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## feature/test\nA  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         bundle = build_context_bundle()
 
@@ -336,10 +336,10 @@ class TestBuildContextBundle:
 
     def test_includes_commits(self, mocker, temp_dir):
         """Test that commits are included."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nM  file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=["Fix bug", "Add feature"])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nM  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=["Fix bug", "Add feature"])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         bundle = build_context_bundle()
 
@@ -348,10 +348,10 @@ class TestBuildContextBundle:
 
     def test_no_commits_message(self, mocker, temp_dir):
         """Test message when no commits exist."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nA  file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=[])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nA  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         bundle = build_context_bundle()
 
@@ -359,10 +359,10 @@ class TestBuildContextBundle:
 
     def test_passes_max_chars(self, mocker, temp_dir):
         """Test that max_chars is passed to get_staged_diff."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nA  file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=[])
-        mock_diff = mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nA  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mock_diff = mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         build_context_bundle(max_chars=10000)
 
@@ -370,10 +370,10 @@ class TestBuildContextBundle:
 
     def test_file_changes_shows_new_files(self, mocker, temp_dir):
         """Test that new files are labeled correctly in FILE_CHANGES."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nA  new_file.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=[])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nA  new_file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         bundle = build_context_bundle()
 
@@ -382,10 +382,10 @@ class TestBuildContextBundle:
 
     def test_file_changes_shows_modified_files(self, mocker, temp_dir):
         """Test that modified files are labeled correctly in FILE_CHANGES."""
-        mocker.patch("aicommit.git_ctx.get_branch", return_value="main")
-        mocker.patch("aicommit.git_ctx.get_staged_status", return_value="## main\nM  existing.py")
-        mocker.patch("aicommit.git_ctx.get_last_commits", return_value=[])
-        mocker.patch("aicommit.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nM  existing.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
 
         bundle = build_context_bundle()
 

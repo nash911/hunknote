@@ -1,18 +1,23 @@
-"""Global configuration management for aicommit.
+"""Global configuration management for hunknote.
 
-Handles user-level configuration stored in ~/.aicommit/:
+Handles user-level configuration stored in ~/.hunknote/:
 - config.yaml: Provider, model, and preference settings
 - credentials: API keys for LLM providers
+
+Backward compatibility:
+- Falls back to ~/.aicommit/ if ~/.hunknote/ doesn't exist
+- Warns users about deprecated paths
 """
 
 import os
 import stat
+import sys
 from pathlib import Path
 from typing import Dict, Optional, Any
 
 import yaml
 
-from aicommit.config import LLMProvider, AVAILABLE_MODELS
+from hunknote.config import LLMProvider, AVAILABLE_MODELS
 
 
 class GlobalConfigError(Exception):
@@ -20,20 +25,58 @@ class GlobalConfigError(Exception):
     pass
 
 
+# Backward compatibility paths
+_OLD_CONFIG_DIR = Path.home() / ".aicommit"
+_NEW_CONFIG_DIR = Path.home() / ".hunknote"
+_MIGRATION_WARNED = False
+
+
+def _warn_deprecated_path(old_path: Path, new_path: Path) -> None:
+    """Warn user about deprecated configuration path.
+
+    Args:
+        old_path: The old deprecated path being used.
+        new_path: The new path they should migrate to.
+    """
+    global _MIGRATION_WARNED
+    if not _MIGRATION_WARNED:
+        print(f"\n⚠️  WARNING: Using deprecated configuration path", file=sys.stderr)
+        print(f"   Old: {old_path}", file=sys.stderr)
+        print(f"   New: {new_path}", file=sys.stderr)
+        print(f"   Run 'hunknote migrate' to update your configuration.", file=sys.stderr)
+        print(f"   (This warning will only show once per session)\n", file=sys.stderr)
+        _MIGRATION_WARNED = True
+
+
 def get_global_config_dir() -> Path:
-    """Get the global aicommit configuration directory.
+    """Get the global hunknote configuration directory.
+
+    Falls back to ~/.aicommit/ if ~/.hunknote/ doesn't exist (backward compatibility).
 
     Returns:
-        Path to ~/.aicommit/
+        Path to ~/.hunknote/ (or ~/.aicommit/ for backward compatibility)
     """
-    return Path.home() / ".aicommit"
+    new_dir = _NEW_CONFIG_DIR
+    old_dir = _OLD_CONFIG_DIR
+
+    # If new directory exists, use it
+    if new_dir.exists():
+        return new_dir
+
+    # If old directory exists but new doesn't, use old and warn
+    if old_dir.exists():
+        _warn_deprecated_path(old_dir, new_dir)
+        return old_dir
+
+    # Neither exists, return new (will be created when needed)
+    return new_dir
 
 
 def ensure_global_config_dir() -> Path:
     """Ensure the global config directory exists.
 
     Returns:
-        Path to ~/.aicommit/
+        Path to ~/.hunknote/
     """
     config_dir = get_global_config_dir()
     config_dir.mkdir(exist_ok=True)
@@ -44,7 +87,7 @@ def get_config_file_path() -> Path:
     """Get path to config.yaml file.
 
     Returns:
-        Path to ~/.aicommit/config.yaml
+        Path to ~/.hunknote/config.yaml
     """
     return get_global_config_dir() / "config.yaml"
 
@@ -53,13 +96,13 @@ def get_credentials_file_path() -> Path:
     """Get path to credentials file.
 
     Returns:
-        Path to ~/.aicommit/credentials
+        Path to ~/.hunknote/credentials
     """
     return get_global_config_dir() / "credentials"
 
 
 def load_global_config() -> Dict[str, Any]:
-    """Load global configuration from ~/.aicommit/config.yaml.
+    """Load global configuration from ~/.hunknote/config.yaml.
 
     Returns:
         Dictionary with configuration values. Empty dict if file doesn't exist.
@@ -78,7 +121,7 @@ def load_global_config() -> Dict[str, Any]:
 
 
 def save_global_config(config: Dict[str, Any]) -> None:
-    """Save global configuration to ~/.aicommit/config.yaml.
+    """Save global configuration to ~/.hunknote/config.yaml.
 
     Args:
         config: Configuration dictionary to save.
@@ -94,7 +137,7 @@ def save_global_config(config: Dict[str, Any]) -> None:
 
 
 def load_credentials() -> Dict[str, str]:
-    """Load API keys from ~/.aicommit/credentials.
+    """Load API keys from ~/.hunknote/credentials.
 
     Returns:
         Dictionary mapping provider names to API keys.
@@ -153,7 +196,7 @@ def save_credential(provider_key: str, api_key: str) -> None:
     # Write back all credentials
     try:
         with open(credentials_file, "w") as f:
-            f.write("# aicommit API credentials\n")
+            f.write("# hunknote API credentials\n")
             f.write("# This file stores API keys for LLM providers\n")
             f.write("# Format: PROVIDER_API_KEY=your_key_here\n\n")
 
@@ -310,7 +353,7 @@ def initialize_default_config() -> None:
 
 
 def is_configured() -> bool:
-    """Check if aicommit has been configured.
+    """Check if hunknote has been configured.
 
     Returns:
         True if config.yaml exists, False otherwise.

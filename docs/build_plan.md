@@ -1,4 +1,4 @@
-# AI Commit Message Generator (CLI) — Build Plan (90 minutes)
+# Hunknote Message Generator (CLI) — Build Plan (90 minutes)
 
 ## Project description
 
@@ -11,7 +11,7 @@
   - **Title** line
   - blank line
   - **bullet list** body
-- Save the message inside the repo at: `<project_root>/.tmp/aicommit_<pid>.txt`
+- Save the message inside the repo at: `<project_root>/.tmp/hunknote_<pid>.txt`
 - Support UX flags:
   - `-e/--edit`: open the generated message file in **gedit** for manual edits
   - `-c/--commit`: perform the commit **via the tool** (internally runs `git commit -F <message_file>`)
@@ -32,10 +32,10 @@
 ## Repo layout (target)
 
 ```
-aicommit/
+hunknote/
   pyproject.toml
   README.md
-  aicommit/
+  hunknote/
     __init__.py
     cli.py
     git_ctx.py
@@ -48,19 +48,19 @@ aicommit/
 ## Milestone 0 ✅ — Setup (5–10 min)
 
 ### Agent task
-1. Initialize a new repo folder `aicommit/`.
+1. Initialize a new repo folder `hunknote/`.
 2. Create a Poetry project (Python 3.12).
 3. Add dependencies:
    - `typer`
    - `pydantic`
    - `anthropic`
 4. Configure console scripts:
-   - `aicommit`
-   - `git-aicommit` (optional but nice; enables `git aicommit ...`)
+   - `hunknote`
+   - `git-hunknote` (optional but nice; enables `git hunknote ...`)
 
 ### Acceptance criteria
 - `poetry install` succeeds.
-- Running `poetry run aicommit --help` shows the CLI.
+- Running `poetry run hunknote --help` shows the CLI.
 
 ### Notes
 - Keep dependencies minimal. Avoid extras unless you need them.
@@ -70,7 +70,7 @@ aicommit/
 ## Milestone 1 ✅ — Git context collector (15–20 min)
 
 ### Agent task
-Create `aicommit/git_ctx.py` with functions:
+Create `hunknote/git_ctx.py` with functions:
 
 - `get_repo_root() -> Path`  
   - runs: `git rev-parse --show-toplevel`
@@ -118,7 +118,7 @@ Create `aicommit/git_ctx.py` with functions:
 ## Milestone 2 ✅ — Commit JSON schema + rendering (10–15 min)
 
 ### Agent task
-Create `aicommit/formatters.py`:
+Create `hunknote/formatters.py`:
 
 1. Pydantic model `CommitMessageJSON`:
    - `title: str`
@@ -145,7 +145,7 @@ Create `aicommit/formatters.py`:
 ## Milestone 3 ✅ — LLM call (JSON output) (20–25 min)
 
 ### Agent task
-Create `aicommit/llm.py`:
+Create `hunknote/llm.py`:
 
 1. Load configuration:
    - API key from env `ANTHROPIC_API_KEY` (required)
@@ -179,9 +179,9 @@ Create `aicommit/llm.py`:
 ## Milestone 4 ✅ — CLI + file writing (15–20 min)
 
 ### Agent task
-Create `aicommit/cli.py` with Typer:
+Create `hunknote/cli.py` with Typer:
 
-Command: `aicommit`
+Command: `hunknote`
 
 Flags:
 - `-e/--edit` (bool): open in gedit
@@ -193,7 +193,7 @@ Main flow:
 1. Determine repo root via `get_repo_root()`.
 2. Ensure `<repo_root>/.tmp/` exists.
 3. Build message file path:
-   - `<repo_root>/.tmp/aicommit_<pid>.txt`
+   - `<repo_root>/.tmp/hunknote_<pid>.txt`
 4. Collect context bundle.
 5. Generate commit JSON via `generate_commit_json()`.
 6. Render commit message text.
@@ -201,9 +201,9 @@ Main flow:
 8. Print the rendered message to stdout.
 
 ### Acceptance criteria
-- Running `poetry run aicommit`:
+- Running `poetry run hunknote`:
   - prints a title + bullet body
-  - creates `<repo_root>/.tmp/aicommit_<pid>.txt`
+  - creates `<repo_root>/.tmp/hunknote_<pid>.txt`
 
 ---
 
@@ -222,7 +222,7 @@ In `cli.py`:
   - fall back to `$EDITOR` if set, else `nano`.
 
 ### Acceptance criteria
-- `poetry run aicommit -e` opens a file and resumes after edits.
+- `poetry run hunknote -e` opens a file and resumes after edits.
 
 ---
 
@@ -235,29 +235,29 @@ Implement commit behavior in the tool itself:
   1. Ensure message file exists (it should, from previous steps).
   2. Run:
      ```bash
-     git commit -F <repo_root>/.tmp/aicommit_<pid>.txt
+     git commit -F <repo_root>/.tmp/hunknote_<pid>.txt
      ```
   3. Surface stderr if commit fails.
 
 **Important UX requirement:** Users should run **the tool’s flag**:
 ```bash
-aicommit -c
-aicommit -e -c
+hunknote -c
+hunknote -e -c
 ```
 The tool internally calls `git commit -F ...`.
 
 ### Acceptance criteria
-- `poetry run aicommit -c` creates a git commit using generated message.
-- `poetry run aicommit -e -c` commits using edited message.
+- `poetry run hunknote -c` creates a git commit using generated message.
+- `poetry run hunknote -e -c` commits using edited message.
 
 ---
 
 ## Milestone 7 ✅ — Polish (remaining time)
 
 ### Agent task (only if time remains)
-- Add `git-aicommit` console script entrypoint so you can run:
+- Add `git-hunknote` console script entrypoint so you can run:
   ```bash
-  git aicommit -e -c
+  git hunknote -e -c
   ```
 - Add friendly error messages:
   - missing API key
@@ -296,16 +296,16 @@ GIT CONTEXT:
 ## Local demo script (2 minutes)
 1. Make a small change
 2. `git add -p`
-3. `poetry run aicommit`
-4. `poetry run aicommit -e -c`
+3. `poetry run hunknote`
+4. `poetry run hunknote -e -c`
 
 ---
 
 ## pyproject.toml checklist
 - Requires Python 3.12
 - Includes console scripts:
-  - `aicommit = "aicommit.cli:app"`
-  - `git-aicommit = "aicommit.cli:app"` (optional)
+  - `hunknote = "hunknote.cli:app"`
+  - `git-hunknote = "hunknote.cli:app"` (optional)
 
 ---
 

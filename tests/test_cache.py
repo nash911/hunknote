@@ -1,4 +1,4 @@
-"""Tests for aicommit.cache module."""
+"""Tests for hunknote.cache module."""
 
 import json
 from datetime import datetime, timezone
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from aicommit.cache import (
+from hunknote.cache import (
     CacheMetadata,
     compute_context_hash,
     extract_staged_files,
@@ -51,15 +51,15 @@ class TestGetCacheDir:
         """Test that cache directory is created."""
         cache_dir = get_cache_dir(temp_dir)
         assert cache_dir.exists()
-        assert cache_dir.name == ".aicommit"
+        assert cache_dir.name == ".hunknote"
 
     def test_returns_existing_dir(self, temp_dir):
         """Test that existing directory is returned."""
-        aicommit_dir = temp_dir / ".aicommit"
-        aicommit_dir.mkdir()
+        hunknote_dir = temp_dir / ".hunknote"
+        hunknote_dir.mkdir()
 
         cache_dir = get_cache_dir(temp_dir)
-        assert cache_dir == aicommit_dir
+        assert cache_dir == hunknote_dir
 
 
 class TestCacheFilePaths:
@@ -68,18 +68,18 @@ class TestCacheFilePaths:
     def test_get_message_file(self, temp_dir):
         """Test message file path."""
         path = get_message_file(temp_dir)
-        assert path.name == "aicommit_message.txt"
-        assert path.parent.name == ".aicommit"
+        assert path.name == "hunknote_message.txt"
+        assert path.parent.name == ".hunknote"
 
     def test_get_hash_file(self, temp_dir):
         """Test hash file path."""
         path = get_hash_file(temp_dir)
-        assert path.name == "aicommit_context_hash.txt"
+        assert path.name == "hunknote_context_hash.txt"
 
     def test_get_metadata_file(self, temp_dir):
         """Test metadata file path."""
         path = get_metadata_file(temp_dir)
-        assert path.name == "aicommit_metadata.json"
+        assert path.name == "hunknote_metadata.json"
 
 
 class TestComputeContextHash:
@@ -115,11 +115,11 @@ class TestIsCacheValid:
 
     def test_matching_hash_valid(self, temp_dir):
         """Test that matching hash is valid."""
-        cache_dir = temp_dir / ".aicommit"
+        cache_dir = temp_dir / ".hunknote"
         cache_dir.mkdir()
 
-        hash_file = cache_dir / "aicommit_context_hash.txt"
-        message_file = cache_dir / "aicommit_message.txt"
+        hash_file = cache_dir / "hunknote_context_hash.txt"
+        message_file = cache_dir / "hunknote_message.txt"
 
         hash_file.write_text("abc123")
         message_file.write_text("test message")
@@ -128,11 +128,11 @@ class TestIsCacheValid:
 
     def test_different_hash_invalid(self, temp_dir):
         """Test that different hash is invalid."""
-        cache_dir = temp_dir / ".aicommit"
+        cache_dir = temp_dir / ".hunknote"
         cache_dir.mkdir()
 
-        hash_file = cache_dir / "aicommit_context_hash.txt"
-        message_file = cache_dir / "aicommit_message.txt"
+        hash_file = cache_dir / "hunknote_context_hash.txt"
+        message_file = cache_dir / "hunknote_message.txt"
 
         hash_file.write_text("abc123")
         message_file.write_text("test message")
@@ -141,10 +141,10 @@ class TestIsCacheValid:
 
     def test_missing_message_file_invalid(self, temp_dir):
         """Test that missing message file means invalid."""
-        cache_dir = temp_dir / ".aicommit"
+        cache_dir = temp_dir / ".hunknote"
         cache_dir.mkdir()
 
-        hash_file = cache_dir / "aicommit_context_hash.txt"
+        hash_file = cache_dir / "hunknote_context_hash.txt"
         hash_file.write_text("abc123")
 
         assert is_cache_valid(temp_dir, "abc123") is False
@@ -166,10 +166,10 @@ class TestSaveCache:
             diff_preview="diff preview",
         )
 
-        cache_dir = temp_dir / ".aicommit"
-        assert (cache_dir / "aicommit_context_hash.txt").exists()
-        assert (cache_dir / "aicommit_message.txt").exists()
-        assert (cache_dir / "aicommit_metadata.json").exists()
+        cache_dir = temp_dir / ".hunknote"
+        assert (cache_dir / "hunknote_context_hash.txt").exists()
+        assert (cache_dir / "hunknote_message.txt").exists()
+        assert (cache_dir / "hunknote_metadata.json").exists()
 
     def test_hash_content(self, temp_dir):
         """Test that hash is saved correctly."""
@@ -276,10 +276,10 @@ class TestLoadCacheMetadata:
 
     def test_returns_none_if_corrupted(self, temp_dir):
         """Test that None is returned if metadata is corrupted."""
-        cache_dir = temp_dir / ".aicommit"
+        cache_dir = temp_dir / ".hunknote"
         cache_dir.mkdir()
 
-        metadata_file = cache_dir / "aicommit_metadata.json"
+        metadata_file = cache_dir / "hunknote_metadata.json"
         metadata_file.write_text("not valid json")
 
         metadata = load_cache_metadata(temp_dir)
@@ -303,18 +303,18 @@ class TestInvalidateCache:
         )
 
         # Verify files exist
-        cache_dir = temp_dir / ".aicommit"
-        assert (cache_dir / "aicommit_context_hash.txt").exists()
-        assert (cache_dir / "aicommit_message.txt").exists()
-        assert (cache_dir / "aicommit_metadata.json").exists()
+        cache_dir = temp_dir / ".hunknote"
+        assert (cache_dir / "hunknote_context_hash.txt").exists()
+        assert (cache_dir / "hunknote_message.txt").exists()
+        assert (cache_dir / "hunknote_metadata.json").exists()
 
         # Invalidate
         invalidate_cache(temp_dir)
 
         # Verify files removed
-        assert not (cache_dir / "aicommit_context_hash.txt").exists()
-        assert not (cache_dir / "aicommit_message.txt").exists()
-        assert not (cache_dir / "aicommit_metadata.json").exists()
+        assert not (cache_dir / "hunknote_context_hash.txt").exists()
+        assert not (cache_dir / "hunknote_message.txt").exists()
+        assert not (cache_dir / "hunknote_metadata.json").exists()
 
     def test_handles_missing_files(self, temp_dir):
         """Test that invalidate doesn't error on missing files."""

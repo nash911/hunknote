@@ -1,9 +1,9 @@
-"""Tests for aicommit.llm.base module."""
+"""Tests for hunknote.llm.base module."""
 
 import pytest
 
-from aicommit.formatters import CommitMessageJSON
-from aicommit.llm.base import (
+from hunknote.formatters import CommitMessageJSON
+from hunknote.llm.base import (
     JSONParseError,
     LLMError,
     LLMResult,

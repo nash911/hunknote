@@ -4,14 +4,14 @@ import os
 
 from groq import Groq
 
-from aicommit.config import (
+from hunknote.config import (
     ACTIVE_MODEL,
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,
     TEMPERATURE,
 )
-from aicommit.llm.base import (
+from hunknote.llm.base import (
     SYSTEM_PROMPT,
     BaseLLMProvider,
     LLMError,

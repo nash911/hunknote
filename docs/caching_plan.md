@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-Currently, every invocation of the `aicommit` command (e.g., `aicommit`, `aicommit -e`, `aicommit -c`) triggers the complete pipeline:
+Currently, every invocation of the `hunknote` command (e.g., `hunknote`, `hunknote -e`, `hunknote -c`) triggers the complete pipeline:
 
 1. **Context gathering** - Git branch, status, last commits, staged diff
 2. **LLM API call** - Send context to Anthropic, get JSON response
@@ -12,15 +12,15 @@ This results in:
 - **Multiple API calls** for the exact same git context (same staged changes)
 - **Different commit messages** each time, even when nothing has changed
 - **Wasted API credits** and increased latency
-- **Poor UX**: User generates message with `aicommit`, then runs `aicommit -e` to edit, and gets a completely different message
+- **Poor UX**: User generates message with `hunknote`, then runs `hunknote -e` to edit, and gets a completely different message
 
 ## Desired Behavior
 
 The workflow should support:
-1. `aicommit` — Generate and display the commit message (cache it)
-2. `aicommit -e` — Reuse cached message OR generate if no cache; open editor
-3. `aicommit -c` — Reuse cached message OR generate if no cache; commit
-4. `aicommit -e -c` — Reuse cached message OR generate if no cache; edit, then commit
+1. `hunknote` — Generate and display the commit message (cache it)
+2. `hunknote -e` — Reuse cached message OR generate if no cache; open editor
+3. `hunknote -c` — Reuse cached message OR generate if no cache; commit
+4. `hunknote -e -c` — Reuse cached message OR generate if no cache; edit, then commit
 
 **Key principle**: If the staged changes havent changed since the last generation, reuse the cached message. If changes have occurred, regenerate.
 
@@ -38,8 +38,8 @@ Location: `<repo_root>/.tmp/`
 
 | File | Purpose |
 |------|---------|
-| `aicommit_message.txt` | The latest generated/edited commit message |
-| `aicommit_context_hash.txt` | SHA256 hash of the context bundle used to generate the message |
+| `hunknote_message.txt` | The latest generated/edited commit message |
+| `hunknote_context_hash.txt` | SHA256 hash of the context bundle used to generate the message |
 
 **Note**: Removed PID-based naming. Use a single, stable file per repo.
 
@@ -78,11 +78,11 @@ def get_cache_dir(repo_root: Path) -> Path:
 
 def get_message_file(repo_root: Path) -> Path:
     """Return path to the cached message file."""
-    return get_cache_dir(repo_root) / "aicommit_message.txt"
+    return get_cache_dir(repo_root) / "hunknote_message.txt"
 
 def get_hash_file(repo_root: Path) -> Path:
     """Return path to the context hash file."""
-    return get_cache_dir(repo_root) / "aicommit_context_hash.txt"
+    return get_cache_dir(repo_root) / "hunknote_context_hash.txt"
 
 def compute_context_hash(context_bundle: str) -> str:
     """Compute SHA256 hash of the context bundle."""
@@ -209,7 +209,7 @@ def main(
         "-d",
         is_flag=True,
         flag_value=True,
-        help="Show full metadata of the cached aicommit message",
+        help="Show full metadata of the cached hunknote message",
     ),
 ):
 ```
@@ -230,7 +230,7 @@ When `--debug` is set, show:
 
 To support debug output, store additional metadata in JSON format:
 
-Location: `<repo_root>/.tmp/aicommit_metadata.json`
+Location: `<repo_root>/.tmp/hunknote_metadata.json`
 
 ```json
 {
@@ -290,25 +290,25 @@ Current Message:
 
 ### Example 1: Normal Generation
 ```bash
-$ aicommit
+$ hunknote
 Generating commit message...   # LLM called, result cached
 <message displayed>
 
-$ aicommit                      # 2nd run
+$ hunknote                      # 2nd run
 Using cached commit message... # Cache hit, no LLM call
 <same message displayed>
 ```
 
 ### Example 2: Edit then Commit
 ```bash
-$ aicommit                      # Generate and cache
+$ hunknote                      # Generate and cache
 <message displayed>
 
-$ aicommit -e                   # Cache hit, open editor
+$ hunknote -e                   # Cache hit, open editor
 Using cached commit message...
 <editor opens, user edits, saves>
 
-$ aicommit -c                   # Cache hit (with edits), commit
+$ hunknote -c                   # Cache hit (with edits), commit
 Using cached commit message...
 <commit performed>
 <cache invalidated>
@@ -316,19 +316,19 @@ Using cached commit message...
 
 ### Example 3: Force Regeneration
 ```bash
-$ aicommit -r                   # Bypass cache
+$ hunknote -r                   # Bypass cache
 Generating commit message...    # New LLM call
 <new message displayed and cached>
 ```
 
 ### Example 4: Context Changed
 ```bash
-$ aicommit                      # Generate for staged changes A
+$ hunknote                      # Generate for staged changes A
 <message for changes A>
 
 $ git add more_files.py         # Stage more changes
 
-$ aicommit                      # Context hash changed
+$ hunknote                      # Context hash changed
 Generating commit message...    # New LLM call (cache invalidated)
 <new message for changes A + B>
 ```
@@ -343,11 +343,11 @@ Generating commit message...    # New LLM call (cache invalidated)
 
 ### 2. Commit Succeeds
 - Invalidate cache after successful `git commit`
-- Next `aicommit` will require new staged changes anyway
+- Next `hunknote` will require new staged changes anyway
 
 ### 3. Commit Fails
 - Keep cache intact
-- User can retry with `aicommit -c`
+- User can retry with `hunknote -c`
 
 ### 4. Editor Cancelled Without Save
 - Re-read file after editor closes
@@ -361,24 +361,24 @@ Generating commit message...    # New LLM call (cache invalidated)
 
 ## Files to Modify
 
-1. **`aicommit/cli.py`** — Add caching logic, `--regenerate` flag, and `--debug` flag
-2. **`aicommit/cache.py`** — New module for caching utility functions and metadata handling
-3. **`aicommit/llm.py`** — Modify to return token usage information
-4. **`aicommit/__init__.py`** — (Optional) Export new utilities
+1. **`hunknote/cli.py`** — Add caching logic, `--regenerate` flag, and `--debug` flag
+2. **`hunknote/cache.py`** — New module for caching utility functions and metadata handling
+3. **`hunknote/llm.py`** — Modify to return token usage information
+4. **`hunknote/__init__.py`** — (Optional) Export new utilities
 5. **`README.md`** — Document new behavior, `--regenerate` flag, and `--debug` flag
 
 ---
 
 ## Testing Checklist
 
-- [ ] `aicommit` generates and caches message
-- [ ] `aicommit` (2nd run, same context) uses cache
-- [ ] `aicommit -e` opens cached message in editor
-- [ ] `aicommit -c` commits using cached message
-- [ ] `aicommit -e -c` works end-to-end
-- [ ] `aicommit -r` forces regeneration
-- [ ] `aicommit -d` shows debug metadata
-- [ ] `aicommit -d` shows edit diff when message was modified
+- [ ] `hunknote` generates and caches message
+- [ ] `hunknote` (2nd run, same context) uses cache
+- [ ] `hunknote -e` opens cached message in editor
+- [ ] `hunknote -c` commits using cached message
+- [ ] `hunknote -e -c` works end-to-end
+- [ ] `hunknote -r` forces regeneration
+- [ ] `hunknote -d` shows debug metadata
+- [ ] `hunknote -d` shows edit diff when message was modified
 - [ ] Staging additional files invalidates cache
 - [ ] Unstaging files invalidates cache
 - [ ] Modifying staged files invalidates cache

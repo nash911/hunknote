@@ -1,8 +1,8 @@
-"""Tests for aicommit.config module."""
+"""Tests for hunknote.config module."""
 
 import pytest
 
-from aicommit.config import (
+from hunknote.config import (
     ACTIVE_MODEL,
     ACTIVE_PROVIDER,
     API_KEY_ENV_VARS,

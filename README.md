@@ -1,4 +1,4 @@
-# AI Commit Message Generator
+# Hunknote
 
 A fast, reliable CLI tool that generates high-quality git commit messages from your staged changes using AI.
 
@@ -17,6 +17,18 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 
 ## Installation
 
+### Option 1: Install from PyPI (Recommended)
+
+```bash
+# Using pipx (recommended - installs in isolated environment)
+pipx install hunknote
+
+# Or using pip
+pip install hunknote
+```
+
+### Option 2: Install from Source
+
 ```bash
 # Clone the repository
 git clone <repo-url>
@@ -29,11 +41,21 @@ poetry install
 poetry install --with dev
 ```
 
+### Verify Installation
+
+```bash
+# Check that hunknote is available
+hunknote --help
+
+# Check git subcommand works
+git hunknote --help
+```
+
 ## Quick Start
 
 ```bash
 # Initialize configuration (interactive setup)
-aicommit init
+hunknote init
 # This will prompt you to:
 # 1. Select an LLM provider (Anthropic, OpenAI, Google, etc.)
 # 2. Choose a model
@@ -43,10 +65,10 @@ aicommit init
 git add <files>
 
 # Generate a commit message
-aicommit
+hunknote
 
 # Or generate, edit, and commit in one step
-aicommit -e -c
+hunknote -e -c
 ```
 
 ## Configuration
@@ -56,10 +78,10 @@ aicommit -e -c
 Run the interactive configuration wizard:
 
 ```bash
-aicommit init
+hunknote init
 ```
 
-This creates a global configuration at `~/.aicommit/` with:
+This creates a global configuration at `~/.hunknote/` with:
 - `config.yaml` - Provider, model, and preference settings
 - `credentials` - Securely stored API keys (read-only permissions)
 
@@ -68,37 +90,37 @@ This creates a global configuration at `~/.aicommit/` with:
 View current configuration:
 
 ```bash
-aicommit config show
+hunknote config show
 ```
 
 Change provider or model:
 
 ```bash
 # Interactive model selection
-aicommit config set-provider google
+hunknote config set-provider google
 
 # Or specify model directly
-aicommit config set-provider anthropic --model claude-sonnet-4-20250514
+hunknote config set-provider anthropic --model claude-sonnet-4-20250514
 ```
 
 Update API keys:
 
 ```bash
-aicommit config set-key google
-aicommit config set-key anthropic
+hunknote config set-key google
+hunknote config set-key anthropic
 ```
 
 List available providers and models:
 
 ```bash
-aicommit config list-providers
-aicommit config list-models google
-aicommit config list-models  # Show all providers and models
+hunknote config list-providers
+hunknote config list-models google
+hunknote config list-models  # Show all providers and models
 ```
 
 ### Manual Configuration
 
-Alternatively, you can manually edit `~/.aicommit/config.yaml`:
+Alternatively, you can manually edit `~/.hunknote/config.yaml`:
 
 ```yaml
 provider: google
@@ -113,7 +135,7 @@ default_ignore:  # Optional: patterns to ignore in all repos
   - "*.min.js"
 ```
 
-And add API keys to `~/.aicommit/credentials`:
+And add API keys to `~/.hunknote/credentials`:
 
 ```
 GOOGLE_API_KEY=your_key_here
@@ -125,7 +147,7 @@ OPENAI_API_KEY=your_openai_key
 
 API keys are checked in this order:
 1. Environment variables (highest priority - useful for CI/CD)
-2. `~/.aicommit/credentials` file (recommended for local development)
+2. `~/.hunknote/credentials` file (recommended for local development)
 3. Project `.env` file (lowest priority)
 
 Set via environment variable:
@@ -175,7 +197,7 @@ Stage your changes and generate a commit message:
 
 ```bash
 git add <files>
-aicommit
+hunknote
 ```
 
 ### Command Options
@@ -194,63 +216,63 @@ Manage which files are excluded from the diff sent to the LLM:
 
 ```bash
 # List all ignore patterns
-aicommit ignore list
+hunknote ignore list
 
 # Add a new pattern
-aicommit ignore add "*.log"
-aicommit ignore add "build/*"
-aicommit ignore add "dist/*"
+hunknote ignore add "*.log"
+hunknote ignore add "build/*"
+hunknote ignore add "dist/*"
 
 # Remove a pattern
-aicommit ignore remove "*.log"
+hunknote ignore remove "*.log"
 ```
 
 ### Configuration Commands
 
-Manage global configuration stored in `~/.aicommit/`:
+Manage global configuration stored in `~/.hunknote/`:
 
 ```bash
 # View current configuration
-aicommit config show
+hunknote config show
 
 # Set or update API key for a provider
-aicommit config set-key google
-aicommit config set-key anthropic
+hunknote config set-key google
+hunknote config set-key anthropic
 
 # Change provider and model
-aicommit config set-provider google
-aicommit config set-provider anthropic --model claude-sonnet-4-20250514
+hunknote config set-provider google
+hunknote config set-provider anthropic --model claude-sonnet-4-20250514
 
 # List available providers
-aicommit config list-providers
+hunknote config list-providers
 
 # List models for a specific provider
-aicommit config list-models google
+hunknote config list-models google
 
 # List all providers and their models
-aicommit config list-models
+hunknote config list-models
 ```
 
 ### Examples
 
 ```bash
 # Generate commit message (print only, cached for reuse)
-aicommit
+hunknote
 
 # Generate and open in editor
-aicommit -e
+hunknote -e
 
 # Generate and commit directly
-aicommit -c
+hunknote -c
 
 # Edit message then commit
-aicommit -e -c
+hunknote -e -c
 
 # Force regeneration (ignore cache)
-aicommit -r
+hunknote -r
 
 # Debug: view cache metadata and token usage
-aicommit -d
+hunknote -d
 ```
 
 ### Git Subcommand
@@ -258,8 +280,8 @@ aicommit -d
 You can also use it as a git subcommand:
 
 ```bash
-git aicommit
-git aicommit -e -c
+git hunknote
+git hunknote -e -c
 ```
 
 ## How It Works
@@ -290,22 +312,22 @@ The tool caches generated commit messages to avoid redundant API calls:
 - **After commit** → Cache is invalidated
 - **Use `-r` flag** → Force regeneration
 
-Cache files are stored in `<repo>/.aicommit/`:
-- `aicommit_message.txt` - The cached commit message
-- `aicommit_context_hash.txt` - Hash of the git context
-- `aicommit_metadata.json` - Full metadata (tokens, model, timestamp)
+Cache files are stored in `<repo>/.hunknote/`:
+- `hunknote_message.txt` - The cached commit message
+- `hunknote_context_hash.txt` - Hash of the git context
+- `hunknote_metadata.json` - Full metadata (tokens, model, timestamp)
 - `config.yaml` - Repository-specific configuration
 
 **Gitignore recommendation:** Add these to your `.gitignore`:
 ```
-# aicommit cache files (but keep config.yaml for shared settings)
-.aicommit/aicommit_*.txt
-.aicommit/aicommit_*.json
+# hunknote cache files (but keep config.yaml for shared settings)
+.hunknote/hunknote_*.txt
+.hunknote/hunknote_*.json
 ```
 
 ## Repository Configuration
 
-Each repository can have its own `.aicommit/config.yaml` file for customization.
+Each repository can have its own `.hunknote/config.yaml` file for customization.
 The file is auto-created with defaults on first run.
 
 ### Ignore Patterns
@@ -391,7 +413,7 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 ### Project Structure
 
 ```
-aicommit/
+hunknote/
 ├── __init__.py
 ├── cli.py              # CLI entry point and commands
 ├── config.py           # LLM provider configuration

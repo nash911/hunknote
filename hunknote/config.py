@@ -1,7 +1,7 @@
-"""Configuration for aicommit LLM providers.
+"""Configuration for hunknote LLM providers.
 
-Configuration is now loaded from ~/.aicommit/config.yaml
-Use 'aicommit config' commands to modify settings.
+Configuration is now loaded from ~/.hunknote/config.yaml
+Use 'hunknote config' commands to modify settings.
 """
 
 from enum import Enum
@@ -22,7 +22,7 @@ class LLMProvider(Enum):
 # ============================================================
 # DEFAULT FALLBACK VALUES
 # ============================================================
-# These are used only if ~/.aicommit/config.yaml doesn't exist
+# These are used only if ~/.hunknote/config.yaml doesn't exist
 
 DEFAULT_PROVIDER = LLMProvider.GOOGLE
 DEFAULT_MODEL = "gemini-2.0-flash"
@@ -50,7 +50,7 @@ def load_config():
 
     try:
         # Import here to avoid circular dependency
-        from aicommit import global_config
+        from hunknote import global_config
 
         provider = global_config.get_active_provider()
         model = global_config.get_active_model()

@@ -1,9 +1,9 @@
-"""Tests for aicommit.formatters module."""
+"""Tests for hunknote.formatters module."""
 
 import pytest
 from pydantic import ValidationError
 
-from aicommit.formatters import CommitMessageJSON, render_commit_message, sanitize_title
+from hunknote.formatters import CommitMessageJSON, render_commit_message, sanitize_title
 
 
 class TestCommitMessageJSON:

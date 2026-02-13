@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from aicommit.config import LLMProvider
-from aicommit.llm import get_provider
-from aicommit.llm.base import MissingAPIKeyError
+from hunknote.config import LLMProvider
+from hunknote.llm import get_provider
+from hunknote.llm.base import MissingAPIKeyError
 
 
 class TestGetProvider:
@@ -15,49 +15,49 @@ class TestGetProvider:
 
     def test_returns_anthropic_provider(self):
         """Test getting Anthropic provider."""
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         provider = get_provider(LLMProvider.ANTHROPIC)
         assert isinstance(provider, AnthropicProvider)
 
     def test_returns_openai_provider(self):
         """Test getting OpenAI provider."""
-        from aicommit.llm.openai_provider import OpenAIProvider
+        from hunknote.llm.openai_provider import OpenAIProvider
 
         provider = get_provider(LLMProvider.OPENAI)
         assert isinstance(provider, OpenAIProvider)
 
     def test_returns_google_provider(self):
         """Test getting Google provider."""
-        from aicommit.llm.google_provider import GoogleProvider
+        from hunknote.llm.google_provider import GoogleProvider
 
         provider = get_provider(LLMProvider.GOOGLE)
         assert isinstance(provider, GoogleProvider)
 
     def test_returns_mistral_provider(self):
         """Test getting Mistral provider."""
-        from aicommit.llm.mistral_provider import MistralProvider
+        from hunknote.llm.mistral_provider import MistralProvider
 
         provider = get_provider(LLMProvider.MISTRAL)
         assert isinstance(provider, MistralProvider)
 
     def test_returns_cohere_provider(self):
         """Test getting Cohere provider."""
-        from aicommit.llm.cohere_provider import CohereProvider
+        from hunknote.llm.cohere_provider import CohereProvider
 
         provider = get_provider(LLMProvider.COHERE)
         assert isinstance(provider, CohereProvider)
 
     def test_returns_groq_provider(self):
         """Test getting Groq provider."""
-        from aicommit.llm.groq_provider import GroqProvider
+        from hunknote.llm.groq_provider import GroqProvider
 
         provider = get_provider(LLMProvider.GROQ)
         assert isinstance(provider, GroqProvider)
 
     def test_returns_openrouter_provider(self):
         """Test getting OpenRouter provider."""
-        from aicommit.llm.openrouter_provider import OpenRouterProvider
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
 
         provider = get_provider(LLMProvider.OPENROUTER)
         assert isinstance(provider, OpenRouterProvider)
@@ -73,7 +73,7 @@ class TestAnthropicProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider()
         # Default should be a Claude model when no model specified
@@ -83,14 +83,14 @@ class TestAnthropicProvider:
 
     def test_custom_model(self):
         """Test custom model."""
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(model="claude-3-opus-latest")
         assert provider.model == "claude-3-opus-latest"
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider()
 
@@ -102,7 +102,7 @@ class TestAnthropicProvider:
 
     def test_gets_api_key_from_env(self):
         """Test getting API key from environment."""
-        from aicommit.llm.anthropic_provider import AnthropicProvider
+        from hunknote.llm.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider()
 
@@ -116,14 +116,14 @@ class TestOpenAIProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.openai_provider import OpenAIProvider
+        from hunknote.llm.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider()
         assert "gpt" in provider.model.lower()
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.openai_provider import OpenAIProvider
+        from hunknote.llm.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider()
 
@@ -139,14 +139,14 @@ class TestGoogleProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.google_provider import GoogleProvider
+        from hunknote.llm.google_provider import GoogleProvider
 
         provider = GoogleProvider()
         assert "gemini" in provider.model.lower()
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.google_provider import GoogleProvider
+        from hunknote.llm.google_provider import GoogleProvider
 
         provider = GoogleProvider()
 
@@ -158,7 +158,7 @@ class TestGoogleProvider:
 
     def test_is_thinking_model(self):
         """Test thinking model detection."""
-        from aicommit.llm.google_provider import GoogleProvider
+        from hunknote.llm.google_provider import GoogleProvider
 
         # Thinking model
         provider = GoogleProvider(model="gemini-2.5-flash")
@@ -174,14 +174,14 @@ class TestMistralProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.mistral_provider import MistralProvider
+        from hunknote.llm.mistral_provider import MistralProvider
 
         provider = MistralProvider()
         assert "mistral" in provider.model.lower()
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.mistral_provider import MistralProvider
+        from hunknote.llm.mistral_provider import MistralProvider
 
         provider = MistralProvider()
 
@@ -197,14 +197,14 @@ class TestCohereProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.cohere_provider import CohereProvider
+        from hunknote.llm.cohere_provider import CohereProvider
 
         provider = CohereProvider()
         assert "command" in provider.model.lower()
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.cohere_provider import CohereProvider
+        from hunknote.llm.cohere_provider import CohereProvider
 
         provider = CohereProvider()
 
@@ -220,14 +220,14 @@ class TestGroqProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.groq_provider import GroqProvider
+        from hunknote.llm.groq_provider import GroqProvider
 
         provider = GroqProvider()
         assert len(provider.model) > 0
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.groq_provider import GroqProvider
+        from hunknote.llm.groq_provider import GroqProvider
 
         provider = GroqProvider()
 
@@ -243,14 +243,14 @@ class TestOpenRouterProvider:
 
     def test_default_model(self):
         """Test default model is set."""
-        from aicommit.llm.openrouter_provider import OpenRouterProvider
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
 
         provider = OpenRouterProvider()
         assert len(provider.model) > 0
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""
-        from aicommit.llm.openrouter_provider import OpenRouterProvider
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
 
         provider = OpenRouterProvider()
 

@@ -1,4 +1,4 @@
-"""CLI entry point for aicommit."""
+"""CLI entry point for hunknote."""
 
 import difflib
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import typer
 
-from aicommit.cache import (
+from hunknote.cache import (
     CacheMetadata,
     compute_context_hash,
     extract_staged_files,
@@ -22,8 +22,8 @@ from aicommit.cache import (
     save_cache,
     update_message_cache,
 )
-from aicommit.formatters import render_commit_message
-from aicommit.git_ctx import (
+from hunknote.formatters import render_commit_message
+from hunknote.git_ctx import (
     GitError,
     NoStagedChangesError,
     build_context_bundle,
@@ -31,17 +31,17 @@ from aicommit.git_ctx import (
     get_staged_diff,
     get_status,
 )
-from aicommit.llm import LLMError, MissingAPIKeyError, generate_commit_json
-from aicommit.user_config import (
+from hunknote.llm import LLMError, MissingAPIKeyError, generate_commit_json
+from hunknote.user_config import (
     add_ignore_pattern,
     get_ignore_patterns,
     remove_ignore_pattern,
 )
-from aicommit import global_config
-from aicommit.config import LLMProvider, AVAILABLE_MODELS, API_KEY_ENV_VARS
+from hunknote import global_config
+from hunknote.config import LLMProvider, AVAILABLE_MODELS, API_KEY_ENV_VARS
 
 app = typer.Typer(
-    name="aicommit",
+    name="hunknote",
     help="AI-powered git commit message generator using LLMs",
     add_completion=False,
 )
@@ -49,7 +49,7 @@ app = typer.Typer(
 # Subcommand group for ignore pattern management
 ignore_app = typer.Typer(
     name="ignore",
-    help="Manage ignore patterns in .aicommit/config.yaml",
+    help="Manage ignore patterns in .hunknote/config.yaml",
     add_completion=False,
 )
 app.add_typer(ignore_app, name="ignore")
@@ -57,7 +57,7 @@ app.add_typer(ignore_app, name="ignore")
 # Subcommand group for configuration management
 config_app = typer.Typer(
     name="config",
-    help="Manage global aicommit configuration in ~/.aicommit/",
+    help="Manage global hunknote configuration in ~/.hunknote/",
     add_completion=False,
 )
 app.add_typer(config_app, name="config")
@@ -182,7 +182,7 @@ def _display_debug_info(
         cache_valid: Whether the cache is currently valid.
     """
     typer.echo("=" * 60)
-    typer.echo("                  AICOMMIT DEBUG INFO")
+    typer.echo("                  HUNKNOTE DEBUG INFO")
     typer.echo("=" * 60)
     typer.echo()
 
@@ -246,12 +246,12 @@ def _display_debug_info(
 
 @ignore_app.command("list")
 def ignore_list() -> None:
-    """Show all ignore patterns in .aicommit/config.yaml."""
+    """Show all ignore patterns in .hunknote/config.yaml."""
     try:
         repo_root = get_repo_root()
         patterns = get_ignore_patterns(repo_root)
 
-        typer.echo("Ignore patterns in .aicommit/config.yaml:")
+        typer.echo("Ignore patterns in .hunknote/config.yaml:")
         typer.echo()
         if patterns:
             for pattern in patterns:
@@ -322,14 +322,14 @@ def ignore_remove(
 
 @app.command("init")
 def init_config() -> None:
-    """Initialize aicommit global configuration interactively."""
-    typer.echo("Welcome to aicommit! Let's set up your configuration.")
+    """Initialize hunknote global configuration interactively."""
+    typer.echo("Welcome to hunknote! Let's set up your configuration.")
     typer.echo()
 
     # Check if already configured
     if global_config.is_configured():
         overwrite = typer.confirm(
-            "Configuration already exists at ~/.aicommit/config.yaml. Overwrite?",
+            "Configuration already exists at ~/.hunknote/config.yaml. Overwrite?",
             default=False
         )
         if not overwrite:
@@ -387,11 +387,11 @@ def init_config() -> None:
         global_config.save_credential(env_var, api_key)
 
         typer.echo()
-        typer.echo("✓ Configuration saved to ~/.aicommit/")
+        typer.echo("✓ Configuration saved to ~/.hunknote/")
         typer.echo(f"  Provider: {selected_provider.value}")
         typer.echo(f"  Model: {selected_model}")
         typer.echo()
-        typer.echo("You can now use 'aicommit' in any git repository!")
+        typer.echo("You can now use 'hunknote' in any git repository!")
 
     except Exception as e:
         typer.echo(f"Error saving configuration: {e}", err=True)
@@ -403,12 +403,12 @@ def config_show() -> None:
     """Show current global configuration."""
     try:
         if not global_config.is_configured():
-            typer.echo("No configuration found. Run 'aicommit init' to set up.")
+            typer.echo("No configuration found. Run 'hunknote init' to set up.")
             return
 
         config = global_config.load_global_config()
 
-        typer.echo("Current aicommit configuration (~/.aicommit/config.yaml):")
+        typer.echo("Current hunknote configuration (~/.hunknote/config.yaml):")
         typer.echo()
         typer.echo(f"  Provider: {config.get('provider', 'not set')}")
         typer.echo(f"  Model: {config.get('model', 'not set')}")
@@ -543,7 +543,7 @@ def config_list_providers() -> None:
     for provider in LLMProvider:
         typer.echo(f"  • {provider.value}")
     typer.echo()
-    typer.echo("Use 'aicommit config list-models <provider>' to see available models.")
+    typer.echo("Use 'hunknote config list-models <provider>' to see available models.")
 
 
 @config_app.command("list-models")
@@ -579,6 +579,95 @@ def config_list_models(
             typer.echo()
 
 
+@app.command("migrate")
+def migrate_command() -> None:
+    """Migrate old aicommit configuration and cache to hunknote.
+
+    This command:
+    - Moves ~/.aicommit/ to ~/.hunknote/
+    - Moves .aicommit/ to .hunknote/ in the current repository
+    - Renames cache files (aicommit_* to hunknote_*)
+    """
+    import shutil
+
+    typer.echo("🔄 Migrating aicommit configuration to hunknote...")
+    typer.echo()
+
+    migrated_something = False
+
+    # Migrate global config
+    old_global = Path.home() / ".aicommit"
+    new_global = Path.home() / ".hunknote"
+
+    if old_global.exists() and not new_global.exists():
+        try:
+            typer.echo(f"📁 Moving global config: {old_global} → {new_global}")
+            shutil.move(str(old_global), str(new_global))
+            typer.echo("   ✓ Global config migrated")
+            migrated_something = True
+        except Exception as e:
+            typer.echo(f"   ✗ Error migrating global config: {e}", err=True)
+    elif old_global.exists() and new_global.exists():
+        typer.echo(f"⚠️  Both {old_global} and {new_global} exist")
+        typer.echo(f"   Please manually merge or delete {old_global}")
+    elif not old_global.exists():
+        typer.echo("ℹ️  No global aicommit config found to migrate")
+    else:
+        typer.echo("ℹ️  Global hunknote config already exists")
+
+    typer.echo()
+
+    # Migrate repo config
+    try:
+        repo_root = get_repo_root()
+        old_repo = repo_root / ".aicommit"
+        new_repo = repo_root / ".hunknote"
+
+        if old_repo.exists() and not new_repo.exists():
+            try:
+                typer.echo(f"📁 Moving repo config: {old_repo} → {new_repo}")
+                shutil.move(str(old_repo), str(new_repo))
+                typer.echo("   ✓ Repo config migrated")
+                migrated_something = True
+
+                # Rename cache files inside
+                cache_dir = new_repo
+                old_files = {
+                    "aicommit_message.txt": "hunknote_message.txt",
+                    "aicommit_context_hash.txt": "hunknote_context_hash.txt",
+                    "aicommit_metadata.json": "hunknote_metadata.json",
+                }
+
+                for old_name, new_name in old_files.items():
+                    old_file = cache_dir / old_name
+                    new_file = cache_dir / new_name
+                    if old_file.exists() and not new_file.exists():
+                        old_file.rename(new_file)
+                        typer.echo(f"   ✓ Renamed {old_name} → {new_name}")
+                        migrated_something = True
+
+            except Exception as e:
+                typer.echo(f"   ✗ Error migrating repo config: {e}", err=True)
+        elif old_repo.exists() and new_repo.exists():
+            typer.echo(f"⚠️  Both {old_repo} and {new_repo} exist")
+            typer.echo(f"   Please manually merge or delete {old_repo}")
+        elif not old_repo.exists():
+            typer.echo("ℹ️  No repo aicommit config found to migrate")
+        else:
+            typer.echo("ℹ️  Repo hunknote config already exists")
+
+    except GitError:
+        typer.echo("ℹ️  Not in a git repository, skipping repo migration")
+
+    typer.echo()
+
+    if migrated_something:
+        typer.echo("✅ Migration complete!")
+        typer.echo("   You can now use 'hunknote' without warnings.")
+    else:
+        typer.echo("✅ Nothing to migrate - you're all set!")
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -597,7 +686,7 @@ def main(
         False,
         "--debug",
         "-d",
-        help="Show full metadata of the cached aicommit message",
+        help="Show full metadata of the cached hunknote message",
     ),
     edit: bool = typer.Option(
         False,
@@ -618,7 +707,7 @@ def main(
         return
 
     # Load global configuration
-    from aicommit.config import load_config
+    from hunknote.config import load_config
     load_config()
 
     try:
@@ -722,7 +811,7 @@ def main(
         typer.echo("Stage your changes first with:", err=True)
         typer.echo("  git add <file>...", err=True)
         typer.echo("", err=True)
-        typer.echo("Then run aicommit again.", err=True)
+        typer.echo("Then run hunknote again.", err=True)
         raise typer.Exit(1)
     except MissingAPIKeyError as e:
         typer.echo(f"Error: {e}", err=True)
