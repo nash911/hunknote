@@ -92,7 +92,7 @@ def get_config_dir(repo_root: Path) -> Path:
 
 
 def get_config_file(repo_root: Path) -> Path:
-    """Return path to the config.yaml file.
+    """Return path to the config.yaml file, ensuring the directory exists.
 
     Args:
         repo_root: The root directory of the git repository.
@@ -100,7 +100,9 @@ def get_config_file(repo_root: Path) -> Path:
     Returns:
         Path to .hunknote/config.yaml (or .aicommit/config.yaml for backward compatibility).
     """
-    return get_config_dir(repo_root) / "config.yaml"
+    config_dir = get_config_dir(repo_root)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / "config.yaml"
 
 
 def ensure_config_dir(repo_root: Path) -> Path:
@@ -157,8 +159,6 @@ def save_config(repo_root: Path, config: dict) -> None:
     """
     config_file = get_config_file(repo_root)
 
-    # Ensure directory exists
-    config_file.parent.mkdir(exist_ok=True)
 
     with open(config_file, "w") as f:
         yaml.dump(
