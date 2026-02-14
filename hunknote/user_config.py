@@ -1,13 +1,8 @@
 """User configuration management for hunknote.
 
 Handles reading and writing the .hunknote/config.yaml file in each repository.
-
-Backward compatibility:
-- Falls back to .aicommit/ if .hunknote/ doesn't exist
-- Warns users about deprecated paths
 """
 
-import sys
 from pathlib import Path
 
 import yaml
@@ -43,52 +38,17 @@ DEFAULT_CONFIG = {
     ],
 }
 
-# Backward compatibility tracking
-_REPO_MIGRATION_WARNED = set()
-
-
-def _warn_deprecated_repo_path(repo_root: Path) -> None:
-    """Warn user about deprecated repo configuration path.
-
-    Args:
-        repo_root: The repository root directory.
-    """
-    repo_key = str(repo_root.absolute())
-    if repo_key not in _REPO_MIGRATION_WARNED:
-        old_path = repo_root / ".aicommit"
-        new_path = repo_root / ".hunknote"
-        print(f"\n⚠️  WARNING: Using deprecated repository configuration", file=sys.stderr)
-        print(f"   Repo: {repo_root}", file=sys.stderr)
-        print(f"   Old: {old_path}", file=sys.stderr)
-        print(f"   New: {new_path}", file=sys.stderr)
-        print(f"   Run 'hunknote migrate' to update your configuration.", file=sys.stderr)
-        print(f"   (This warning will only show once per repo)\n", file=sys.stderr)
-        _REPO_MIGRATION_WARNED.add(repo_key)
-
 
 def get_config_dir(repo_root: Path) -> Path:
-    """Get the repository config directory (.hunknote or .aicommit for backward compat).
+    """Get the repository config directory (.hunknote).
 
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to .hunknote/ (or .aicommit/ for backward compatibility)
+        Path to .hunknote/
     """
-    new_dir = repo_root / ".hunknote"
-    old_dir = repo_root / ".aicommit"
-
-    # If new directory exists, use it
-    if new_dir.exists():
-        return new_dir
-
-    # If old directory exists but new doesn't, use old and warn
-    if old_dir.exists():
-        _warn_deprecated_repo_path(repo_root)
-        return old_dir
-
-    # Neither exists, return new (will be created when needed)
-    return new_dir
+    return repo_root / ".hunknote"
 
 
 def get_config_file(repo_root: Path) -> Path:
@@ -98,7 +58,7 @@ def get_config_file(repo_root: Path) -> Path:
         repo_root: The root directory of the git repository.
 
     Returns:
-        Path to .hunknote/config.yaml (or .aicommit/config.yaml for backward compatibility).
+        Path to .hunknote/config.yaml.
     """
     config_dir = get_config_dir(repo_root)
     config_dir.mkdir(parents=True, exist_ok=True)

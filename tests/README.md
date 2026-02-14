@@ -1,10 +1,10 @@
-# AI Commit Test Suite
+# Hunknote Test Suite
 
-Comprehensive test suite for the `aicommit` CLI tool.
+Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **197 unit tests** covering all modules of the aicommit project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **199 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
@@ -46,7 +46,7 @@ pytest tests/
 pytest tests/ -v
 
 # With coverage report (if pytest-cov is installed)
-pytest tests/ --cov=aicommit
+pytest tests/ --cov=hunknote
 ```
 
 ### Run Specific Test File
@@ -142,7 +142,7 @@ result = runner.invoke(app, ["ignore", "list"])
 3. Mock external dependencies:
    ```python
    def test_with_mocked_git(self, mocker):
-       mocker.patch("aicommit.git_ctx.get_repo_root", return_value=Path("/mock"))
+       mocker.patch("hunknote.git_ctx.get_repo_root", return_value=Path("/mock"))
        ...
    ```
 

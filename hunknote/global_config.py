@@ -3,10 +3,6 @@
 Handles user-level configuration stored in ~/.hunknote/:
 - config.yaml: Provider, model, and preference settings
 - credentials: API keys for LLM providers
-
-Backward compatibility:
-- Falls back to ~/.aicommit/ if ~/.hunknote/ doesn't exist
-- Warns users about deprecated paths
 """
 
 import os
@@ -17,7 +13,7 @@ from typing import Dict, Optional, Any
 
 import yaml
 
-from hunknote.config import LLMProvider, AVAILABLE_MODELS
+from hunknote.config import LLMProvider
 
 
 class GlobalConfigError(Exception):
@@ -25,51 +21,16 @@ class GlobalConfigError(Exception):
     pass
 
 
-# Backward compatibility paths
-_OLD_CONFIG_DIR = Path.home() / ".aicommit"
-_NEW_CONFIG_DIR = Path.home() / ".hunknote"
-_MIGRATION_WARNED = False
-
-
-def _warn_deprecated_path(old_path: Path, new_path: Path) -> None:
-    """Warn user about deprecated configuration path.
-
-    Args:
-        old_path: The old deprecated path being used.
-        new_path: The new path they should migrate to.
-    """
-    global _MIGRATION_WARNED
-    if not _MIGRATION_WARNED:
-        print(f"\n⚠️  WARNING: Using deprecated configuration path", file=sys.stderr)
-        print(f"   Old: {old_path}", file=sys.stderr)
-        print(f"   New: {new_path}", file=sys.stderr)
-        print(f"   Run 'hunknote migrate' to update your configuration.", file=sys.stderr)
-        print(f"   (This warning will only show once per session)\n", file=sys.stderr)
-        _MIGRATION_WARNED = True
+_CONFIG_DIR = Path.home() / ".hunknote"
 
 
 def get_global_config_dir() -> Path:
     """Get the global hunknote configuration directory.
 
-    Falls back to ~/.aicommit/ if ~/.hunknote/ doesn't exist (backward compatibility).
-
     Returns:
-        Path to ~/.hunknote/ (or ~/.aicommit/ for backward compatibility)
+        Path to ~/.hunknote/
     """
-    new_dir = _NEW_CONFIG_DIR
-    old_dir = _OLD_CONFIG_DIR
-
-    # If new directory exists, use it
-    if new_dir.exists():
-        return new_dir
-
-    # If old directory exists but new doesn't, use old and warn
-    if old_dir.exists():
-        _warn_deprecated_path(old_dir, new_dir)
-        return old_dir
-
-    # Neither exists, return new (will be created when needed)
-    return new_dir
+    return _CONFIG_DIR
 
 
 def ensure_global_config_dir() -> Path:

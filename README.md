@@ -32,7 +32,7 @@ pip install hunknote
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd ai_commit
+cd hunknote
 
 # Install with Poetry (requires Python 3.12+)
 poetry install

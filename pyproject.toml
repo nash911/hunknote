@@ -2,7 +2,7 @@
 name = "hunknote"
 version = "1.0.0"
 description = "AI-powered git commit message generator with multi-LLM support"
-authors = ["Avinash Ranganath <nash911@gmail.com>"]
+authors = ["Avinash Ranganath <nash911@gmail.com> (http://avinashranganath.com/)"]
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/nash911/hunknote"
