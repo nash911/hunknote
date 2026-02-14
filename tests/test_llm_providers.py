@@ -95,10 +95,11 @@ class TestAnthropicProvider:
         provider = AnthropicProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "ANTHROPIC_API_KEY" in str(exc_info.value)
+                assert "ANTHROPIC_API_KEY" in str(exc_info.value)
 
     def test_gets_api_key_from_env(self):
         """Test getting API key from environment."""
@@ -128,10 +129,11 @@ class TestOpenAIProvider:
         provider = OpenAIProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "OPENAI_API_KEY" in str(exc_info.value)
+                assert "OPENAI_API_KEY" in str(exc_info.value)
 
 
 class TestGoogleProvider:
@@ -151,10 +153,11 @@ class TestGoogleProvider:
         provider = GoogleProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "GOOGLE_API_KEY" in str(exc_info.value)
+                assert "GOOGLE_API_KEY" in str(exc_info.value)
 
     def test_is_thinking_model(self):
         """Test thinking model detection."""
@@ -186,10 +189,11 @@ class TestMistralProvider:
         provider = MistralProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "MISTRAL_API_KEY" in str(exc_info.value)
+                assert "MISTRAL_API_KEY" in str(exc_info.value)
 
 
 class TestCohereProvider:
@@ -209,10 +213,11 @@ class TestCohereProvider:
         provider = CohereProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "COHERE_API_KEY" in str(exc_info.value)
+                assert "COHERE_API_KEY" in str(exc_info.value)
 
 
 class TestGroqProvider:
@@ -232,10 +237,11 @@ class TestGroqProvider:
         provider = GroqProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "GROQ_API_KEY" in str(exc_info.value)
+                assert "GROQ_API_KEY" in str(exc_info.value)
 
 
 class TestOpenRouterProvider:
@@ -255,7 +261,8 @@ class TestOpenRouterProvider:
         provider = OpenRouterProvider()
 
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(MissingAPIKeyError) as exc_info:
-                provider.get_api_key()
+            with patch("hunknote.global_config.get_credential", return_value=None):
+                with pytest.raises(MissingAPIKeyError) as exc_info:
+                    provider.get_api_key()
 
-            assert "OPENROUTER_API_KEY" in str(exc_info.value)
+                assert "OPENROUTER_API_KEY" in str(exc_info.value)
