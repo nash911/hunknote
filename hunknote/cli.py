@@ -51,6 +51,13 @@ from hunknote.styles import (
     extract_ticket_from_branch,
     infer_commit_type,
 )
+from hunknote.scope import (
+    ScopeStrategy,
+    ScopeConfig,
+    ScopeResult,
+    infer_scope,
+    load_scope_config_from_dict,
+)
 from hunknote import global_config
 from hunknote.config import LLMProvider, AVAILABLE_MODELS, API_KEY_ENV_VARS
 
@@ -758,6 +765,30 @@ def _get_effective_style_config() -> StyleConfig:
     return load_style_config_from_dict(config_dict)
 
 
+def _get_effective_scope_config() -> ScopeConfig:
+    """Get the effective scope configuration (repo overrides global)."""
+    from hunknote.user_config import get_repo_scope_config
+
+    # Start with defaults
+    config_dict: dict = {"scope": {}}
+
+    # Merge global config
+    global_scope = global_config.get_scope_config()
+    if global_scope:
+        config_dict["scope"].update(global_scope)
+
+    # Merge repo config (overrides global)
+    try:
+        repo_root = get_repo_root()
+        repo_scope = get_repo_scope_config(repo_root)
+        if repo_scope:
+            config_dict["scope"].update(repo_scope)
+    except GitError:
+        pass  # Not in a repo, use global only
+
+    return load_scope_config_from_dict(config_dict)
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -798,17 +829,22 @@ def main(
     scope: Optional[str] = typer.Option(
         None,
         "--scope",
-        help="Force a scope for the commit message",
+        help="Force a scope for the commit message (use 'auto' for inference)",
     ),
     no_scope: bool = typer.Option(
         False,
         "--no-scope",
         help="Disable scope even if profile supports it",
     ),
+    scope_strategy: Optional[str] = typer.Option(
+        None,
+        "--scope-strategy",
+        help="Scope inference strategy (auto, monorepo, path-prefix, mapping, none)",
+    ),
     ticket: Optional[str] = typer.Option(
         None,
         "--ticket",
-        help="Force a ticket key (e.g., PROJ-6767) for ticket-style commits",
+        help="Force a ticket key (e.g., PROJ-123) for ticket-style commits",
     ),
 ) -> None:
     """Generate an AI-powered git commit message from staged changes."""
@@ -830,6 +866,16 @@ def main(
             typer.echo("Valid styles: default, conventional, ticket, kernel")
             raise typer.Exit(1)
 
+    # Validate scope strategy if provided
+    override_scope_strategy = None
+    if scope_strategy:
+        try:
+            override_scope_strategy = ScopeStrategy(scope_strategy.lower())
+        except ValueError:
+            typer.echo(f"Invalid scope strategy: {scope_strategy}", err=True)
+            typer.echo("Valid strategies: auto, monorepo, path-prefix, mapping, none")
+            raise typer.Exit(1)
+
     try:
         # Step 1: Get repo root
         repo_root = get_repo_root()
@@ -838,11 +884,14 @@ def main(
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
 
-        # Step 3: Compute context hash (include style in hash for cache invalidation)
+        # Step 3: Get configurations
         style_config = _get_effective_style_config()
+        scope_config = _get_effective_scope_config()
         effective_profile = override_style or style_config.profile
-        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={scope}|ticket={ticket}"
-        current_hash = compute_context_hash(hash_input)
+
+        # Apply scope strategy override if provided
+        if override_scope_strategy:
+            scope_config.strategy = override_scope_strategy
 
         # Step 4: Extract staged files and diff preview for metadata
         status_output = get_status()
@@ -850,7 +899,29 @@ def main(
         staged_diff = get_staged_diff(max_chars=max_diff_chars)
         diff_preview = get_diff_preview(staged_diff, max_chars=500)
 
-        # Step 5: Check cache validity (unless --regenerate)
+        # Step 5: Determine effective scope (CLI override > inference > none)
+        effective_scope = None
+        scope_result = None
+
+        if no_scope:
+            # User explicitly disabled scope
+            effective_scope = None
+        elif scope and scope.lower() != "auto":
+            # User provided explicit scope
+            effective_scope = scope
+        elif scope_config.enabled and not no_scope:
+            # Infer scope from staged files
+            scope_result = infer_scope(staged_files, scope_config)
+            if scope_result.scope:
+                effective_scope = scope_result.scope
+                if debug:
+                    typer.echo(f"Inferred scope: {scope_result.scope} ({scope_result.reason})", err=True)
+
+        # Step 6: Compute context hash (include style and scope for cache invalidation)
+        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={effective_scope}|ticket={ticket}"
+        current_hash = compute_context_hash(hash_input)
+
+        # Step 7: Check cache validity (unless --regenerate)
         cache_valid = not regenerate and is_cache_valid(repo_root, current_hash)
 
         if cache_valid:
@@ -869,7 +940,7 @@ def main(
                 body_bullets=llm_result.commit_json.body_bullets,
                 # LLM may provide extended fields in the future
                 type=getattr(llm_result.commit_json, 'type', None),
-                scope=scope or getattr(llm_result.commit_json, 'scope', None),
+                scope=effective_scope or getattr(llm_result.commit_json, 'scope', None),
                 subject=getattr(llm_result.commit_json, 'subject', None),
                 ticket=ticket,
             )
@@ -895,7 +966,7 @@ def main(
                 data=extended_data,
                 config=style_config,
                 override_style=override_style,
-                override_scope=scope,
+                override_scope=effective_scope,
                 override_ticket=ticket,
                 no_scope=no_scope,
             )
@@ -913,15 +984,22 @@ def main(
             )
             metadata = load_cache_metadata(repo_root)
 
-        # Step 6: Handle --debug flag
+        # Step 8: Handle --debug flag
         if debug:
             if metadata:
                 _display_debug_info(repo_root, metadata, message, cache_valid)
+                # Show scope inference info
+                if scope_result:
+                    typer.echo(f"\n[SCOPE INFERENCE]", err=True)
+                    typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
+                    typer.echo(f"  Inferred: {scope_result.scope or 'None'}", err=True)
+                    typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
+                    typer.echo(f"  Reason: {scope_result.reason}", err=True)
             else:
                 typer.echo("No cache metadata found.", err=True)
             raise typer.Exit(0)
 
-        # Step 7: Get message file path
+        # Step 9: Get message file path
         message_file = get_message_file(repo_root)
 
         # Step 8: If --edit flag, open editor

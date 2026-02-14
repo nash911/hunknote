@@ -13,13 +13,14 @@ This documentation covers all features and configuration options available in th
 3. [Quick Start](#quick-start)
 4. [Command Reference](#command-reference)
 5. [Commit Style Profiles](#commit-style-profiles)
-6. [Configuration](#configuration)
-7. [LLM Providers](#llm-providers)
-8. [Caching System](#caching-system)
-9. [Ignore Patterns](#ignore-patterns)
-10. [Editor Integration](#editor-integration)
-11. [Git Integration](#git-integration)
-12. [Troubleshooting](#troubleshooting)
+6. [Scope Inference](#scope-inference)
+7. [Configuration](#configuration)
+8. [LLM Providers](#llm-providers)
+9. [Caching System](#caching-system)
+10. [Ignore Patterns](#ignore-patterns)
+11. [Editor Integration](#editor-integration)
+12. [Git Integration](#git-integration)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -33,6 +34,7 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 |---------|-------------|
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
 | **Commit Style Profiles** | Support for Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats |
+| **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
 | **Smart Caching** | Reuses generated messages when staged changes haven't changed |
 | **Structured Output** | Generates title + bullet points following git best practices |
 | **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
@@ -121,9 +123,10 @@ Generate an AI-powered commit message from staged changes.
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
 | `--debug` | `-d` | Show cache metadata (files, tokens, diff preview) | `false` |
 | `--style` | | Override commit style profile (default, conventional, ticket, kernel) | from config |
-| `--scope` | | Force a scope for the commit message | |
+| `--scope` | | Force a scope for the commit message (use 'auto' for inference) | auto |
 | `--no-scope` | | Disable scope even if profile supports it | `false` |
-| `--ticket` | | Force a ticket key (e.g., PROJ-6767) for ticket-style commits | |
+| `--scope-strategy` | | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) | from config |
+| `--ticket` | | Force a ticket key (e.g., PROJ-123) for ticket-style commits | |
 | `--max-diff-chars` | | Maximum characters for staged diff | `50000` |
 | `--help` | | Show help message | |
 
@@ -142,11 +145,20 @@ hunknote -r
 # View debug information
 hunknote -d
 
-# Use conventional commits style with scope
+# Use conventional commits style with auto scope inference
+hunknote --style conventional
+
+# Use conventional commits style with explicit scope
 hunknote --style conventional --scope api
 
+# Use monorepo scope inference strategy
+hunknote --style conventional --scope-strategy monorepo
+
+# Disable scope inference
+hunknote --style conventional --no-scope
+
 # Use ticket-prefixed style
-hunknote --style ticket --ticket PROJ-6767 -e -c
+hunknote --style ticket --ticket PROJ-123 -e -c
 
 # Kernel style with subsystem
 hunknote --style kernel --scope auth
@@ -515,6 +527,146 @@ When using `conventional` style, Hunknote can automatically infer the commit typ
 | Only CI files (`.github/workflows/`, etc.) | `ci` |
 | Only build/config files (`pyproject.toml`, etc.) | `build` |
 | Mixed changes | LLM determines type |
+
+---
+
+## Scope Inference
+
+Hunknote can automatically infer the scope from your staged files, ensuring consistent and accurate commit headers like `feat(api): ...` or `fix(ui): ...`.
+
+### How It Works
+
+Scope inference analyzes your staged file paths to determine the most appropriate scope. It runs **before** the LLM call and provides deterministic, consistent results.
+
+### Inference Strategies
+
+#### 1. **auto** (Default)
+
+Tries all strategies in order and uses the best match:
+1. Mapping (if configured)
+2. Monorepo
+3. Path-prefix
+
+```bash
+hunknote --scope-strategy auto --style conventional
+```
+
+#### 2. **monorepo**
+
+Detects scope from monorepo directory structures:
+
+```
+packages/auth/src/login.py    → scope: auth
+apps/web/components/Button.js → scope: web
+libs/shared-ui/src/Input.tsx  → scope: shared-ui
+```
+
+**Recognized roots:** `packages/`, `apps/`, `libs/`, `modules/`, `services/`, `plugins/`, `workspaces/`
+
+```bash
+hunknote --scope-strategy monorepo --style conventional
+```
+
+#### 3. **path-prefix**
+
+Uses the most common path segment (excluding stop words like `src`, `lib`, `tests`):
+
+```
+api/routes.py      → scope: api
+api/models.py      → scope: api
+api/utils.py       → scope: api
+```
+
+```bash
+hunknote --scope-strategy path-prefix --style conventional
+```
+
+#### 4. **mapping**
+
+Uses explicit path-to-scope mapping defined in config:
+
+```yaml
+scope:
+  strategy: mapping
+  mapping:
+    "src/api/": api
+    "src/web/": ui
+    "infra/": infra
+```
+
+```bash
+hunknote --scope-strategy mapping --style conventional
+```
+
+#### 5. **none**
+
+Disables scope inference entirely:
+
+```bash
+hunknote --scope-strategy none --style conventional
+```
+
+### Special Cases
+
+| Scenario | Default Behavior |
+|----------|------------------|
+| All documentation files | Scope: `docs` |
+| All test files | Infer from test path or configured scope |
+| Mixed changes (low confidence) | No scope (avoids wrong scope) |
+
+### Configuration
+
+Scope settings can be configured in `~/.hunknote/config.yaml` or `<repo>/.hunknote/config.yaml`:
+
+```yaml
+scope:
+  enabled: true               # Enable/disable scope inference
+  strategy: auto              # auto | monorepo | path-prefix | mapping | none
+  min_files: 1                # Minimum files to consider a cluster
+  max_depth: 2                # How deep into paths to look
+  dominant_threshold: 0.6     # Required confidence for dominant scope
+
+  # Explicit path-to-scope mapping
+  mapping:
+    "src/api/": api
+    "src/web/": ui
+    "infra/": infra
+
+  # Monorepo root directories
+  monorepo_roots:
+    - "packages/"
+    - "apps/"
+    - "libs/"
+
+  # Scope for docs-only changes
+  docs_scope: docs
+
+  # Scope for tests-only changes (null to infer from path)
+  tests_scope: null
+```
+
+### Precedence
+
+Scope is determined in this order (first non-null wins):
+
+1. `--scope <value>` CLI flag (explicit scope)
+2. `--no-scope` CLI flag (disables scope)
+3. Scope inference (if enabled)
+4. No scope
+
+### Debug Output
+
+Use `--debug` to see scope inference details:
+
+```bash
+hunknote --debug --style conventional
+```
+
+Output includes:
+- Strategy used
+- Inferred scope
+- Confidence level
+- Reason for decision
 
 ---
 

@@ -7,6 +7,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **Automatic commit message generation** from staged git changes
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Commit style profiles**: Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats
+- **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
@@ -14,7 +15,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 305 unit tests covering all modules
+- **Comprehensive test suite**: 359 unit tests covering all modules
 
 ## Installation
 
@@ -210,10 +211,37 @@ hunknote
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
 | `--style` | Override commit style profile (default, conventional, ticket, kernel) |
-| `--scope` | Force a scope for the commit message |
+| `--scope` | Force a scope for the commit message (use 'auto' for inference) |
 | `--no-scope` | Disable scope even if profile supports it |
-| `--ticket` | Force a ticket key (e.g., PROJ-6767) for ticket-style commits |
+| `--scope-strategy` | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) |
+| `--ticket` | Force a ticket key (e.g., PROJ-123) for ticket-style commits |
 | `--max-diff-chars` | Maximum characters for staged diff (default: 50000) |
+
+### Scope Inference
+
+Hunknote automatically infers scope from your staged files for consistent commit messages:
+
+```bash
+# Automatic scope inference (default)
+hunknote --style conventional   # feat(api): Add endpoint
+
+# Force a specific scope
+hunknote --scope auth --style conventional
+
+# Disable scope
+hunknote --no-scope --style conventional
+
+# Choose inference strategy
+hunknote --scope-strategy monorepo --style conventional
+hunknote --scope-strategy path-prefix --style conventional
+```
+
+**Supported strategies:**
+- **auto** (default): Tries all strategies in order
+- **monorepo**: Infer from `packages/`, `apps/`, `libs/` directories
+- **path-prefix**: Use the most common path segment
+- **mapping**: Use explicit path-to-scope mapping in config
+- **none**: Disable scope inference
 
 ### Commit Style Profiles
 
@@ -426,7 +454,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 305 tests:
+The project includes a comprehensive test suite with 359 tests:
 
 ```bash
 # Run all tests
@@ -452,6 +480,7 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 | `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `git_ctx.py` | 31 | Git context collection and filtering |
 | `styles.py` | 55 | Commit style profiles and rendering |
+| `scope.py` | 54 | Scope inference from file paths |
 | `llm/base.py` | 27 | JSON parsing, schema validation |
 | `llm/*.py` providers | 25 | All LLM provider classes |
 | `cli.py` | 42 | CLI commands and subcommands |
@@ -467,6 +496,7 @@ hunknote/
 ├── cache.py            # Caching utilities
 ├── formatters.py       # Commit message formatting
 ├── styles.py           # Commit style profiles (default, conventional, ticket, kernel)
+├── scope.py            # Scope inference (monorepo, path-prefix, mapping)
 ├── git_ctx.py          # Git context collection
 ├── user_config.py      # Repository config management
 ├── global_config.py    # Global user config (~/.hunknote/)

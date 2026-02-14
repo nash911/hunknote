@@ -214,3 +214,27 @@ def set_repo_style_config(repo_root: Path, style_config: dict) -> None:
     config["style"] = style_config
     save_config(repo_root, config)
 
+
+def get_repo_scope_config(repo_root: Path) -> dict:
+    """Get the scope configuration section from repo config.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Dictionary with scope configuration, or empty dict.
+    """
+    config = load_config(repo_root)
+    return config.get("scope", {})
+
+
+def set_repo_scope_config(repo_root: Path, scope_config: dict) -> None:
+    """Set the full scope configuration section in repo config.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        scope_config: Dictionary with scope configuration.
+    """
+    config = load_config(repo_root)
+    config["scope"] = scope_config
+    save_config(repo_root, config)

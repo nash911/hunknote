@@ -332,6 +332,27 @@ def set_style_config(style_config: dict) -> None:
     save_global_config(config)
 
 
+def get_scope_config() -> dict:
+    """Get the scope configuration section from global config.
+
+    Returns:
+        Dictionary with scope configuration.
+    """
+    config = load_global_config()
+    return config.get("scope", {})
+
+
+def set_scope_config(scope_config: dict) -> None:
+    """Set the full scope configuration section in global config.
+
+    Args:
+        scope_config: Dictionary with scope configuration.
+    """
+    config = load_global_config()
+    config["scope"] = scope_config
+    save_global_config(config)
+
+
 def initialize_default_config() -> None:
     """Initialize config.yaml with default values if it doesn't exist."""
     config_file = get_config_file_path()
@@ -358,6 +379,10 @@ def initialize_default_config() -> None:
             "include_body": True,
             "max_bullets": 6,
             "wrap_width": 72,
+        },
+        "scope": {
+            "enabled": True,
+            "strategy": "auto",
         }
     }
 
