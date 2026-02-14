@@ -12,13 +12,14 @@ This documentation covers all features and configuration options available in th
 2. [Installation](#installation)
 3. [Quick Start](#quick-start)
 4. [Command Reference](#command-reference)
-5. [Configuration](#configuration)
-6. [LLM Providers](#llm-providers)
-7. [Caching System](#caching-system)
-8. [Ignore Patterns](#ignore-patterns)
-9. [Editor Integration](#editor-integration)
-10. [Git Integration](#git-integration)
-11. [Troubleshooting](#troubleshooting)
+5. [Commit Style Profiles](#commit-style-profiles)
+6. [Configuration](#configuration)
+7. [LLM Providers](#llm-providers)
+8. [Caching System](#caching-system)
+9. [Ignore Patterns](#ignore-patterns)
+10. [Editor Integration](#editor-integration)
+11. [Git Integration](#git-integration)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -31,6 +32,7 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | Feature | Description |
 |---------|-------------|
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
+| **Commit Style Profiles** | Support for Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats |
 | **Smart Caching** | Reuses generated messages when staged changes haven't changed |
 | **Structured Output** | Generates title + bullet points following git best practices |
 | **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
@@ -118,6 +120,10 @@ Generate an AI-powered commit message from staged changes.
 | `--commit` | `-c` | Automatically commit using the generated message | `false` |
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
 | `--debug` | `-d` | Show cache metadata (files, tokens, diff preview) | `false` |
+| `--style` | | Override commit style profile (default, conventional, ticket, kernel) | from config |
+| `--scope` | | Force a scope for the commit message | |
+| `--no-scope` | | Disable scope even if profile supports it | `false` |
+| `--ticket` | | Force a ticket key (e.g., PROJ-6767) for ticket-style commits | |
 | `--max-diff-chars` | | Maximum characters for staged diff | `50000` |
 | `--help` | | Show help message | |
 
@@ -135,6 +141,15 @@ hunknote -r
 
 # View debug information
 hunknote -d
+
+# Use conventional commits style with scope
+hunknote --style conventional --scope api
+
+# Use ticket-prefixed style
+hunknote --style ticket --ticket PROJ-6767 -e -c
+
+# Kernel style with subsystem
+hunknote --style kernel --scope auth
 ```
 
 ---
@@ -268,6 +283,238 @@ Remove a pattern from the ignore list.
 ```bash
 hunknote ignore remove "*.log"
 ```
+
+---
+
+### `hunknote style` Subcommands
+
+Manage commit message style profiles.
+
+#### `hunknote style list`
+
+List all available style profiles and show the current active profile.
+
+```bash
+hunknote style list
+```
+
+**Output:**
+```
+Available commit style profiles:
+
+  • default ← active
+    Standard Hunknote format with title and bullet points
+
+  • conventional
+    Conventional Commits format (type(scope): subject)
+
+  • ticket
+    Ticket-prefixed format (PROJ-6767 subject)
+
+  • kernel
+    Linux kernel style (subsystem: subject)
+
+Current profile: default (from global config)
+```
+
+#### `hunknote style show`
+
+Show details about a specific style profile.
+
+```bash
+hunknote style show conventional
+```
+
+**Output includes:**
+- Format template
+- Example output
+- Profile-specific configuration options
+
+#### `hunknote style set`
+
+Set the active style profile.
+
+```bash
+# Set globally (applies to all repos)
+hunknote style set conventional
+
+# Set for current repo only
+hunknote style set ticket --repo
+```
+
+---
+
+## Commit Style Profiles
+
+Hunknote supports multiple commit message formats to match your team's conventions. The style determines how the generated commit message is formatted.
+
+### Available Profiles
+
+#### 1. `default` (Standard Hunknote Format)
+
+The original Hunknote format with a title and bullet points.
+
+**Format:**
+```
+<Title>
+
+- <bullet>
+- <bullet>
+```
+
+**Example:**
+```
+Add user authentication feature
+
+- Implement login and logout endpoints
+- Add session management middleware
+- Create user model with password hashing
+```
+
+#### 2. `conventional` (Conventional Commits)
+
+Following the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+
+**Format:**
+```
+<type>(<scope>): <subject>
+
+- <bullet>
+- <bullet>
+
+BREAKING CHANGE: <description>
+Refs: <ticket>
+```
+
+**Example:**
+```
+feat(auth): Add user authentication
+
+- Implement login and logout endpoints
+- Add session management middleware
+
+Refs: PROJ-6767
+```
+
+**Valid types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`
+
+**Usage:**
+```bash
+hunknote --style conventional
+hunknote --style conventional --scope api
+hunknote --style conventional --no-scope  # Disable scope
+```
+
+#### 3. `ticket` (Ticket-Prefixed)
+
+For teams that require ticket/issue references in commit messages.
+
+**Format (prefix - default):**
+```
+<KEY-6767> <subject>
+
+- <bullet>
+```
+
+**Format (prefix with scope):**
+```
+<KEY-6767> (<scope>) <subject>
+
+- <bullet>
+```
+
+**Format (suffix):**
+```
+<subject> (<KEY-6767>)
+
+- <bullet>
+```
+
+**Example:**
+```
+PROJ-6767 Add user authentication
+
+- Implement login endpoint
+- Add session management
+```
+
+**Usage:**
+```bash
+hunknote --style ticket --ticket PROJ-6767
+hunknote --style ticket --ticket PROJ-6767 --scope api
+```
+
+**Automatic ticket extraction:** If `--ticket` is not provided, Hunknote will attempt to extract a ticket from the branch name using the configured regex pattern.
+
+#### 4. `kernel` (Linux Kernel Style)
+
+Following the Linux kernel commit message format.
+
+**Format:**
+```
+<subsystem>: <subject>
+
+- <bullet> (optional)
+```
+
+**Example:**
+```
+auth: Add user authentication
+
+- Implement login endpoint
+```
+
+**Usage:**
+```bash
+hunknote --style kernel --scope auth
+```
+
+### Style Configuration
+
+Style settings can be configured in `~/.hunknote/config.yaml` (global) or `<repo>/.hunknote/config.yaml` (per-repo):
+
+```yaml
+style:
+  profile: conventional    # default | conventional | ticket | kernel
+  include_body: true       # Whether to include bullet body
+  max_bullets: 6           # Maximum number of bullets
+  wrap_width: 72           # Line wrap width
+
+  # Conventional commits options
+  conventional:
+    types: [feat, fix, docs, refactor, perf, test, build, ci, chore]
+    breaking_footer: true
+
+  # Ticket style options
+  ticket:
+    key_regex: "([A-Z][A-Z0-9]+-\\d+)"  # Regex for ticket extraction
+    placement: prefix                    # prefix | suffix
+
+  # Kernel style options
+  kernel:
+    subsystem_from_scope: true  # Use --scope as subsystem
+```
+
+### Style Precedence
+
+Style settings are applied in this order (later overrides earlier):
+
+1. **Built-in defaults**
+2. **Global config** (`~/.hunknote/config.yaml`)
+3. **Repo config** (`<repo>/.hunknote/config.yaml`)
+4. **CLI flags** (`--style`, `--scope`, `--ticket`, `--no-scope`)
+
+### Automatic Type Inference
+
+When using `conventional` style, Hunknote can automatically infer the commit type based on the files being changed:
+
+| Changed Files | Inferred Type |
+|---------------|---------------|
+| Only `.md`, `.rst`, docs files | `docs` |
+| Only test files | `test` |
+| Only CI files (`.github/workflows/`, etc.) | `ci` |
+| Only build/config files (`pyproject.toml`, etc.) | `build` |
+| Mixed changes | LLM determines type |
 
 ---
 

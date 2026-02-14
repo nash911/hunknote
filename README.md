@@ -6,6 +6,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 
 - **Automatic commit message generation** from staged git changes
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
+- **Commit style profiles**: Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
@@ -13,7 +14,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 238 unit tests covering all modules
+- **Comprehensive test suite**: 305 unit tests covering all modules
 
 ## Installation
 
@@ -208,7 +209,42 @@ hunknote
 | `-c, --commit` | Automatically commit using the generated message |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
+| `--style` | Override commit style profile (default, conventional, ticket, kernel) |
+| `--scope` | Force a scope for the commit message |
+| `--no-scope` | Disable scope even if profile supports it |
+| `--ticket` | Force a ticket key (e.g., PROJ-6767) for ticket-style commits |
 | `--max-diff-chars` | Maximum characters for staged diff (default: 50000) |
+
+### Commit Style Profiles
+
+Hunknote supports multiple commit message formats to match your team's conventions:
+
+```bash
+# List available profiles
+hunknote style list
+
+# Show details about a profile
+hunknote style show conventional
+
+# Set default style globally
+hunknote style set conventional
+
+# Set style for current repo only
+hunknote style set ticket --repo
+
+# Override style for a single run
+hunknote --style conventional --scope api
+hunknote --style ticket --ticket PROJ-6767 -e -c
+```
+
+#### Available Profiles
+
+| Profile | Format                       | Example |
+|---------|------------------------------|---------|
+| **default** | `<Title>\n\n- <bullet>`      | `Add feature\n\n- Implement login` |
+| **conventional** | `<type>(<scope>): <subject>` | `feat(auth): Add login endpoint` |
+| **ticket** | `<KEY-6767> <subject>`       | `PROJ-6767 Add login endpoint` |
+| **kernel** | `<subsystem>: <subject>`     | `auth: Add login endpoint` |
 
 ### Ignore Pattern Management
 
@@ -273,6 +309,15 @@ hunknote -r
 
 # Debug: view cache metadata and token usage
 hunknote -d
+
+# Use conventional commits style with scope
+hunknote --style conventional --scope api
+
+# Use ticket-prefixed style
+hunknote --style ticket --ticket PROJ-6767 -e -c
+
+# Force kernel style for this commit
+hunknote --style kernel --scope auth
 ```
 
 ### Git Subcommand
@@ -381,7 +426,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 238 tests:
+The project includes a comprehensive test suite with 305 tests:
 
 ```bash
 # Run all tests
@@ -406,9 +451,10 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 | `user_config.py` | 20 | Repository YAML config file management |
 | `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `git_ctx.py` | 31 | Git context collection and filtering |
+| `styles.py` | 55 | Commit style profiles and rendering |
 | `llm/base.py` | 27 | JSON parsing, schema validation |
 | `llm/*.py` providers | 25 | All LLM provider classes |
-| `cli.py` | 30 | CLI commands and subcommands |
+| `cli.py` | 42 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
 
 ### Project Structure
@@ -420,6 +466,7 @@ hunknote/
 ├── config.py           # LLM provider configuration
 ├── cache.py            # Caching utilities
 ├── formatters.py       # Commit message formatting
+├── styles.py           # Commit style profiles (default, conventional, ticket, kernel)
 ├── git_ctx.py          # Git context collection
 ├── user_config.py      # Repository config management
 ├── global_config.py    # Global user config (~/.hunknote/)

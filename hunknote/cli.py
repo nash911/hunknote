@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -30,12 +31,25 @@ from hunknote.git_ctx import (
     get_repo_root,
     get_staged_diff,
     get_status,
+    get_branch,
 )
 from hunknote.llm import LLMError, MissingAPIKeyError, generate_commit_json
 from hunknote.user_config import (
     add_ignore_pattern,
     get_ignore_patterns,
     remove_ignore_pattern,
+    get_repo_style_config,
+    set_repo_style_profile,
+)
+from hunknote.styles import (
+    StyleProfile,
+    StyleConfig,
+    ExtendedCommitJSON,
+    PROFILE_DESCRIPTIONS,
+    load_style_config_from_dict,
+    render_commit_message_styled,
+    extract_ticket_from_branch,
+    infer_commit_type,
 )
 from hunknote import global_config
 from hunknote.config import LLMProvider, AVAILABLE_MODELS, API_KEY_ENV_VARS
@@ -61,6 +75,14 @@ config_app = typer.Typer(
     add_completion=False,
 )
 app.add_typer(config_app, name="config")
+
+# Subcommand group for style profile management
+style_app = typer.Typer(
+    name="style",
+    help="Manage commit message style profiles",
+    add_completion=False,
+)
+app.add_typer(style_app, name="style")
 
 
 def _generate_message_diff(original: str, current: str) -> str:
@@ -579,6 +601,162 @@ def config_list_models(
             typer.echo()
 
 
+# ============================================================
+# Style profile management subcommands
+# ============================================================
+
+
+@style_app.command("list")
+def style_list() -> None:
+    """List available style profiles and show the current active profile."""
+    # Get current profile from config (repo > global > default)
+    current_profile = "default"
+
+    try:
+        repo_root = get_repo_root()
+        repo_style = get_repo_style_config(repo_root)
+        if repo_style.get("profile"):
+            current_profile = repo_style["profile"]
+            source = "repo"
+        else:
+            global_style = global_config.get_style_config()
+            if global_style.get("profile"):
+                current_profile = global_style["profile"]
+                source = "global"
+            else:
+                source = "default"
+    except GitError:
+        global_style = global_config.get_style_config()
+        if global_style.get("profile"):
+            current_profile = global_style["profile"]
+            source = "global"
+        else:
+            source = "default"
+
+    typer.echo("Available commit style profiles:")
+    typer.echo()
+
+    for profile in StyleProfile:
+        desc = PROFILE_DESCRIPTIONS[profile]
+        marker = " ← active" if profile.value == current_profile else ""
+        typer.echo(f"  • {desc['name']}{marker}")
+        typer.echo(f"    {desc['description']}")
+        typer.echo()
+
+    typer.echo(f"Current profile: {current_profile} (from {source} config)")
+    typer.echo()
+    typer.echo("Use 'hunknote style show <profile>' for details.")
+    typer.echo("Use 'hunknote style set <profile>' to change.")
+
+
+@style_app.command("show")
+def style_show(
+    profile: str = typer.Argument(
+        None,
+        help="Profile name to show (default, conventional, ticket, kernel)"
+    )
+) -> None:
+    """Show details about a style profile."""
+    if not profile:
+        # Show current profile
+        try:
+            repo_root = get_repo_root()
+            repo_style = get_repo_style_config(repo_root)
+            profile = repo_style.get("profile") or global_config.get_style_profile() or "default"
+        except GitError:
+            profile = global_config.get_style_profile() or "default"
+
+    # Validate profile
+    try:
+        style_profile = StyleProfile(profile.lower())
+    except ValueError:
+        typer.echo(f"Invalid profile: {profile}", err=True)
+        typer.echo("Valid profiles: default, conventional, ticket, kernel")
+        raise typer.Exit(1)
+
+    desc = PROFILE_DESCRIPTIONS[style_profile]
+
+    typer.echo(f"Style Profile: {desc['name']}")
+    typer.echo("=" * 50)
+    typer.echo()
+    typer.echo(f"Description: {desc['description']}")
+    typer.echo()
+    typer.echo("Format:")
+    typer.echo("  " + desc['format'].replace('\n', '\n  '))
+    typer.echo()
+    typer.echo("Example:")
+    typer.echo("  " + desc['example'].replace('\n', '\n  '))
+    typer.echo()
+
+    # Show profile-specific options
+    if style_profile == StyleProfile.CONVENTIONAL:
+        typer.echo("Options (in config.yaml):")
+        typer.echo("  style.conventional.types: [feat, fix, docs, ...]")
+        typer.echo("  style.conventional.breaking_footer: true")
+    elif style_profile == StyleProfile.TICKET:
+        typer.echo("Options (in config.yaml):")
+        typer.echo("  style.ticket.key_regex: '([A-Z][A-Z0-9]+-\\d+)'")
+        typer.echo("  style.ticket.placement: prefix | suffix")
+    elif style_profile == StyleProfile.KERNEL:
+        typer.echo("Options (in config.yaml):")
+        typer.echo("  style.kernel.subsystem_from_scope: true")
+
+
+@style_app.command("set")
+def style_set(
+    profile: str = typer.Argument(
+        ...,
+        help="Profile name (default, conventional, ticket, kernel)"
+    ),
+    repo: bool = typer.Option(
+        False,
+        "--repo",
+        help="Set in repository config instead of global"
+    )
+) -> None:
+    """Set the active style profile."""
+    # Validate profile
+    try:
+        style_profile = StyleProfile(profile.lower())
+    except ValueError:
+        typer.echo(f"Invalid profile: {profile}", err=True)
+        typer.echo("Valid profiles: default, conventional, ticket, kernel")
+        raise typer.Exit(1)
+
+    if repo:
+        try:
+            repo_root = get_repo_root()
+            set_repo_style_profile(repo_root, style_profile.value)
+            typer.echo(f"✓ Style profile set to '{style_profile.value}' in repo config")
+        except GitError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+    else:
+        global_config.set_style_profile(style_profile.value)
+        typer.echo(f"✓ Style profile set to '{style_profile.value}' in global config")
+
+
+def _get_effective_style_config() -> StyleConfig:
+    """Get the effective style configuration (repo overrides global)."""
+    # Start with defaults
+    config_dict = {"style": {"profile": "default"}}
+
+    # Merge global config
+    global_style = global_config.get_style_config()
+    if global_style:
+        config_dict["style"].update(global_style)
+
+    # Merge repo config (overrides global)
+    try:
+        repo_root = get_repo_root()
+        repo_style = get_repo_style_config(repo_root)
+        if repo_style:
+            config_dict["style"].update(repo_style)
+    except GitError:
+        pass  # Not in a repo, use global only
+
+    return load_style_config_from_dict(config_dict)
+
 
 @app.callback(invoke_without_command=True)
 def main(
@@ -612,6 +790,26 @@ def main(
         "-c",
         help="Perform the commit using the generated message",
     ),
+    style: Optional[str] = typer.Option(
+        None,
+        "--style",
+        help="Override commit style profile (default, conventional, ticket, kernel)",
+    ),
+    scope: Optional[str] = typer.Option(
+        None,
+        "--scope",
+        help="Force a scope for the commit message",
+    ),
+    no_scope: bool = typer.Option(
+        False,
+        "--no-scope",
+        help="Disable scope even if profile supports it",
+    ),
+    ticket: Optional[str] = typer.Option(
+        None,
+        "--ticket",
+        help="Force a ticket key (e.g., PROJ-6767) for ticket-style commits",
+    ),
 ) -> None:
     """Generate an AI-powered git commit message from staged changes."""
     # If a subcommand is invoked, don't run the default behavior
@@ -622,6 +820,16 @@ def main(
     from hunknote.config import load_config
     load_config()
 
+    # Validate and parse style override if provided
+    override_style = None
+    if style:
+        try:
+            override_style = StyleProfile(style.lower())
+        except ValueError:
+            typer.echo(f"Invalid style: {style}", err=True)
+            typer.echo("Valid styles: default, conventional, ticket, kernel")
+            raise typer.Exit(1)
+
     try:
         # Step 1: Get repo root
         repo_root = get_repo_root()
@@ -630,8 +838,11 @@ def main(
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
 
-        # Step 3: Compute context hash
-        current_hash = compute_context_hash(context_bundle)
+        # Step 3: Compute context hash (include style in hash for cache invalidation)
+        style_config = _get_effective_style_config()
+        effective_profile = override_style or style_config.profile
+        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={scope}|ticket={ticket}"
+        current_hash = compute_context_hash(hash_input)
 
         # Step 4: Extract staged files and diff preview for metadata
         status_output = get_status()
@@ -652,9 +863,42 @@ def main(
             typer.echo("Generating commit message...", err=True)
             llm_result = generate_commit_json(context_bundle)
 
+            # Convert to ExtendedCommitJSON for styled rendering
+            extended_data = ExtendedCommitJSON(
+                title=llm_result.commit_json.title,
+                body_bullets=llm_result.commit_json.body_bullets,
+                # LLM may provide extended fields in the future
+                type=getattr(llm_result.commit_json, 'type', None),
+                scope=scope or getattr(llm_result.commit_json, 'scope', None),
+                subject=getattr(llm_result.commit_json, 'subject', None),
+                ticket=ticket,
+            )
 
-            # Render the commit message
-            message = render_commit_message(llm_result.commit_json)
+            # Try to extract ticket from branch if not provided and using ticket style
+            if not ticket and effective_profile == StyleProfile.TICKET:
+                try:
+                    branch = get_branch()
+                    extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
+                    if extracted_ticket:
+                        extended_data.ticket = extracted_ticket
+                except Exception:
+                    pass
+
+            # Infer commit type if using conventional style and not provided
+            if effective_profile == StyleProfile.CONVENTIONAL and not extended_data.type:
+                inferred_type = infer_commit_type(staged_files)
+                if inferred_type:
+                    extended_data.type = inferred_type
+
+            # Render the commit message with style
+            message = render_commit_message_styled(
+                data=extended_data,
+                config=style_config,
+                override_style=override_style,
+                override_scope=scope,
+                override_ticket=ticket,
+                no_scope=no_scope,
+            )
 
             # Save to cache
             save_cache(

@@ -4,7 +4,7 @@ Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **238 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **305 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
@@ -24,13 +24,14 @@ tests/
 ├── __init__.py             # Test package init
 ├── conftest.py             # Shared fixtures
 ├── test_cache.py           # Cache module tests (34 tests)
-├── test_cli.py             # CLI command tests (30 tests)
+├── test_cli.py             # CLI command tests (42 tests)
 ├── test_config.py          # Configuration tests (24 tests)
 ├── test_formatters.py      # Formatters module tests (21 tests)
 ├── test_git_ctx.py         # Git context tests (31 tests)
 ├── test_global_config.py   # Global config tests (26 tests)
 ├── test_llm_base.py        # LLM base module tests (27 tests)
 ├── test_llm_providers.py   # LLM provider tests (25 tests)
+├── test_styles.py          # Style profiles tests (55 tests)
 ├── test_user_config.py     # User config tests (20 tests)
 └── README.md               # This file
 ```
@@ -84,9 +85,10 @@ pytest tests/ -k "provider"
 | `user_config.py` | `test_user_config.py` | 20 | Repository YAML config file management |
 | `global_config.py` | `test_global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `git_ctx.py` | `test_git_ctx.py` | 31 | Git context collection and filtering |
+| `styles.py` | `test_styles.py` | 55 | Commit style profiles and rendering |
 | `llm/base.py` | `test_llm_base.py` | 27 | JSON parsing, schema validation, prompts |
 | `llm/*.py` | `test_llm_providers.py` | 25 | All LLM provider classes |
-| `cli.py` | `test_cli.py` | 30 | CLI commands, config, and ignore management |
+| `cli.py` | `test_cli.py` | 42 | CLI commands, config, style, and ignore management |
 | `config.py` | `test_config.py` | 24 | Configuration constants and enums |
 
 ## Fixtures

@@ -445,3 +445,129 @@ class TestDebugFlag:
         assert result.exit_code == 0
         assert "DEBUG" in result.output or "gemini" in result.output.lower()
 
+
+class TestStyleListCommand:
+    """Tests for hunknote style list command."""
+
+    def test_lists_all_profiles(self, mocker):
+        """Test listing all style profiles."""
+        from hunknote.git_ctx import GitError
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={})
+
+        result = runner.invoke(app, ["style", "list"])
+
+        assert result.exit_code == 0
+        assert "default" in result.output
+        assert "conventional" in result.output
+        assert "ticket" in result.output
+        assert "kernel" in result.output
+
+    def test_shows_active_profile(self, mocker):
+        """Test that active profile is marked."""
+        from hunknote.git_ctx import GitError
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={"profile": "conventional"})
+
+        result = runner.invoke(app, ["style", "list"])
+
+        assert result.exit_code == 0
+        assert "conventional" in result.output
+        assert "active" in result.output.lower()
+
+
+class TestStyleShowCommand:
+    """Tests for hunknote style show command."""
+
+    def test_shows_profile_details(self, mocker):
+        """Test showing profile details."""
+        from hunknote.git_ctx import GitError
+        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.global_config.get_style_profile", return_value="default")
+
+        result = runner.invoke(app, ["style", "show", "conventional"])
+
+        assert result.exit_code == 0
+        assert "conventional" in result.output.lower()
+        assert "Format" in result.output
+        assert "Example" in result.output
+
+    def test_invalid_profile_error(self):
+        """Test error for invalid profile."""
+        result = runner.invoke(app, ["style", "show", "invalid-profile"])
+
+        assert result.exit_code == 1
+        assert "Invalid profile" in result.output or "invalid" in result.output.lower()
+
+
+class TestStyleSetCommand:
+    """Tests for hunknote style set command."""
+
+    def test_sets_global_profile(self, mocker):
+        """Test setting global style profile."""
+        mock_set = mocker.patch("hunknote.cli.global_config.set_style_profile")
+
+        result = runner.invoke(app, ["style", "set", "conventional"])
+
+        assert result.exit_code == 0
+        assert "conventional" in result.output
+        mock_set.assert_called_once_with("conventional")
+
+    def test_sets_repo_profile(self, mocker, temp_dir):
+        """Test setting repo style profile."""
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mock_set = mocker.patch("hunknote.cli.set_repo_style_profile")
+
+        result = runner.invoke(app, ["style", "set", "ticket", "--repo"])
+
+        assert result.exit_code == 0
+        assert "ticket" in result.output
+        mock_set.assert_called_once_with(temp_dir, "ticket")
+
+    def test_invalid_profile_error(self):
+        """Test error for invalid profile."""
+        result = runner.invoke(app, ["style", "set", "invalid-profile"])
+
+        assert result.exit_code == 1
+        assert "Invalid profile" in result.output or "invalid" in result.output.lower()
+
+
+class TestStyleFlags:
+    """Tests for style-related CLI flags."""
+
+    def test_style_flag_in_help(self):
+        """Test that --style flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--style" in result.output
+
+    def test_scope_flag_in_help(self):
+        """Test that --scope flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--scope" in result.output
+
+    def test_ticket_flag_in_help(self):
+        """Test that --ticket flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--ticket" in result.output
+
+    def test_no_scope_flag_in_help(self):
+        """Test that --no-scope flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--no-scope" in result.output
+
+    def test_invalid_style_flag_error(self, mocker, temp_dir):
+        """Test error for invalid --style flag value."""
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+
+        result = runner.invoke(app, ["--style", "invalid-style"])
+
+        assert result.exit_code == 1
+        assert "Invalid style" in result.output or "invalid" in result.output.lower()

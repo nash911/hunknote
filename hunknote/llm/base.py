@@ -40,7 +40,7 @@ SYSTEM_PROMPT = """You are an expert software engineer writing git commit messag
 Be precise: only describe changes actually shown in the diff.
 The [FILE_CHANGES] section tells you which files are NEW vs MODIFIED - use this to write accurate descriptions."""
 
-# User prompt template (shared across all providers)
+# User prompt template for default style (backward compatible)
 USER_PROMPT_TEMPLATE = """Given the following git context, produce a JSON object with exactly these keys:
 - "title": string (imperative mood, <=72 chars)
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
@@ -48,6 +48,42 @@ USER_PROMPT_TEMPLATE = """Given the following git context, produce a JSON object
 Rules:
 - Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
 - Title in imperative mood (e.g., "Add feature" not "Added feature").
+- Only describe changes shown in the diff. Do not infer or assume other changes.
+- [FILE_CHANGES] shows:
+  * NEW files (created in this commit)
+  * MODIFIED files (already existed)
+  * DELETED files (removed in this commit)
+  * RENAMED files (moved/renamed in this commit).
+  Use these to write accurate descriptions.
+
+GIT CONTEXT:
+{context_bundle}"""
+
+# Extended user prompt template for style profiles
+USER_PROMPT_TEMPLATE_STYLED = """Given the following git context, produce a JSON object with these keys:
+- "type": string (one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
+- "scope": string or null (the area of code affected, e.g., api, ui, auth, core)
+- "subject": string (imperative mood, concise summary, <=60 chars)
+- "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
+- "breaking_change": boolean (true if this introduces breaking changes)
+- "ticket": string or null (extracted ticket/issue key if found, e.g., PROJ-6767)
+
+Rules:
+- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
+- Subject in imperative mood (e.g., "Add feature" not "Added feature").
+- Choose "type" based on the changes:
+  * feat: new feature
+  * fix: bug fix
+  * docs: documentation only
+  * refactor: code change that neither fixes nor adds feature
+  * perf: performance improvement
+  * test: adding or updating tests
+  * build: build system or dependencies
+  * ci: CI configuration
+  * chore: maintenance tasks
+  * style: formatting, whitespace
+  * revert: reverting changes
+- "scope" should identify the component/module affected (can be null if not clear).
 - Only describe changes shown in the diff. Do not infer or assume other changes.
 - [FILE_CHANGES] shows:
   * NEW files (created in this commit)
@@ -211,3 +247,15 @@ class BaseLLMProvider(ABC):
             The formatted user prompt.
         """
         return USER_PROMPT_TEMPLATE.format(context_bundle=context_bundle)
+
+    def build_user_prompt_styled(self, context_bundle: str) -> str:
+        """Build the extended user prompt for style profiles.
+
+        Args:
+            context_bundle: The git context string.
+
+        Returns:
+            The formatted user prompt with extended schema instructions.
+        """
+        return USER_PROMPT_TEMPLATE_STYLED.format(context_bundle=context_bundle)
+

@@ -287,6 +287,51 @@ def get_temperature() -> Optional[float]:
     return config.get("temperature")
 
 
+def get_style_profile() -> Optional[str]:
+    """Get the active style profile from global config.
+
+    Returns:
+        Style profile name (default, conventional, ticket, kernel), or None.
+    """
+    config = load_global_config()
+    style_section = config.get("style", {})
+    return style_section.get("profile")
+
+
+def set_style_profile(profile: str) -> None:
+    """Set the active style profile in global config.
+
+    Args:
+        profile: Style profile name (default, conventional, ticket, kernel).
+    """
+    config = load_global_config()
+    if "style" not in config:
+        config["style"] = {}
+    config["style"]["profile"] = profile
+    save_global_config(config)
+
+
+def get_style_config() -> dict:
+    """Get the full style configuration section from global config.
+
+    Returns:
+        Dictionary with style configuration.
+    """
+    config = load_global_config()
+    return config.get("style", {})
+
+
+def set_style_config(style_config: dict) -> None:
+    """Set the full style configuration section in global config.
+
+    Args:
+        style_config: Dictionary with style configuration.
+    """
+    config = load_global_config()
+    config["style"] = style_config
+    save_global_config(config)
+
+
 def initialize_default_config() -> None:
     """Initialize config.yaml with default values if it doesn't exist."""
     config_file = get_config_file_path()
@@ -307,7 +352,13 @@ def initialize_default_config() -> None:
             "package-lock.json",
             "*.min.js",
             "*.min.css",
-        ]
+        ],
+        "style": {
+            "profile": "default",
+            "include_body": True,
+            "max_bullets": 6,
+            "wrap_width": 72,
+        }
     }
 
     save_global_config(default_config)

@@ -174,3 +174,43 @@ def remove_ignore_pattern(repo_root: Path, pattern: str) -> bool:
         save_config(repo_root, config)
         return True
     return False
+
+
+def get_repo_style_config(repo_root: Path) -> dict:
+    """Get the style configuration section from repo config.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Dictionary with style configuration, or empty dict.
+    """
+    config = load_config(repo_root)
+    return config.get("style", {})
+
+
+def set_repo_style_profile(repo_root: Path, profile: str) -> None:
+    """Set the style profile in repo config.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        profile: Style profile name (default, conventional, ticket, kernel).
+    """
+    config = load_config(repo_root)
+    if "style" not in config:
+        config["style"] = {}
+    config["style"]["profile"] = profile
+    save_config(repo_root, config)
+
+
+def set_repo_style_config(repo_root: Path, style_config: dict) -> None:
+    """Set the full style configuration section in repo config.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        style_config: Dictionary with style configuration.
+    """
+    config = load_config(repo_root)
+    config["style"] = style_config
+    save_config(repo_root, config)
+
