@@ -4,7 +4,7 @@ Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **199 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **238 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
@@ -21,17 +21,18 @@ This test suite contains **199 unit tests** covering all modules of the hunknote
 
 ```
 tests/
-├── __init__.py           # Test package init
-├── conftest.py           # Shared fixtures
-├── test_cache.py         # Cache module tests (35 tests)
-├── test_cli.py           # CLI command tests (17 tests)
-├── test_config.py        # Configuration tests (22 tests)
-├── test_formatters.py    # Formatters module tests (25 tests)
-├── test_git_ctx.py       # Git context tests (27 tests)
-├── test_llm_base.py      # LLM base module tests (26 tests)
-├── test_llm_providers.py # LLM provider tests (23 tests)
-├── test_user_config.py   # User config tests (22 tests)
-└── README.md             # This file
+├── __init__.py             # Test package init
+├── conftest.py             # Shared fixtures
+├── test_cache.py           # Cache module tests (34 tests)
+├── test_cli.py             # CLI command tests (30 tests)
+├── test_config.py          # Configuration tests (24 tests)
+├── test_formatters.py      # Formatters module tests (21 tests)
+├── test_git_ctx.py         # Git context tests (31 tests)
+├── test_global_config.py   # Global config tests (26 tests)
+├── test_llm_base.py        # LLM base module tests (27 tests)
+├── test_llm_providers.py   # LLM provider tests (25 tests)
+├── test_user_config.py     # User config tests (20 tests)
+└── README.md               # This file
 ```
 
 ## Running Tests
@@ -78,14 +79,15 @@ pytest tests/ -k "provider"
 
 | Module | Test File | Tests | Description |
 |--------|-----------|-------|-------------|
-| `formatters.py` | `test_formatters.py` | 25 | Commit message formatting and Pydantic validation |
-| `cache.py` | `test_cache.py` | 35 | Caching utilities, hash computation, metadata |
-| `user_config.py` | `test_user_config.py` | 22 | YAML config file management |
-| `git_ctx.py` | `test_git_ctx.py` | 27 | Git context collection and filtering |
-| `llm/base.py` | `test_llm_base.py` | 26 | JSON parsing, schema validation, prompts |
-| `llm/*.py` | `test_llm_providers.py` | 23 | All LLM provider classes |
-| `cli.py` | `test_cli.py` | 17 | CLI commands and ignore management |
-| `config.py` | `test_config.py` | 22 | Configuration constants and enums |
+| `formatters.py` | `test_formatters.py` | 21 | Commit message formatting and Pydantic validation |
+| `cache.py` | `test_cache.py` | 34 | Caching utilities, hash computation, metadata |
+| `user_config.py` | `test_user_config.py` | 20 | Repository YAML config file management |
+| `global_config.py` | `test_global_config.py` | 26 | Global user configuration (~/.hunknote/) |
+| `git_ctx.py` | `test_git_ctx.py` | 31 | Git context collection and filtering |
+| `llm/base.py` | `test_llm_base.py` | 27 | JSON parsing, schema validation, prompts |
+| `llm/*.py` | `test_llm_providers.py` | 25 | All LLM provider classes |
+| `cli.py` | `test_cli.py` | 30 | CLI commands, config, and ignore management |
+| `config.py` | `test_config.py` | 24 | Configuration constants and enums |
 
 ## Fixtures
 

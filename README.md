@@ -13,7 +13,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 199 unit tests covering all modules
+- **Comprehensive test suite**: 238 unit tests covering all modules
 
 ## Installation
 
@@ -182,12 +182,12 @@ Or create a `.env` file in your project root.
 | Provider | Models | API Key Variable |
 |----------|--------|------------------|
 | **Anthropic** | claude-sonnet-4-20250514, claude-3-5-sonnet-latest, claude-3-5-haiku-latest, claude-3-opus-latest | `ANTHROPIC_API_KEY` |
-| **OpenAI** | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo | `OPENAI_API_KEY` |
-| **Google** | gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash | `GOOGLE_API_KEY` |
+| **OpenAI** | gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini, gpt-4-turbo | `OPENAI_API_KEY` |
+| **Google** | gemini-3-pro-preview, gemini-2.5-pro, gemini-3-flash-preview, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash, gemini-2.0-flash-lite | `GOOGLE_API_KEY` |
 | **Mistral** | mistral-large-latest, mistral-medium-latest, mistral-small-latest, codestral-latest | `MISTRAL_API_KEY` |
 | **Cohere** | command-r-plus, command-r, command | `COHERE_API_KEY` |
 | **Groq** | llama-3.3-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768 | `GROQ_API_KEY` |
-| **OpenRouter** | 200+ models (anthropic/claude-sonnet-4, openai/gpt-4o, meta-llama/llama-3.3-70b-instruct, etc.) | `OPENROUTER_API_KEY` |
+| **OpenRouter** | 200+ models (anthropic/claude-sonnet-4, openai/gpt-4o, google/gemini-2.0-flash-exp, meta-llama/llama-3.3-70b-instruct, deepseek/deepseek-chat, qwen/qwen-2.5-72b-instruct, etc.) | `OPENROUTER_API_KEY` |
 
 ## Usage
 
@@ -381,7 +381,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 199 tests:
+The project includes a comprehensive test suite with 238 tests:
 
 ```bash
 # Run all tests
@@ -401,14 +401,15 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| `formatters.py` | 25 | Commit message formatting and validation |
-| `cache.py` | 35 | Caching utilities and metadata |
-| `user_config.py` | 22 | YAML config file management |
-| `git_ctx.py` | 29 | Git context collection and filtering |
+| `formatters.py` | 21 | Commit message formatting and validation |
+| `cache.py` | 34 | Caching utilities and metadata |
+| `user_config.py` | 20 | Repository YAML config file management |
+| `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
+| `git_ctx.py` | 31 | Git context collection and filtering |
 | `llm/base.py` | 27 | JSON parsing, schema validation |
-| `llm/*.py` providers | 23 | All LLM provider classes |
-| `cli.py` | 17 | CLI commands |
-| `config.py` | 22 | Configuration constants |
+| `llm/*.py` providers | 25 | All LLM provider classes |
+| `cli.py` | 30 | CLI commands and subcommands |
+| `config.py` | 24 | Configuration constants and enums |
 
 ### Project Structure
 
@@ -421,6 +422,7 @@ hunknote/
 ├── formatters.py       # Commit message formatting
 ├── git_ctx.py          # Git context collection
 ├── user_config.py      # Repository config management
+├── global_config.py    # Global user config (~/.hunknote/)
 └── llm/
     ├── __init__.py     # Provider factory
     ├── base.py         # Base classes and prompts
