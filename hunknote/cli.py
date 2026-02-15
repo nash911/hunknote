@@ -994,6 +994,21 @@ def main(
             else:
                 effective_scope = None
 
+            # Strip redundant scope: when type matches scope, scope should be null
+            # e.g., type="docs" with scope="docs" -> scope=null
+            # This prevents redundant headers like "docs(docs):"
+            commit_type = extended_data.type or extended_data.get_type("feat")
+            if effective_scope and commit_type:
+                redundant_scopes = {
+                    "docs": ["docs", "documentation", "doc"],
+                    "test": ["test", "tests", "testing"],
+                    "ci": ["ci", "pipeline", "workflows"],
+                    "build": ["build", "deps", "dependencies"],
+                }
+                if commit_type.lower() in redundant_scopes:
+                    if effective_scope.lower() in redundant_scopes[commit_type.lower()]:
+                        effective_scope = None
+
             # Apply effective scope to extended_data
             extended_data.scope = effective_scope
 
