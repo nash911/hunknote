@@ -150,38 +150,74 @@ GIT CONTEXT:
 {context_bundle}"""
 
 # User prompt template for Blueprint style (structured sections)
-USER_PROMPT_TEMPLATE_BLUEPRINT = """Given the following git context, produce a JSON object for a structured commit message with these keys:
-- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
-- "scope": string or null (the area of code affected, e.g., api, auth, ui, core)
-- "title": string (imperative mood, concise summary, <=60 chars)
-- "summary": string (2-4 sentences describing what changed and why - this is a paragraph, not bullets)
-- "sections": array of section objects, each with:
-  - "title": string (MUST be one of: Changes, Implementation, Testing, Documentation, Notes, Performance, Security, Config, API)
-  - "bullets": array of strings (concise bullet points for this section)
+USER_PROMPT_TEMPLATE_BLUEPRINT = """Analyze the git diff and produce a detailed, high-quality commit message as a JSON object.
 
-Rules:
-- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
-- "title" in imperative mood (e.g., "Add feature" not "Added feature").
-- "summary" should be a brief paragraph (2-4 sentences) explaining the change at a high level.
-- "sections" contains structured sections. Use ONLY these allowed titles:
-  * Changes: High-level user-visible or behavior changes, what was added/removed/updated
-  * Implementation: Key modules/files touched, architecture notes, refactors, edge cases handled
-  * Testing: Tests added/updated and what they cover, verification steps
-  * Documentation: Docs updated and what was clarified
-  * Notes: Compatibility, config precedence, migration notes, follow-ups
-  * Performance: Performance-related changes or considerations
-  * Security: Security-related changes or considerations
-  * Config: Configuration changes
-  * API: API changes or additions
-- Include only relevant sections. At minimum include "Changes" OR "Implementation".
-- Be concise - avoid repeating information across sections.
-- Only describe changes shown in the diff. Do not infer or assume other changes.
-- [FILE_CHANGES] shows:
-  * NEW files (created in this commit)
-  * MODIFIED files (already existed)
-  * DELETED files (removed in this commit)
-  * RENAMED files (moved/renamed in this commit).
-  Use these to write accurate descriptions.
+OUTPUT SCHEMA:
+{{
+  "type": "feat|fix|docs|refactor|perf|test|build|ci|chore|style|revert",
+  "scope": "string or null",
+  "title": "string (imperative, <=60 chars, no period)",
+  "summary": "string (2-4 sentences)",
+  "sections": [
+    {{"title": "Changes|Implementation|Testing|Documentation|Notes", "bullets": ["..."]}}
+  ]
+}}
+
+TYPE SELECTION (choose accurately based on the PRIMARY purpose of the change):
+- feat: New feature or capability for users
+- fix: Bug fix, error correction, or improvement to existing behavior
+- docs: Documentation only (no code logic changes)
+- refactor: Code restructuring without changing behavior
+- perf: Performance improvement
+- test: Adding or updating tests only
+- build: Build system or dependencies
+- ci: CI/CD configuration
+- chore: Maintenance, tooling, or other non-user-facing changes
+
+TITLE: Write a clear, specific title that captures the essence of the change. Use imperative mood ("Add", "Fix", "Update", not "Added", "Fixed", "Updated").
+
+SUMMARY: Write 2-4 sentences that explain:
+- WHAT problem this change addresses or what it accomplishes
+- WHY this change was needed (the motivation)
+- The high-level approach taken
+
+SECTIONS - Include ALL that apply based on files changed:
+
+"Changes" (ALWAYS include):
+- What user-visible behavior changed
+- What was added, removed, or modified from a user perspective
+- Be specific: name the features, options, or behaviors affected
+
+"Implementation" (include if .py/.js/.ts/code files modified):
+- Key code changes: functions/classes added or modified
+- Architecture decisions or patterns used
+- Important logic changes or edge cases handled
+- Reference specific modules or files when relevant
+
+"Testing" (REQUIRED if test files modified):
+- What tests were added or updated
+- What functionality the tests cover
+- Test count changes if significant
+
+"Documentation" (REQUIRED if README.md, docs/, or .md files modified):
+- What documentation was added or updated
+- What was clarified or expanded
+
+"Notes" (include when relevant):
+- Breaking changes or migration considerations
+- Configuration changes users need to know
+- Follow-up work or known limitations
+- Compatibility notes
+
+QUALITY GUIDELINES:
+1. Each bullet should be specific and informative, not generic
+2. BAD: "Update the code" / "Fix the bug" / "Add changes"
+3. GOOD: "Add strip_type_prefix() function to remove duplicate type prefixes" / "Fix double 'feat:' prefix when title already contains type"
+4. Reference actual function names, file names, or features from the diff
+5. Each section should have 2-5 substantive bullets
+6. Avoid repeating the same information across sections
+
+Output ONLY valid JSON. No markdown fences. No commentary.
 
 GIT CONTEXT:
 {context_bundle}"""

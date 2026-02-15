@@ -324,11 +324,11 @@ class TestStyleSpecificPromptTemplates:
         assert "Notes" in USER_PROMPT_TEMPLATE_BLUEPRINT
 
     def test_blueprint_template_mentions_optional_sections(self):
-        """Test that blueprint template mentions optional sections."""
+        """Test that blueprint template mentions quality guidelines."""
         from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
-        assert "Performance" in USER_PROMPT_TEMPLATE_BLUEPRINT
-        assert "Security" in USER_PROMPT_TEMPLATE_BLUEPRINT
-        assert "API" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        # The new prompt focuses on quality guidelines rather than optional sections
+        assert "QUALITY GUIDELINES" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "specific and informative" in USER_PROMPT_TEMPLATE_BLUEPRINT
 
     def test_all_templates_mention_json(self):
         """Test that all templates mention JSON output."""
@@ -345,15 +345,15 @@ class TestStyleSpecificPromptTemplates:
             assert "JSON" in template
 
     def test_all_templates_mention_file_changes(self):
-        """Test that all templates mention FILE_CHANGES section."""
+        """Test that non-blueprint templates mention FILE_CHANGES section."""
         from hunknote.llm.base import (
             USER_PROMPT_TEMPLATE_DEFAULT,
-            USER_PROMPT_TEMPLATE_BLUEPRINT,
             USER_PROMPT_TEMPLATE_CONVENTIONAL,
             USER_PROMPT_TEMPLATE_TICKET,
             USER_PROMPT_TEMPLATE_KERNEL,
         )
-        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_BLUEPRINT,
+        # Blueprint uses a different format focused on quality guidelines
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT,
                          USER_PROMPT_TEMPLATE_CONVENTIONAL, USER_PROMPT_TEMPLATE_TICKET,
                          USER_PROMPT_TEMPLATE_KERNEL]:
             assert "FILE_CHANGES" in template
