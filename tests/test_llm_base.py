@@ -55,6 +55,38 @@ class TestLLMResult:
         assert result.output_tokens == 50
         assert result.commit_json.title == "Test"
 
+    def test_create_result_with_raw_response(self):
+        """Test creating LLMResult with raw_response."""
+        commit_json = CommitMessageJSON(
+            title="Test",
+            body_bullets=["Change 1"],
+        )
+        raw = '{"title": "Test", "body_bullets": ["Change 1"]}'
+        result = LLMResult(
+            commit_json=commit_json,
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            raw_response=raw,
+        )
+
+        assert result.raw_response == raw
+
+    def test_raw_response_default_empty(self):
+        """Test that raw_response defaults to empty string."""
+        commit_json = CommitMessageJSON(
+            title="Test",
+            body_bullets=["Change 1"],
+        )
+        result = LLMResult(
+            commit_json=commit_json,
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        assert result.raw_response == ""
+
 
 class TestParseJsonResponse:
     """Tests for parse_json_response function."""

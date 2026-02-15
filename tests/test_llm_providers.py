@@ -67,6 +67,28 @@ class TestGetProvider:
         provider = get_provider(LLMProvider.OPENAI, model="gpt-4-turbo")
         assert provider.model == "gpt-4-turbo"
 
+    def test_default_style(self):
+        """Test provider with default style."""
+        provider = get_provider(LLMProvider.GOOGLE)
+        assert provider.style == "default"
+
+    def test_custom_style(self):
+        """Test provider with custom style."""
+        provider = get_provider(LLMProvider.GOOGLE, style="blueprint")
+        assert provider.style == "blueprint"
+
+    def test_style_with_model(self):
+        """Test provider with both model and style."""
+        provider = get_provider(LLMProvider.OPENAI, model="gpt-4o", style="conventional")
+        assert provider.model == "gpt-4o"
+        assert provider.style == "conventional"
+
+    def test_unsupported_provider_raises_error(self):
+        """Test that unsupported provider raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            get_provider("invalid_provider")
+        assert "Unsupported provider" in str(exc_info.value)
+
 
 class TestAnthropicProvider:
     """Tests for AnthropicProvider."""
@@ -87,6 +109,20 @@ class TestAnthropicProvider:
 
         provider = AnthropicProvider(model="claude-3-opus-latest")
         assert provider.model == "claude-3-opus-latest"
+
+    def test_default_style(self):
+        """Test default style is set."""
+        from hunknote.llm.anthropic_provider import AnthropicProvider
+
+        provider = AnthropicProvider()
+        assert provider.style == "default"
+
+    def test_custom_style(self):
+        """Test custom style."""
+        from hunknote.llm.anthropic_provider import AnthropicProvider
+
+        provider = AnthropicProvider(style="blueprint")
+        assert provider.style == "blueprint"
 
     def test_missing_api_key_raises_error(self):
         """Test that missing API key raises error."""

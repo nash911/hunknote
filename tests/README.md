@@ -4,7 +4,7 @@ Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **409 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **436 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
@@ -23,16 +23,16 @@ This test suite contains **409 unit tests** covering all modules of the hunknote
 tests/
 ├── __init__.py             # Test package init
 ├── conftest.py             # Shared fixtures
-├── test_cache.py           # Cache module tests (34 tests)
+├── test_cache.py           # Cache module tests (40 tests)
 ├── test_cli.py             # CLI command tests (42 tests)
 ├── test_config.py          # Configuration tests (24 tests)
 ├── test_formatters.py      # Formatters module tests (21 tests)
 ├── test_git_ctx.py         # Git context tests (31 tests)
 ├── test_global_config.py   # Global config tests (26 tests)
-├── test_llm_base.py        # LLM base module tests (27 tests)
-├── test_llm_providers.py   # LLM provider tests (25 tests)
+├── test_llm_base.py        # LLM base module tests (51 tests)
+├── test_llm_providers.py   # LLM provider tests (31 tests)
 ├── test_scope.py           # Scope inference tests (54 tests)
-├── test_styles.py          # Style profiles tests (55 tests)
+├── test_styles.py          # Style profiles tests (96 tests)
 ├── test_user_config.py     # User config tests (20 tests)
 └── README.md               # This file
 ```
@@ -48,8 +48,8 @@ pytest tests/
 # Or with verbose output
 pytest tests/ -v
 
-# With coverage report (if pytest-cov is installed)
-pytest tests/ --cov=hunknote
+# Quick summary
+pytest tests/ -q
 ```
 
 ### Run Specific Test File
@@ -75,23 +75,56 @@ pytest tests/test_formatters.py::TestCommitMessageJSON::test_valid_commit_messag
 # Run tests matching a pattern
 pytest tests/ -k "cache"
 pytest tests/ -k "provider"
+pytest tests/ -k "blueprint"
 ```
 
 ## Test Coverage by Module
 
 | Module | Test File | Tests | Description |
 |--------|-----------|-------|-------------|
-| `formatters.py` | `test_formatters.py` | 21 | Commit message formatting and Pydantic validation |
-| `cache.py` | `test_cache.py` | 34 | Caching utilities, hash computation, metadata |
-| `user_config.py` | `test_user_config.py` | 20 | Repository YAML config file management |
-| `global_config.py` | `test_global_config.py` | 26 | Global user configuration (~/.hunknote/) |
-| `git_ctx.py` | `test_git_ctx.py` | 31 | Git context collection and filtering |
-| `styles.py` | `test_styles.py` | 87 | Commit style profiles and rendering (incl. blueprint) |
-| `scope.py` | `test_scope.py` | 54 | Scope inference from file paths |
-| `llm/base.py` | `test_llm_base.py` | 57 | JSON parsing, schema validation, style prompts |
-| `llm/*.py` | `test_llm_providers.py` | 25 | All LLM provider classes |
+| `cache.py` | `test_cache.py` | 40 | Caching utilities, hash computation, metadata, raw JSON storage |
 | `cli.py` | `test_cli.py` | 42 | CLI commands, config, style, and ignore management |
 | `config.py` | `test_config.py` | 24 | Configuration constants and enums |
+| `formatters.py` | `test_formatters.py` | 21 | Commit message formatting and Pydantic validation |
+| `git_ctx.py` | `test_git_ctx.py` | 31 | Git context collection and filtering |
+| `global_config.py` | `test_global_config.py` | 26 | Global user configuration (~/.hunknote/) |
+| `llm/base.py` | `test_llm_base.py` | 51 | JSON parsing, schema validation, style prompts, LLMResult |
+| `llm/*.py` | `test_llm_providers.py` | 31 | All LLM provider classes and factory function |
+| `scope.py` | `test_scope.py` | 54 | Scope inference from file paths |
+| `styles.py` | `test_styles.py` | 96 | Commit style profiles and rendering (default, blueprint, conventional, ticket, kernel) |
+| `user_config.py` | `test_user_config.py` | 20 | Repository YAML config file management |
+
+## Key Test Areas
+
+### Cache Module (`test_cache.py`)
+- Cache file paths (hash, message, metadata, raw JSON response)
+- Context hash computation
+- Cache validity checking
+- Save/load operations
+- Cache invalidation (including LLM response cleanup)
+- Staged file extraction from git status
+
+### LLM Providers (`test_llm_providers.py`)
+- Provider factory function (`get_provider`)
+- Each provider's default model and custom model support
+- Style parameter support for all providers
+- API key handling and error cases
+- Provider-specific features (e.g., Google thinking models)
+
+### Style Profiles (`test_styles.py`)
+- All five style profiles: default, blueprint, conventional, ticket, kernel
+- Extended commit JSON schema with sections
+- Type prefix stripping
+- Scope handling and overrides
+- Blueprint section rendering and ordering
+- Ticket extraction from branch names
+- Commit type inference
+
+### Scope Inference (`test_scope.py`)
+- Multiple inference strategies (auto, monorepo, path-prefix, mapping)
+- Stop word filtering
+- Confidence thresholds
+- Real-world project scenarios (Django, React, monorepo)
 
 ## Fixtures
 

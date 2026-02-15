@@ -15,6 +15,7 @@ from hunknote.cache import (
     get_hash_file,
     get_message_file,
     get_metadata_file,
+    get_raw_json_file,
     invalidate_cache,
     is_cache_valid,
     load_cache_metadata,
@@ -78,6 +79,14 @@ class TestCacheFilePaths:
 
     def test_get_metadata_file(self, temp_dir):
         """Test metadata file path."""
+        path = get_metadata_file(temp_dir)
+        assert path.name == "hunknote_metadata.json"
+
+    def test_get_raw_json_file(self, temp_dir):
+        """Test raw JSON response file path."""
+        path = get_raw_json_file(temp_dir)
+        assert path.name == "hunknote_llm_response.json"
+        assert path.parent.name == ".hunknote"
         path = get_metadata_file(temp_dir)
         assert path.name == "hunknote_metadata.json"
 
