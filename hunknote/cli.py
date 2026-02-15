@@ -35,6 +35,7 @@ from hunknote.git_ctx import (
     get_branch,
 )
 from hunknote.llm import LLMError, MissingAPIKeyError, generate_commit_json
+from hunknote.llm.base import parse_json_response, JSONParseError
 from hunknote.user_config import (
     add_ignore_pattern,
     get_ignore_patterns,
@@ -913,26 +914,27 @@ def main(
         staged_diff = get_staged_diff(max_chars=max_diff_chars)
         diff_preview = get_diff_preview(staged_diff, max_chars=500)
 
-        # Step 5: Determine effective scope (CLI override > inference > none)
-        effective_scope = None
+        # Step 5: Determine CLI scope override and run heuristics (for debug info)
+        # Priority order: CLI override > LLM suggested > Heuristics inference
+        cli_scope_override = None
         scope_result = None
 
         if no_scope:
-            # User explicitly disabled scope
-            effective_scope = None
+            # User explicitly disabled scope - will be handled later
+            cli_scope_override = None
         elif scope and scope.lower() != "auto":
-            # User provided explicit scope
-            effective_scope = scope
-        elif scope_config.enabled and not no_scope:
-            # Infer scope from staged files
-            scope_result = infer_scope(staged_files, scope_config)
-            if scope_result.scope:
-                effective_scope = scope_result.scope
-                if debug:
-                    typer.echo(f"Inferred scope: {scope_result.scope} ({scope_result.reason})", err=True)
+            # User provided explicit scope via CLI
+            cli_scope_override = scope
 
-        # Step 6: Compute context hash (include style and scope for cache invalidation)
-        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={effective_scope}|ticket={ticket}"
+        # Run heuristics for debug info (but don't use as primary source)
+        if scope_config.enabled and not no_scope:
+            scope_result = infer_scope(staged_files, scope_config)
+            if scope_result.scope and debug:
+                typer.echo(f"Inferred scope: {scope_result.scope} ({scope_result.reason})", err=True)
+
+        # For cache hash, we use CLI override if provided (LLM scope is part of context anyway)
+        effective_scope_for_hash = cli_scope_override
+        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={effective_scope_for_hash}|ticket={ticket}"
         current_hash = compute_context_hash(hash_input)
 
         # Step 7: Check cache validity (unless --regenerate)
@@ -943,8 +945,29 @@ def main(
             typer.echo("Using cached commit message...", err=True)
             message = load_cached_message(repo_root)
             metadata = load_cache_metadata(repo_root)
-            llm_suggested_scope = None  # Not available when using cache
-            llm_raw_response = None  # Not available when using cache
+
+            # Load raw JSON response from stored file and extract LLM suggested scope
+            llm_raw_response = load_raw_json_response(repo_root)
+            llm_suggested_scope = None
+            if llm_raw_response:
+                try:
+                    # Use parse_json_response to handle markdown fences
+                    parsed_json = parse_json_response(llm_raw_response)
+                    llm_suggested_scope = parsed_json.get("scope")
+                except (JSONParseError, AttributeError):
+                    pass  # Could not parse, leave as None
+
+            # Determine effective scope: CLI override > LLM suggested > Heuristics
+            if no_scope:
+                effective_scope = None
+            elif cli_scope_override:
+                effective_scope = cli_scope_override
+            elif llm_suggested_scope:
+                effective_scope = llm_suggested_scope
+            elif scope_result and scope_result.scope:
+                effective_scope = scope_result.scope
+            else:
+                effective_scope = None
         else:
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
@@ -953,15 +976,26 @@ def main(
             # llm_result.commit_json is already an ExtendedCommitJSON with all style fields
             extended_data = llm_result.commit_json
 
-            # Capture LLM-suggested scope before potentially overriding it
+            # Capture LLM-suggested scope
             llm_suggested_scope = extended_data.scope
 
             # Capture raw LLM response for debugging
             llm_raw_response = llm_result.raw_response
 
-            # Apply scope override if provided
-            if effective_scope:
-                extended_data.scope = effective_scope
+            # Determine effective scope: CLI override > LLM suggested > Heuristics
+            if no_scope:
+                effective_scope = None
+            elif cli_scope_override:
+                effective_scope = cli_scope_override
+            elif llm_suggested_scope:
+                effective_scope = llm_suggested_scope
+            elif scope_result and scope_result.scope:
+                effective_scope = scope_result.scope
+            else:
+                effective_scope = None
+
+            # Apply effective scope to extended_data
+            extended_data.scope = effective_scope
 
             # Apply ticket override if provided
             if ticket:
@@ -1026,13 +1060,14 @@ def main(
                 typer.echo(f"\n[SCOPE INFERENCE]", err=True)
                 if scope_result:
                     typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
-                    typer.echo(f"  Inferred scope: {scope_result.scope or 'None'}", err=True)
+                    typer.echo(f"  Inferred scope (heuristics): {scope_result.scope or 'None'}", err=True)
                     typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
                     typer.echo(f"  Reason: {scope_result.reason}", err=True)
                 else:
-                    typer.echo(f"  Inferred scope: None (inference not run)", err=True)
+                    typer.echo(f"  Inferred scope (heuristics): None (inference not run)", err=True)
                 typer.echo(f"  LLM suggested scope: {llm_suggested_scope or 'None'}", err=True)
-                typer.echo(f"  Final scope used: {effective_scope or (llm_suggested_scope if not effective_scope else None) or 'None'}", err=True)
+                typer.echo(f"  CLI override: {cli_scope_override or 'None'}", err=True)
+                typer.echo(f"  Final scope used: {effective_scope or 'None'}", err=True)
             else:
                 typer.echo("No cache metadata found.", err=True)
             raise typer.Exit(0)
