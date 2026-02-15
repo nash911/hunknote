@@ -231,7 +231,7 @@ def invalidate_cache(repo_root: Path) -> None:
     Args:
         repo_root: The root directory of the git repository.
     """
-    for file_getter in [get_hash_file, get_message_file, get_metadata_file]:
+    for file_getter in [get_hash_file, get_message_file, get_metadata_file, get_raw_json_file]:
         file_path = file_getter(repo_root)
         if file_path.exists():
             file_path.unlink()

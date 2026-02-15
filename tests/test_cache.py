@@ -386,6 +386,7 @@ class TestInvalidateCache:
             output_tokens=50,
             staged_files=[],
             diff_preview="",
+            raw_response='{"type": "feat", "scope": "test"}',
         )
 
         # Verify files exist
@@ -393,6 +394,7 @@ class TestInvalidateCache:
         assert (cache_dir / "hunknote_context_hash.txt").exists()
         assert (cache_dir / "hunknote_message.txt").exists()
         assert (cache_dir / "hunknote_metadata.json").exists()
+        assert (cache_dir / "hunknote_llm_response.json").exists()
 
         # Invalidate
         invalidate_cache(temp_dir)
@@ -401,6 +403,7 @@ class TestInvalidateCache:
         assert not (cache_dir / "hunknote_context_hash.txt").exists()
         assert not (cache_dir / "hunknote_message.txt").exists()
         assert not (cache_dir / "hunknote_metadata.json").exists()
+        assert not (cache_dir / "hunknote_llm_response.json").exists()
 
     def test_handles_missing_files(self, temp_dir):
         """Test that invalidate doesn't error on missing files."""
