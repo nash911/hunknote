@@ -77,45 +77,46 @@ Rules:
 - Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
 - Subject in imperative mood (e.g., "Add feature" not "Added feature").
 
-TYPE SELECTION - CRITICAL: Look at FILE EXTENSIONS first, then decide type:
-- If ANY .py/.js/.ts/.go/.rs/.java file is modified → type is feat/fix/refactor/perf (NEVER docs)
-- "docs" ONLY when ALL changed files are .md/.rst/.txt documentation files
-- "test" ONLY when ALL changed files are in tests/ or named *_test.py/test_*.py
+=== TYPE SELECTION - ABSOLUTE RULES (FILE EXTENSION DETERMINES TYPE) ===
 
-Type definitions:
-  * feat: new feature or capability
-  * fix: bug fix, correction, OR improving existing behavior to work better/correctly
-  * docs: ONLY standalone doc files (.md, .rst) - NEVER for .py files regardless of content
-  * refactor: ONLY internal code restructuring with NO behavior change (same inputs → same outputs)
+STEP 1: Look at [FILE_CHANGES] and identify ALL file extensions being changed.
+
+STEP 2: Apply these ABSOLUTE rules:
+
+Rule A: If ALL changed files are .md/.rst/.txt → type MUST be "docs"
+        (Even if docs describe features/fixes - the type is still "docs")
+
+Rule B: If ALL changed files are test files → type MUST be "test"
+
+Rule C: If ALL changed files are CI files → type MUST be "ci"
+
+Rule D: If ANY .py/.js/.ts/.go/.rs/.java code file is changed → type is feat/fix/refactor
+
+CRITICAL: Type is determined by WHAT FILES changed, NOT by what the content describes.
+- Documentation describing new features → type = "docs"
+- Documentation describing bug fixes → type = "docs"
+- Code that adds features → type = "feat"
+- Code that fixes bugs → type = "fix"
+
+Type definitions (apply after file-based rules):
+  * docs: ONLY for .md/.rst/README files - use this when ALL files are documentation
+  * test: ONLY for test files
+  * ci: ONLY for CI config files
+  * feat: new feature (code changes only)
+  * fix: bug fix or behavior improvement (code changes only)
+  * refactor: code restructuring with no behavior change
   * perf: performance improvement
-  * test: ONLY test files
   * build: build system or dependencies
-  * ci: CI config files (.github/, .gitlab-ci.yml)
   * chore: maintenance, tooling
-  * style: formatting only (no logic change)
-  * revert: reverting a commit
-
-FIX vs REFACTOR - choose carefully:
-- "fix" = change improves/corrects behavior, fixes a problem, or makes something work better
-- "refactor" = ONLY when behavior stays exactly the same, just internal code structure changes
-- If the change makes the code behave differently or better → use "fix", NOT "refactor"
-- If changing prompts/templates to improve output quality → use "fix" (behavior is improved)
-
-IMPORTANT: A .py file containing prompts/text/instructions is CODE, not documentation. Use fix/feat/refactor.
+  * style: formatting only
 
 - "scope" should identify the component/module affected.
-- AVOID REDUNDANT SCOPE: If scope would just repeat the type, set scope to null:
-  * type="test" with scope="tests" → set scope to null (redundant)
-  * type="docs" with scope="docs" or scope="documentation" → set scope to null
-  * type="ci" with scope="ci" → set scope to null
-  * type="build" with scope="build" or scope="deps" → set scope to null
-- Only describe changes shown in the diff. Do not infer or assume other changes.
-- [FILE_CHANGES] shows:
-  * NEW files (created in this commit)
-  * MODIFIED files (already existed)
-  * DELETED files (removed in this commit)
-  * RENAMED files (moved/renamed in this commit).
-  Use these to write accurate descriptions.
+- AVOID REDUNDANT SCOPE: If scope would repeat the type, set scope to null:
+  * type="docs" → scope should be null (not "docs" or "documentation")
+  * type="test" → scope should be null (not "tests")
+  * type="ci" → scope should be null (not "ci")
+- Only describe changes shown in the diff.
+- [FILE_CHANGES] shows NEW/MODIFIED/DELETED/RENAMED files.
 
 GIT CONTEXT:
 {context_bundle}"""
@@ -188,30 +189,43 @@ OUTPUT SCHEMA:
   ]
 }}
 
-TYPE SELECTION - CRITICAL: Look at FILE EXTENSIONS in [FILE_CHANGES] first:
-- If ANY .py/.js/.ts/.go/.rs/.java file is modified → type is feat/fix/refactor/perf (NEVER "docs")
-- "docs" ONLY when ALL changed files are .md/.rst/.txt documentation files
-- "test" ONLY when ALL changed files are in tests/ or named *_test.py/test_*.py
+=== TYPE SELECTION - ABSOLUTE RULES (FILE EXTENSION DETERMINES TYPE) ===
 
-Type definitions:
-- feat: New feature or capability for users
-- fix: Bug fix, error correction, OR improving existing behavior to work better/correctly
-- docs: ONLY standalone doc files (.md, .rst) - NEVER use for .py files regardless of their content
-- refactor: ONLY internal code restructuring with NO behavior change (same inputs → same outputs)
+STEP 1: Look at [FILE_CHANGES] section and list ALL file extensions being changed.
+
+STEP 2: Apply these ABSOLUTE rules based on file extensions:
+
+Rule A: If ALL changed files are .md/.rst/.txt files → type MUST be "docs"
+        (Even if the docs describe features, fixes, or tests - it's still "docs")
+
+Rule B: If ALL changed files are test files → type MUST be "test"
+        (Test files = tests/, *_test.py, test_*.py, *.spec.ts, etc.)
+
+Rule C: If ALL changed files are CI files → type MUST be "ci"
+        (CI files = .github/, .gitlab-ci.yml, .circleci/, Jenkinsfile, etc.)
+
+Rule D: If ANY .py/.js/.ts/.go/.rs/.java code file is changed → type is feat/fix/refactor
+        (NEVER use "docs" for code files, even if they contain text/prompts)
+
+CRITICAL: The type is determined by WHAT FILES are changed, NOT by what the content describes.
+- Documentation that describes new features → type is "docs" (not "feat")
+- Documentation that describes bug fixes → type is "docs" (not "fix")
+- Code that improves behavior → type is "fix" or "feat" (not "docs")
+
+Type definitions (use only after applying file-based rules above):
+- feat: New feature or capability (only for code changes)
+- fix: Bug fix or behavior improvement (only for code changes)
+- docs: Documentation files only (.md, .rst, README, docs/)
+- refactor: Code restructuring with no behavior change
 - perf: Performance improvement
-- test: ONLY test files
+- test: Test files only
 - build: Build system or dependencies
-- ci: CI/CD configuration files (.github/, .gitlab-ci.yml)
-- chore: Maintenance, tooling, or other non-user-facing changes
+- ci: CI/CD configuration files
+- chore: Maintenance, tooling
 
-FIX vs REFACTOR - choose carefully:
-- "fix" = change improves/corrects behavior, fixes a problem, or makes something work better
-- "refactor" = ONLY when behavior stays exactly the same, just internal code structure changes
-- If the change makes the code behave differently or better → use "fix", NOT "refactor"
-- If changing prompts/templates to improve output quality → use "fix" (output behavior is improved)
-
-IMPORTANT: A .py file containing prompts, instructions, or text strings is CODE, not documentation.
-If you see base.py, cli.py, or any .py file in the diff → use fix/feat/refactor, NEVER "docs".
+FIX vs REFACTOR (for code changes only):
+- "fix" = change improves/corrects behavior
+- "refactor" = behavior stays exactly the same, only internal structure changes
 
 SCOPE RULES:
 Determine the primary component, module, or subsystem affected by analyzing the actual code changes.
