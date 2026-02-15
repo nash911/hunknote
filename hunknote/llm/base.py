@@ -156,7 +156,7 @@ USER_PROMPT_TEMPLATE_BLUEPRINT = """Analyze the git diff and produce a detailed,
 OUTPUT SCHEMA:
 {{
   "type": "feat|fix|docs|refactor|perf|test|build|ci|chore|style|revert",
-  "scope": "string or null",
+  "scope": "string identifying the affected component/module (provide this whenever possible)",
   "title": "string (imperative, <=60 chars, no period)",
   "summary": "string (2-4 sentences)",
   "sections": [
@@ -174,6 +174,13 @@ TYPE SELECTION (choose accurately based on the PRIMARY purpose of the change):
 - build: Build system or dependencies
 - ci: CI/CD configuration
 - chore: Maintenance, tooling, or other non-user-facing changes
+
+SCOPE (you SHOULD provide a scope - analyze the changes to determine it):
+Determine the primary component, module, or subsystem affected by analyzing the actual code changes.
+- Focus on WHAT the changes accomplish functionally, not just the file locations
+- Good scopes are concise identifiers: e.g., "auth", "api", "ui", "core", "database", "build", "ci", "cache", "parser", "db", "config", "cli", "docs", "tests", "refactor", "performance", "security", "logging", "monitoring"
+- If changes affect multiple areas, choose the most significant one as the scope
+- Only omit scope (use null) if changes are truly generic with no identifiable focus
 
 TITLE: Write a clear, specific title that captures the essence of the change. Use imperative mood ("Add", "Fix", "Update", not "Added", "Fixed", "Updated").
 

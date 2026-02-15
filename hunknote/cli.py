@@ -936,6 +936,7 @@ def main(
             typer.echo("Using cached commit message...", err=True)
             message = load_cached_message(repo_root)
             metadata = load_cache_metadata(repo_root)
+            llm_suggested_scope = None  # Not available when using cache
         else:
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
@@ -943,6 +944,9 @@ def main(
 
             # llm_result.commit_json is already an ExtendedCommitJSON with all style fields
             extended_data = llm_result.commit_json
+
+            # Capture LLM-suggested scope before potentially overriding it
+            llm_suggested_scope = extended_data.scope
 
             # Apply scope override if provided
             if effective_scope:
@@ -996,12 +1000,16 @@ def main(
             if metadata:
                 _display_debug_info(repo_root, metadata, message, cache_valid)
                 # Show scope inference info
+                typer.echo(f"\n[SCOPE INFERENCE]", err=True)
                 if scope_result:
-                    typer.echo(f"\n[SCOPE INFERENCE]", err=True)
                     typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
-                    typer.echo(f"  Inferred: {scope_result.scope or 'None'}", err=True)
+                    typer.echo(f"  Inferred scope: {scope_result.scope or 'None'}", err=True)
                     typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
                     typer.echo(f"  Reason: {scope_result.reason}", err=True)
+                else:
+                    typer.echo(f"  Inferred scope: None (inference not run)", err=True)
+                typer.echo(f"  LLM suggested scope: {llm_suggested_scope or 'None'}", err=True)
+                typer.echo(f"  Final scope used: {effective_scope or (llm_suggested_scope if not effective_scope else None) or 'None'}", err=True)
             else:
                 typer.echo("No cache metadata found.", err=True)
             raise typer.Exit(0)
