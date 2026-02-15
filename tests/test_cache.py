@@ -171,6 +171,42 @@ class TestSaveCache:
         assert (cache_dir / "hunknote_message.txt").exists()
         assert (cache_dir / "hunknote_metadata.json").exists()
 
+    def test_saves_raw_json_response(self, temp_dir):
+        """Test that raw JSON response is saved."""
+        raw_json = '{"type": "feat", "scope": "api", "title": "Add endpoint"}'
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="abc123",
+            message="Test commit message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file1.py"],
+            diff_preview="diff preview",
+            raw_response=raw_json,
+        )
+
+        cache_dir = temp_dir / ".hunknote"
+        assert (cache_dir / "hunknote_llm_response.json").exists()
+        assert (cache_dir / "hunknote_llm_response.json").read_text() == raw_json
+
+    def test_raw_json_not_saved_when_empty(self, temp_dir):
+        """Test that raw JSON file is not created when empty."""
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="abc123",
+            message="Test commit message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file1.py"],
+            diff_preview="diff preview",
+            raw_response="",
+        )
+
+        cache_dir = temp_dir / ".hunknote"
+        assert not (cache_dir / "hunknote_llm_response.json").exists()
+
     def test_hash_content(self, temp_dir):
         """Test that hash is saved correctly."""
         save_cache(
@@ -223,6 +259,56 @@ class TestSaveCache:
         assert metadata.input_tokens == 200
         assert metadata.output_tokens == 75
         assert metadata.staged_files == ["a.py", "b.py"]
+
+
+class TestLoadRawJsonResponse:
+    """Tests for load_raw_json_response function."""
+
+    def test_loads_existing_json(self, temp_dir):
+        """Test loading existing raw JSON response."""
+        from hunknote.cache import load_raw_json_response
+
+        raw_json = '{"type": "feat", "scope": "api"}'
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=[],
+            diff_preview="",
+            raw_response=raw_json,
+        )
+
+        result = load_raw_json_response(temp_dir)
+        assert result == raw_json
+
+    def test_returns_none_when_not_exists(self, temp_dir):
+        """Test returns None when file doesn't exist."""
+        from hunknote.cache import load_raw_json_response
+
+        result = load_raw_json_response(temp_dir)
+        assert result is None
+
+    def test_returns_none_when_cache_without_json(self, temp_dir):
+        """Test returns None when cache exists but no JSON file."""
+        from hunknote.cache import load_raw_json_response
+
+        # Save without raw_response
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=[],
+            diff_preview="",
+        )
+
+        result = load_raw_json_response(temp_dir)
+        assert result is None
 
 
 class TestUpdateMessageCache:

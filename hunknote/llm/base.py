@@ -34,6 +34,7 @@ class LLMResult:
     model: str
     input_tokens: int
     output_tokens: int
+    raw_response: str = ""  # Raw LLM response for debugging
 
 
 # System prompt for the LLM (shared across all providers)

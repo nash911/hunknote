@@ -72,6 +72,18 @@ def get_metadata_file(repo_root: Path) -> Path:
     return get_cache_dir(repo_root) / "hunknote_metadata.json"
 
 
+def get_raw_json_file(repo_root: Path) -> Path:
+    """Return path to the raw LLM JSON response file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Path to hunknote_llm_response.json.
+    """
+    return get_cache_dir(repo_root) / "hunknote_llm_response.json"
+
+
 def compute_context_hash(context_bundle: str) -> str:
     """Compute SHA256 hash of the context bundle.
 
@@ -113,6 +125,7 @@ def save_cache(
     output_tokens: int,
     staged_files: list[str],
     diff_preview: str,
+    raw_response: str = "",
 ) -> None:
     """Save the generated message and its metadata to cache.
 
@@ -125,12 +138,17 @@ def save_cache(
         output_tokens: Number of output tokens generated.
         staged_files: List of staged file paths.
         diff_preview: Preview of the staged diff.
+        raw_response: Raw JSON response from the LLM.
     """
     # Save hash
     get_hash_file(repo_root).write_text(context_hash)
 
     # Save message
     get_message_file(repo_root).write_text(message)
+
+    # Save raw LLM response
+    if raw_response:
+        get_raw_json_file(repo_root).write_text(raw_response)
 
     # Save metadata
     metadata = CacheMetadata(
@@ -168,6 +186,21 @@ def load_cached_message(repo_root: Path) -> str:
         The cached commit message string.
     """
     return get_message_file(repo_root).read_text()
+
+
+def load_raw_json_response(repo_root: Path) -> Optional[str]:
+    """Load the raw LLM JSON response from cache.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        The raw JSON response string or None if not found.
+    """
+    raw_json_file = get_raw_json_file(repo_root)
+    if raw_json_file.exists():
+        return raw_json_file.read_text()
+    return None
 
 
 def load_cache_metadata(repo_root: Path) -> Optional[CacheMetadata]:

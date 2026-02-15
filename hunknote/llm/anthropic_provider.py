@@ -98,4 +98,5 @@ class AnthropicProvider(BaseLLMProvider):
             model=self.model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            raw_response=raw_response,
         )

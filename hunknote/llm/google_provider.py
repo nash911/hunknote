@@ -171,6 +171,7 @@ class GoogleProvider(BaseLLMProvider):
             model=self.model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            raw_response=raw_response,
         )
 
     def _generate_with_fallback(self, client, full_prompt: str, base_config_kwargs: dict):

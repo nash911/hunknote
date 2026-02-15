@@ -20,6 +20,7 @@ from hunknote.cache import (
     is_cache_valid,
     load_cache_metadata,
     load_cached_message,
+    load_raw_json_response,
     save_cache,
     update_message_cache,
 )
@@ -816,6 +817,12 @@ def main(
         "-d",
         help="Show full metadata of the cached hunknote message",
     ),
+    show_json: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Show the raw JSON response from the LLM for debugging",
+    ),
     edit: bool = typer.Option(
         False,
         "--edit",
@@ -937,6 +944,7 @@ def main(
             message = load_cached_message(repo_root)
             metadata = load_cache_metadata(repo_root)
             llm_suggested_scope = None  # Not available when using cache
+            llm_raw_response = None  # Not available when using cache
         else:
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
@@ -947,6 +955,9 @@ def main(
 
             # Capture LLM-suggested scope before potentially overriding it
             llm_suggested_scope = extended_data.scope
+
+            # Capture raw LLM response for debugging
+            llm_raw_response = llm_result.raw_response
 
             # Apply scope override if provided
             if effective_scope:
@@ -982,7 +993,7 @@ def main(
                 no_scope=no_scope,
             )
 
-            # Save to cache
+            # Save to cache (including raw LLM response)
             save_cache(
                 repo_root=repo_root,
                 context_hash=current_hash,
@@ -992,10 +1003,22 @@ def main(
                 output_tokens=llm_result.output_tokens,
                 staged_files=staged_files,
                 diff_preview=diff_preview,
+                raw_response=llm_raw_response or "",
             )
             metadata = load_cache_metadata(repo_root)
 
-        # Step 8: Handle --debug flag
+        # Step 8a: Handle --json flag (show raw LLM output from stored file)
+        if show_json:
+            typer.echo("\n[RAW LLM RESPONSE]", err=True)
+            stored_json = load_raw_json_response(repo_root)
+            if stored_json:
+                typer.echo(stored_json, err=True)
+            else:
+                typer.echo("(Not available - no cached LLM response found. Run hunknote first to generate.)", err=True)
+            typer.echo("")
+            raise typer.Exit(0)
+
+        # Step 8b: Handle --debug flag
         if debug:
             if metadata:
                 _display_debug_info(repo_root, metadata, message, cache_valid)
