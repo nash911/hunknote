@@ -19,6 +19,7 @@ from hunknote.styles import (
     render_blueprint,
     render_commit_message_styled,
     sanitize_subject,
+    strip_type_prefix,
     wrap_text,
     extract_ticket_from_branch,
     infer_commit_type,
@@ -157,6 +158,57 @@ class TestSanitizeSubject:
         result = sanitize_subject(long_subject, max_length=72)
         assert len(result) == 72
         assert result.endswith("...")
+
+
+class TestStripTypePrefix:
+    """Tests for strip_type_prefix function."""
+
+    def test_strips_feat_prefix(self):
+        """Test stripping feat: prefix."""
+        result = strip_type_prefix("feat: Add new feature")
+        assert result == "Add new feature"
+
+    def test_strips_fix_prefix(self):
+        """Test stripping fix: prefix."""
+        result = strip_type_prefix("fix: Fix the bug")
+        assert result == "Fix the bug"
+
+    def test_strips_prefix_with_scope(self):
+        """Test stripping type(scope): prefix."""
+        result = strip_type_prefix("feat(api): Add endpoint")
+        assert result == "Add endpoint"
+
+    def test_strips_prefix_case_insensitive(self):
+        """Test stripping is case insensitive."""
+        result = strip_type_prefix("FEAT: Add feature")
+        assert result == "Add feature"
+
+    def test_no_prefix_unchanged(self):
+        """Test subject without prefix is unchanged."""
+        result = strip_type_prefix("Add new feature")
+        assert result == "Add new feature"
+
+    def test_strips_all_conventional_types(self):
+        """Test all conventional types are stripped."""
+        types = ["feat", "fix", "docs", "refactor", "perf", "test", "build", "ci", "chore"]
+        for t in types:
+            result = strip_type_prefix(f"{t}: Some change")
+            assert result == "Some change", f"Failed for type: {t}"
+
+    def test_preserves_similar_words(self):
+        """Test words starting with type names are preserved."""
+        result = strip_type_prefix("Feature addition completed")
+        assert result == "Feature addition completed"
+
+    def test_handles_empty_string(self):
+        """Test empty string handling."""
+        result = strip_type_prefix("")
+        assert result == ""
+
+    def test_handles_whitespace(self):
+        """Test whitespace handling."""
+        result = strip_type_prefix("  feat: Add feature  ")
+        assert result == "Add feature"
 
     def test_multiline_takes_first_line(self):
         """Test that only first line is used."""
@@ -706,6 +758,44 @@ class TestRenderBlueprint:
         assert "Implement secure authentication." in result
         assert "Changes:" in result
         assert "- Add login endpoint" in result
+
+    def test_blueprint_strips_double_type_prefix(self):
+        """Test blueprint strips type prefix from title to avoid double prefix."""
+        # This tests the bug fix for "feat: feat: Add feature"
+        data = ExtendedCommitJSON(
+            title="feat: Add user authentication",  # Title already has type prefix
+            type="feat",
+            scope="auth",
+            summary="Implement secure authentication.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Add login endpoint"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        # Should have exactly one "feat" prefix, not "feat: feat:"
+        assert "feat(auth): Add user authentication" in result
+        assert "feat: feat:" not in result
+        assert "feat(auth): feat:" not in result
+
+    def test_blueprint_strips_type_with_scope_in_title(self):
+        """Test blueprint strips type(scope): prefix from title."""
+        data = ExtendedCommitJSON(
+            title="feat(api): Add endpoint",  # Title has type(scope): prefix
+            type="feat",
+            scope="api",
+            summary="Add new API endpoint.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Add endpoint"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        # Should strip the prefix and build a clean header
+        assert "feat(api): Add endpoint" in result
+        assert "feat(api): feat(api):" not in result
 
     def test_blueprint_without_scope(self):
         """Test blueprint without scope."""

@@ -276,6 +276,44 @@ def wrap_text(text: str, width: int = 72, initial_indent: str = "", subsequent_i
     )
 
 
+def strip_type_prefix(subject: str, types: list[str] | None = None) -> str:
+    """Strip conventional commit type prefix from subject if present.
+
+    Handles formats like:
+    - "feat: Add feature" -> "Add feature"
+    - "feat(scope): Add feature" -> "Add feature"
+    - "fix: Fix bug" -> "Fix bug"
+
+    Args:
+        subject: The subject string that may contain a type prefix.
+        types: List of valid types. Defaults to CONVENTIONAL_TYPES.
+
+    Returns:
+        Subject with type prefix removed, or original if no prefix found.
+    """
+    if types is None:
+        types = CONVENTIONAL_TYPES
+
+    subject = subject.strip()
+
+    # Pattern: type: subject or type(scope): subject
+    for commit_type in types:
+        # Check for "type: " prefix
+        prefix = f"{commit_type}: "
+        if subject.lower().startswith(prefix.lower()):
+            return subject[len(prefix):].strip()
+
+        # Check for "type(scope): " prefix
+        if subject.lower().startswith(f"{commit_type}("):
+            # Find the closing ) and :
+            paren_end = subject.find(")")
+            if paren_end != -1 and len(subject) > paren_end + 1:
+                if subject[paren_end + 1] == ":":
+                    return subject[paren_end + 2:].strip()
+
+    return subject
+
+
 def sanitize_subject(subject: str, max_length: int = 72) -> str:
     """Sanitize and truncate the subject line.
 
@@ -372,6 +410,11 @@ def render_conventional(
 
     # Build header
     subject = data.get_subject()
+
+    # Strip any existing type prefix from subject (e.g., "feat: Add feature" -> "Add feature")
+    # This prevents double type prefixes like "feat: feat: Add feature"
+    subject = strip_type_prefix(subject, config.conventional_types)
+
     # Account for type, scope, colon, and space in max length
     header_prefix_len = len(commit_type) + 2  # "type: "
     if scope:
@@ -586,6 +629,11 @@ def render_blueprint(
 
     # Build header (conventional format)
     subject = data.get_subject()
+
+    # Strip any existing type prefix from subject (e.g., "feat: Add feature" -> "Add feature")
+    # This prevents double type prefixes like "feat: feat: Add feature"
+    subject = strip_type_prefix(subject, config.conventional_types)
+
     header_prefix_len = len(commit_type) + 2  # "type: "
     if scope:
         header_prefix_len += len(scope) + 2  # "(scope)"
