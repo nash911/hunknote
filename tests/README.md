@@ -4,7 +4,7 @@ Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **359 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **377 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
@@ -88,7 +88,7 @@ pytest tests/ -k "provider"
 | `git_ctx.py` | `test_git_ctx.py` | 31 | Git context collection and filtering |
 | `styles.py` | `test_styles.py` | 55 | Commit style profiles and rendering |
 | `scope.py` | `test_scope.py` | 54 | Scope inference from file paths |
-| `llm/base.py` | `test_llm_base.py` | 27 | JSON parsing, schema validation, prompts |
+| `llm/base.py` | `test_llm_base.py` | 45 | JSON parsing, schema validation, style prompts |
 | `llm/*.py` | `test_llm_providers.py` | 25 | All LLM provider classes |
 | `cli.py` | `test_cli.py` | 42 | CLI commands, config, style, and ignore management |
 | `config.py` | `test_config.py` | 24 | Configuration constants and enums |

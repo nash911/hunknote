@@ -247,3 +247,196 @@ class TestPromptTemplates:
         """Test that user prompt can be formatted."""
         formatted = USER_PROMPT_TEMPLATE.format(context_bundle="test context")
         assert "test context" in formatted
+
+
+class TestStyleSpecificPromptTemplates:
+    """Tests for style-specific prompt templates."""
+
+    def test_default_template_exists(self):
+        """Test that default template exists."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_DEFAULT
+        assert "{context_bundle}" in USER_PROMPT_TEMPLATE_DEFAULT
+        assert "title" in USER_PROMPT_TEMPLATE_DEFAULT
+        assert "body_bullets" in USER_PROMPT_TEMPLATE_DEFAULT
+
+    def test_conventional_template_exists(self):
+        """Test that conventional template exists."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "{context_bundle}" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "type" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "scope" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "subject" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "feat" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "fix" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_ticket_template_exists(self):
+        """Test that ticket template exists."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_TICKET
+        assert "{context_bundle}" in USER_PROMPT_TEMPLATE_TICKET
+        assert "ticket" in USER_PROMPT_TEMPLATE_TICKET
+        assert "subject" in USER_PROMPT_TEMPLATE_TICKET
+        assert "PROJ-123" in USER_PROMPT_TEMPLATE_TICKET or "ABC-123" in USER_PROMPT_TEMPLATE_TICKET
+
+    def test_kernel_template_exists(self):
+        """Test that kernel template exists."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_KERNEL
+        assert "{context_bundle}" in USER_PROMPT_TEMPLATE_KERNEL
+        assert "subsystem" in USER_PROMPT_TEMPLATE_KERNEL
+        assert "subject" in USER_PROMPT_TEMPLATE_KERNEL
+
+    def test_conventional_template_has_all_types(self):
+        """Test that conventional template includes all commit types."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        types = ["feat", "fix", "docs", "refactor", "perf", "test", "build", "ci", "chore", "style", "revert"]
+        for commit_type in types:
+            assert commit_type in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_conventional_template_mentions_breaking_change(self):
+        """Test that conventional template mentions breaking changes."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "breaking_change" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_ticket_template_mentions_branch_extraction(self):
+        """Test that ticket template mentions extracting from branch."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_TICKET
+        assert "branch" in USER_PROMPT_TEMPLATE_TICKET.lower()
+
+    def test_kernel_template_mentions_lowercase(self):
+        """Test that kernel template mentions lowercase preference."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_KERNEL
+        assert "lowercase" in USER_PROMPT_TEMPLATE_KERNEL.lower()
+
+    def test_all_templates_mention_json(self):
+        """Test that all templates mention JSON output."""
+        from hunknote.llm.base import (
+            USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_CONVENTIONAL,
+            USER_PROMPT_TEMPLATE_TICKET,
+            USER_PROMPT_TEMPLATE_KERNEL,
+        )
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
+                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+            assert "JSON" in template
+
+    def test_all_templates_mention_file_changes(self):
+        """Test that all templates mention FILE_CHANGES section."""
+        from hunknote.llm.base import (
+            USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_CONVENTIONAL,
+            USER_PROMPT_TEMPLATE_TICKET,
+            USER_PROMPT_TEMPLATE_KERNEL,
+        )
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
+                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+            assert "FILE_CHANGES" in template
+
+    def test_all_templates_can_be_formatted(self):
+        """Test that all templates can be formatted with context_bundle."""
+        from hunknote.llm.base import (
+            USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_CONVENTIONAL,
+            USER_PROMPT_TEMPLATE_TICKET,
+            USER_PROMPT_TEMPLATE_KERNEL,
+        )
+        test_context = "test git context here"
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
+                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+            formatted = template.format(context_bundle=test_context)
+            assert test_context in formatted
+
+
+class TestBaseLLMProviderPromptMethods:
+    """Tests for BaseLLMProvider prompt building methods."""
+
+    def test_build_user_prompt_for_style_default(self):
+        """Test build_user_prompt_for_style with default style."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_DEFAULT
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test context", "default")
+        expected = USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle="test context")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_conventional(self):
+        """Test build_user_prompt_for_style with conventional style."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test context", "conventional")
+        expected = USER_PROMPT_TEMPLATE_CONVENTIONAL.format(context_bundle="test context")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_ticket(self):
+        """Test build_user_prompt_for_style with ticket style."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_TICKET
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test context", "ticket")
+        expected = USER_PROMPT_TEMPLATE_TICKET.format(context_bundle="test context")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_kernel(self):
+        """Test build_user_prompt_for_style with kernel style."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_KERNEL
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test context", "kernel")
+        expected = USER_PROMPT_TEMPLATE_KERNEL.format(context_bundle="test context")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_case_insensitive(self):
+        """Test that style name is case insensitive."""
+        from hunknote.llm.base import BaseLLMProvider
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result1 = provider.build_user_prompt_for_style("ctx", "CONVENTIONAL")
+        result2 = provider.build_user_prompt_for_style("ctx", "Conventional")
+        result3 = provider.build_user_prompt_for_style("ctx", "conventional")
+        assert result1 == result2 == result3
+
+    def test_build_user_prompt_for_style_none_defaults_to_default(self):
+        """Test that None style defaults to default template."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_DEFAULT
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test", None)
+        expected = USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle="test")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_unknown_defaults_to_default(self):
+        """Test that unknown style defaults to default template."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_DEFAULT
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test", "unknown_style")
+        expected = USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle="test")
+        assert result == expected
+

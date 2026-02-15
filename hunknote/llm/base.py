@@ -41,7 +41,7 @@ Be precise: only describe changes actually shown in the diff.
 The [FILE_CHANGES] section tells you which files are NEW vs MODIFIED - use this to write accurate descriptions."""
 
 # User prompt template for default style (backward compatible)
-USER_PROMPT_TEMPLATE = """Given the following git context, produce a JSON object with exactly these keys:
+USER_PROMPT_TEMPLATE_DEFAULT = """Given the following git context, produce a JSON object with exactly these keys:
 - "title": string (imperative mood, <=72 chars)
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
 
@@ -59,31 +59,34 @@ Rules:
 GIT CONTEXT:
 {context_bundle}"""
 
-# Extended user prompt template for style profiles
-USER_PROMPT_TEMPLATE_STYLED = """Given the following git context, produce a JSON object with these keys:
-- "type": string (one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
+# Backward compatibility alias
+USER_PROMPT_TEMPLATE = USER_PROMPT_TEMPLATE_DEFAULT
+
+# User prompt template for Conventional Commits style
+USER_PROMPT_TEMPLATE_CONVENTIONAL = """Given the following git context, produce a JSON object for a Conventional Commits message with these keys:
+- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
 - "scope": string or null (the area of code affected, e.g., api, ui, auth, core)
-- "subject": string (imperative mood, concise summary, <=60 chars)
+- "subject": string (imperative mood, concise summary, <=60 chars, no period at end)
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
 - "breaking_change": boolean (true if this introduces breaking changes)
-- "ticket": string or null (extracted ticket/issue key if found, e.g., PROJ-6767)
+- "footers": array of strings (optional footer lines like "Refs: PROJ-123", "Co-authored-by: ...")
 
 Rules:
 - Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
 - Subject in imperative mood (e.g., "Add feature" not "Added feature").
-- Choose "type" based on the changes:
-  * feat: new feature
+- Choose "type" based on the nature of changes:
+  * feat: new feature or capability
   * fix: bug fix
-  * docs: documentation only
-  * refactor: code change that neither fixes nor adds feature
+  * docs: documentation only changes
+  * refactor: code change that neither fixes a bug nor adds a feature
   * perf: performance improvement
   * test: adding or updating tests
-  * build: build system or dependencies
-  * ci: CI configuration
-  * chore: maintenance tasks
-  * style: formatting, whitespace
-  * revert: reverting changes
-- "scope" should identify the component/module affected (can be null if not clear).
+  * build: build system or external dependencies
+  * ci: CI configuration files and scripts
+  * chore: maintenance tasks, tooling
+  * style: formatting, whitespace, semicolons (no logic change)
+  * revert: reverting a previous commit
+- "scope" should identify the component/module affected (can be null if unclear).
 - Only describe changes shown in the diff. Do not infer or assume other changes.
 - [FILE_CHANGES] shows:
   * NEW files (created in this commit)
@@ -94,6 +97,60 @@ Rules:
 
 GIT CONTEXT:
 {context_bundle}"""
+
+# User prompt template for Ticket-prefixed style
+USER_PROMPT_TEMPLATE_TICKET = """Given the following git context, produce a JSON object for a ticket-prefixed commit message with these keys:
+- "ticket": string or null (ticket/issue key like PROJ-123, JIRA-456 - extract from branch name or context if present)
+- "subject": string (imperative mood, concise summary, <=60 chars)
+- "scope": string or null (optional area of code affected)
+- "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
+
+Rules:
+- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
+- Subject in imperative mood (e.g., "Add feature" not "Added feature").
+- Look for ticket patterns like ABC-123, PROJ-456 in:
+  * Branch name (e.g., feature/PROJ-123-add-login)
+  * File changes or context
+- If no ticket is found, set "ticket" to null.
+- "scope" is optional - use it if the change is clearly in one area.
+- Only describe changes shown in the diff. Do not infer or assume other changes.
+- [FILE_CHANGES] shows:
+  * NEW files (created in this commit)
+  * MODIFIED files (already existed)
+  * DELETED files (removed in this commit)
+  * RENAMED files (moved/renamed in this commit).
+  Use these to write accurate descriptions.
+
+GIT CONTEXT:
+{context_bundle}"""
+
+# User prompt template for Linux Kernel style
+USER_PROMPT_TEMPLATE_KERNEL = """Given the following git context, produce a JSON object for a Linux kernel-style commit message with these keys:
+- "subsystem": string or null (the subsystem/component being changed, e.g., "net", "fs", "mm", "auth", "api")
+- "subject": string (imperative mood, concise summary, <=60 chars, lowercase preferred)
+- "body_bullets": array of 2-5 strings (each concise, describe what changed and why - kernel style often has fewer bullets)
+
+Rules:
+- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
+- Subject in imperative mood, typically lowercase (e.g., "add support for..." not "Add support for...").
+- "subsystem" should be inferred from the path of changed files:
+  * If files are in "auth/", subsystem might be "auth"
+  * If files are in "api/", subsystem might be "api"
+  * If unclear, set to null
+- Kernel-style commits are typically concise with short subjects.
+- Only describe changes shown in the diff. Do not infer or assume other changes.
+- [FILE_CHANGES] shows:
+  * NEW files (created in this commit)
+  * MODIFIED files (already existed)
+  * DELETED files (removed in this commit)
+  * RENAMED files (moved/renamed in this commit).
+  Use these to write accurate descriptions.
+
+GIT CONTEXT:
+{context_bundle}"""
+
+# Backward compatibility: generic styled template (uses conventional as default)
+USER_PROMPT_TEMPLATE_STYLED = USER_PROMPT_TEMPLATE_CONVENTIONAL
 
 
 def parse_json_response(raw_response: str) -> dict:
@@ -238,7 +295,7 @@ class BaseLLMProvider(ABC):
         )
 
     def build_user_prompt(self, context_bundle: str) -> str:
-        """Build the user prompt from the context bundle.
+        """Build the user prompt from the context bundle (default style).
 
         Args:
             context_bundle: The git context string.
@@ -246,10 +303,10 @@ class BaseLLMProvider(ABC):
         Returns:
             The formatted user prompt.
         """
-        return USER_PROMPT_TEMPLATE.format(context_bundle=context_bundle)
+        return USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle=context_bundle)
 
     def build_user_prompt_styled(self, context_bundle: str) -> str:
-        """Build the extended user prompt for style profiles.
+        """Build the extended user prompt for style profiles (conventional as default).
 
         Args:
             context_bundle: The git context string.
@@ -257,5 +314,26 @@ class BaseLLMProvider(ABC):
         Returns:
             The formatted user prompt with extended schema instructions.
         """
-        return USER_PROMPT_TEMPLATE_STYLED.format(context_bundle=context_bundle)
+        return USER_PROMPT_TEMPLATE_CONVENTIONAL.format(context_bundle=context_bundle)
+
+    def build_user_prompt_for_style(self, context_bundle: str, style: str) -> str:
+        """Build the user prompt for a specific style profile.
+
+        Args:
+            context_bundle: The git context string.
+            style: The style profile name (default, conventional, ticket, kernel).
+
+        Returns:
+            The formatted user prompt for the specified style.
+        """
+        style_lower = style.lower() if style else "default"
+
+        if style_lower == "conventional":
+            return USER_PROMPT_TEMPLATE_CONVENTIONAL.format(context_bundle=context_bundle)
+        elif style_lower == "ticket":
+            return USER_PROMPT_TEMPLATE_TICKET.format(context_bundle=context_bundle)
+        elif style_lower == "kernel":
+            return USER_PROMPT_TEMPLATE_KERNEL.format(context_bundle=context_bundle)
+        else:  # default
+            return USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle=context_bundle)
 

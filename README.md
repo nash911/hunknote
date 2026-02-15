@@ -15,7 +15,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 359 unit tests covering all modules
+- **Comprehensive test suite**: 377 unit tests covering all modules
 
 ## Installation
 
@@ -454,7 +454,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 359 tests:
+The project includes a comprehensive test suite with 377 tests:
 
 ```bash
 # Run all tests
@@ -481,7 +481,7 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 | `git_ctx.py` | 31 | Git context collection and filtering |
 | `styles.py` | 55 | Commit style profiles and rendering |
 | `scope.py` | 54 | Scope inference from file paths |
-| `llm/base.py` | 27 | JSON parsing, schema validation |
+| `llm/base.py` | 45 | JSON parsing, schema validation, style prompts |
 | `llm/*.py` providers | 25 | All LLM provider classes |
 | `cli.py` | 42 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
