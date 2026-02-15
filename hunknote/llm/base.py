@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from hunknote.formatters import CommitMessageJSON
+from hunknote.styles import ExtendedCommitJSON, BlueprintSection
 
 
 class LLMError(Exception):
@@ -29,7 +30,7 @@ class JSONParseError(LLMError):
 class LLMResult:
     """Result from an LLM generation call, including token usage."""
 
-    commit_json: CommitMessageJSON
+    commit_json: ExtendedCommitJSON  # Changed from CommitMessageJSON to ExtendedCommitJSON
     model: str
     input_tokens: int
     output_tokens: int
@@ -269,27 +270,78 @@ def parse_json_response(raw_response: str) -> dict:
         )
 
 
-def validate_commit_json(parsed: dict, raw_response: str) -> CommitMessageJSON:
-    """Validate parsed JSON against the CommitMessageJSON schema.
+def validate_commit_json(parsed: dict, raw_response: str) -> ExtendedCommitJSON:
+    """Validate parsed JSON against the ExtendedCommitJSON schema.
+
+    This validates the LLM response and converts it to ExtendedCommitJSON,
+    which supports all style formats (default, blueprint, conventional, ticket, kernel).
 
     Args:
         parsed: The parsed JSON dictionary.
         raw_response: The original raw response (for error messages).
 
     Returns:
-        A validated CommitMessageJSON object.
+        A validated ExtendedCommitJSON object.
 
     Raises:
         JSONParseError: If validation fails.
     """
     try:
-        return CommitMessageJSON(**parsed)
+        # Normalize the parsed data to handle different style formats
+        normalized = _normalize_commit_json(parsed)
+        return ExtendedCommitJSON(**normalized)
     except Exception as e:
         raise JSONParseError(
             f"LLM response does not match expected schema.\n"
             f"Error: {e}\n"
             f"Parsed JSON: {parsed}"
         )
+
+
+def _normalize_commit_json(parsed: dict) -> dict:
+    """Normalize parsed JSON to handle different style formats.
+
+    Different styles use different field names:
+    - default: title, body_bullets
+    - blueprint: type, scope, title, summary, sections
+    - conventional: type, scope, subject, body_bullets, breaking_change, footers
+    - ticket: ticket, subject, scope, body_bullets
+    - kernel: subsystem (mapped to scope), subject, body_bullets
+
+    Args:
+        parsed: The raw parsed JSON dictionary.
+
+    Returns:
+        Normalized dictionary compatible with ExtendedCommitJSON.
+    """
+    result = dict(parsed)  # Copy to avoid modifying original
+
+    # Handle kernel style: subsystem -> scope
+    if "subsystem" in result and "scope" not in result:
+        result["scope"] = result.pop("subsystem")
+
+    # Ensure we have either title or subject
+    # If only subject is provided, also set title for backward compatibility
+    if "subject" in result and "title" not in result:
+        result["title"] = result["subject"]
+    elif "title" in result and "subject" not in result:
+        result["subject"] = result["title"]
+
+    # Ensure body_bullets exists (may be empty for blueprint style)
+    if "body_bullets" not in result:
+        result["body_bullets"] = []
+
+    # Handle sections for blueprint style - convert dicts to BlueprintSection
+    if "sections" in result:
+        sections = []
+        for section in result["sections"]:
+            if isinstance(section, dict):
+                sections.append(section)
+            else:
+                sections.append(section)
+        result["sections"] = sections
+
+    return result
 
 
 class BaseLLMProvider(ABC):

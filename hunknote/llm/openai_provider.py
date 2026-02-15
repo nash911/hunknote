@@ -25,13 +25,15 @@ from hunknote.llm.base import (
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT LLM provider."""
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, style: str = "default"):
         """Initialize the OpenAI provider.
 
         Args:
             model: The model to use. Defaults to gpt-4o.
+            style: The commit style to use (default, blueprint, conventional, ticket, kernel).
         """
         self.model = model or "gpt-4o"
+        self.style = style
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.OPENAI]
 
     def get_api_key(self) -> str:
@@ -64,8 +66,8 @@ class OpenAIProvider(BaseLLMProvider):
         # Create the OpenAI client
         client = OpenAI(api_key=api_key)
 
-        # Build the user prompt
-        user_prompt = self.build_user_prompt(context_bundle)
+        # Build the user prompt for the configured style
+        user_prompt = self.build_user_prompt_for_style(context_bundle, self.style)
 
         try:
             # Call the OpenAI API

@@ -32,14 +32,16 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 class OpenRouterProvider(BaseLLMProvider):
     """OpenRouter LLM provider (unified access to 200+ models)."""
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, style: str = "default"):
         """Initialize the OpenRouter provider.
 
         Args:
             model: The model to use. Defaults to anthropic/claude-sonnet-4.
                    Use format: provider/model-name (e.g., openai/gpt-4o)
+            style: The commit style to use (default, blueprint, conventional, ticket, kernel).
         """
         self.model = model or "anthropic/claude-sonnet-4"
+        self.style = style
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.OPENROUTER]
 
     def get_api_key(self) -> str:
@@ -75,8 +77,8 @@ class OpenRouterProvider(BaseLLMProvider):
             base_url=OPENROUTER_BASE_URL,
         )
 
-        # Build the user prompt
-        user_prompt = self.build_user_prompt(context_bundle)
+        # Build the user prompt for the configured style
+        user_prompt = self.build_user_prompt_for_style(context_bundle, self.style)
 
         try:
             # Call the OpenRouter API (OpenAI-compatible)

@@ -25,13 +25,15 @@ from hunknote.llm.base import (
 class GroqProvider(BaseLLMProvider):
     """Groq LLM provider (fast inference for open-source models)."""
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, style: str = "default"):
         """Initialize the Groq provider.
 
         Args:
             model: The model to use. Defaults to llama-3.3-70b-versatile.
+            style: The commit style to use (default, blueprint, conventional, ticket, kernel).
         """
         self.model = model or "llama-3.3-70b-versatile"
+        self.style = style
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.GROQ]
 
     def get_api_key(self) -> str:
@@ -64,8 +66,8 @@ class GroqProvider(BaseLLMProvider):
         # Create the Groq client
         client = Groq(api_key=api_key)
 
-        # Build the user prompt
-        user_prompt = self.build_user_prompt(context_bundle)
+        # Build the user prompt for the configured style
+        user_prompt = self.build_user_prompt_for_style(context_bundle, self.style)
 
         try:
             # Call the Groq API (OpenAI-compatible)

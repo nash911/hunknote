@@ -937,26 +937,23 @@ def main(
             message = load_cached_message(repo_root)
             metadata = load_cache_metadata(repo_root)
         else:
-            # Generate new message via LLM
+            # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
-            llm_result = generate_commit_json(context_bundle)
+            llm_result = generate_commit_json(context_bundle, style=effective_profile.value)
 
-            # Convert to ExtendedCommitJSON for styled rendering
-            extended_data = ExtendedCommitJSON(
-                title=llm_result.commit_json.title,
-                body_bullets=llm_result.commit_json.body_bullets,
-                # LLM may provide extended fields
-                type=getattr(llm_result.commit_json, 'type', None),
-                scope=effective_scope or getattr(llm_result.commit_json, 'scope', None),
-                subject=getattr(llm_result.commit_json, 'subject', None),
-                ticket=ticket,
-                # Blueprint-specific fields
-                summary=getattr(llm_result.commit_json, 'summary', None),
-                sections=getattr(llm_result.commit_json, 'sections', []),
-            )
+            # llm_result.commit_json is already an ExtendedCommitJSON with all style fields
+            extended_data = llm_result.commit_json
+
+            # Apply scope override if provided
+            if effective_scope:
+                extended_data.scope = effective_scope
+
+            # Apply ticket override if provided
+            if ticket:
+                extended_data.ticket = ticket
 
             # Try to extract ticket from branch if not provided and using ticket style
-            if not ticket and effective_profile == StyleProfile.TICKET:
+            if not extended_data.ticket and effective_profile == StyleProfile.TICKET:
                 try:
                     branch = get_branch()
                     extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)

@@ -148,10 +148,11 @@ That's the response.'''
 
 
 class TestValidateCommitJson:
-    """Tests for validate_commit_json function."""
+    """Tests for validate_commit_json function with ExtendedCommitJSON."""
 
     def test_validates_correct_schema(self):
-        """Test validation of correct schema."""
+        """Test validation of correct schema returns ExtendedCommitJSON."""
+        from hunknote.styles import ExtendedCommitJSON
         parsed = {
             "title": "Add feature",
             "body_bullets": ["Change 1", "Change 2"],
@@ -159,25 +160,82 @@ class TestValidateCommitJson:
 
         result = validate_commit_json(parsed, "{}")
 
-        assert isinstance(result, CommitMessageJSON)
+        assert isinstance(result, ExtendedCommitJSON)
         assert result.title == "Add feature"
         assert len(result.body_bullets) == 2
 
-    def test_raises_on_missing_title(self):
-        """Test error on missing title."""
-        parsed = {"body_bullets": ["Change"]}
+    def test_validates_extended_schema(self):
+        """Test validation of extended schema with type, scope, etc."""
+        parsed = {
+            "type": "feat",
+            "scope": "api",
+            "title": "Add endpoint",
+            "body_bullets": ["Add GET endpoint"],
+        }
 
-        with pytest.raises(JSONParseError) as exc_info:
-            validate_commit_json(parsed, "{}")
+        result = validate_commit_json(parsed, "{}")
 
-        assert "does not match expected schema" in str(exc_info.value)
+        assert result.type == "feat"
+        assert result.scope == "api"
+        assert result.title == "Add endpoint"
 
-    def test_raises_on_missing_body_bullets(self):
-        """Test error on missing body_bullets."""
-        parsed = {"title": "Test"}
+    def test_validates_blueprint_schema(self):
+        """Test validation of blueprint schema with summary and sections."""
+        parsed = {
+            "type": "feat",
+            "scope": "auth",
+            "title": "Add authentication",
+            "summary": "Implement user authentication with JWT.",
+            "sections": [
+                {"title": "Changes", "bullets": ["Add login endpoint"]},
+                {"title": "Testing", "bullets": ["Add auth tests"]},
+            ],
+        }
 
-        with pytest.raises(JSONParseError):
-            validate_commit_json(parsed, "{}")
+        result = validate_commit_json(parsed, "{}")
+
+        assert result.type == "feat"
+        assert result.summary == "Implement user authentication with JWT."
+        assert len(result.sections) == 2
+        assert result.sections[0].title == "Changes"
+
+    def test_normalizes_subsystem_to_scope(self):
+        """Test that kernel-style subsystem is normalized to scope."""
+        parsed = {
+            "subsystem": "net",
+            "subject": "fix packet handling",
+            "body_bullets": ["Fix bug"],
+        }
+
+        result = validate_commit_json(parsed, "{}")
+
+        assert result.scope == "net"
+        assert result.subject == "fix packet handling"
+
+    def test_normalizes_subject_to_title(self):
+        """Test that subject is also set as title for compatibility."""
+        parsed = {
+            "subject": "Add feature",
+            "body_bullets": ["Change 1"],
+        }
+
+        result = validate_commit_json(parsed, "{}")
+
+        assert result.subject == "Add feature"
+        assert result.title == "Add feature"
+
+    def test_handles_missing_body_bullets(self):
+        """Test that missing body_bullets is normalized to empty list."""
+        parsed = {
+            "title": "Add feature",
+            "type": "feat",
+            "summary": "A summary.",
+            "sections": [{"title": "Changes", "bullets": ["Change 1"]}],
+        }
+
+        result = validate_commit_json(parsed, "{}")
+
+        assert result.body_bullets == []
 
     def test_raises_on_wrong_type(self):
         """Test error on wrong field type."""
@@ -188,35 +246,6 @@ class TestValidateCommitJson:
 
         with pytest.raises(JSONParseError):
             validate_commit_json(parsed, "{}")
-
-    def test_raises_on_empty_title(self):
-        """Test error on empty title."""
-        parsed = {
-            "title": "",
-            "body_bullets": ["Change"],
-        }
-
-        with pytest.raises(JSONParseError):
-            validate_commit_json(parsed, "{}")
-
-    def test_raises_on_empty_bullets(self):
-        """Test error on empty body_bullets."""
-        parsed = {
-            "title": "Test",
-            "body_bullets": [],
-        }
-
-        with pytest.raises(JSONParseError):
-            validate_commit_json(parsed, "{}")
-
-    def test_error_includes_parsed_json(self):
-        """Test that error includes parsed JSON."""
-        parsed = {"invalid": "schema"}
-
-        with pytest.raises(JSONParseError) as exc_info:
-            validate_commit_json(parsed, "{}")
-
-        assert "invalid" in str(exc_info.value)
 
 
 class TestPromptTemplates:

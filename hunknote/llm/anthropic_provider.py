@@ -24,13 +24,15 @@ from hunknote.llm.base import (
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude LLM provider."""
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, style: str = "default"):
         """Initialize the Anthropic provider.
 
         Args:
             model: The model to use. Defaults to ACTIVE_MODEL from config.
+            style: The commit style to use (default, blueprint, conventional, ticket, kernel).
         """
         self.model = model or ACTIVE_MODEL
+        self.style = style
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.ANTHROPIC]
 
     def get_api_key(self) -> str:
@@ -63,8 +65,8 @@ class AnthropicProvider(BaseLLMProvider):
         # Create the Anthropic client
         client = Anthropic(api_key=api_key)
 
-        # Build the user prompt
-        user_prompt = self.build_user_prompt(context_bundle)
+        # Build the user prompt for the configured style
+        user_prompt = self.build_user_prompt_for_style(context_bundle, self.style)
 
         try:
             # Call the Anthropic API

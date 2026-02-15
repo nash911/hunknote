@@ -38,13 +38,15 @@ THINKING_TOKEN_MULTIPLIER = 3
 class GoogleProvider(BaseLLMProvider):
     """Google Gemini LLM provider."""
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, style: str = "default"):
         """Initialize the Google provider.
 
         Args:
             model: The model to use. Defaults to gemini-2.0-flash.
+            style: The commit style to use (default, blueprint, conventional, ticket, kernel).
         """
         self.model = model or "gemini-2.0-flash"
+        self.style = style
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.GOOGLE]
 
     def get_api_key(self) -> str:
@@ -85,8 +87,8 @@ class GoogleProvider(BaseLLMProvider):
         # Create the client with API key
         client = genai.Client(api_key=api_key)
 
-        # Build the user prompt with system prompt embedded
-        user_prompt = self.build_user_prompt(context_bundle)
+        # Build the user prompt for the configured style
+        user_prompt = self.build_user_prompt_for_style(context_bundle, self.style)
         full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
 
         # For thinking models, we need a higher max_output_tokens budget
@@ -162,6 +164,7 @@ class GoogleProvider(BaseLLMProvider):
         # Parse and validate the JSON response
         parsed = parse_json_response(raw_response)
         commit_json = validate_commit_json(parsed, raw_response)
+
 
         return LLMResult(
             commit_json=commit_json,
