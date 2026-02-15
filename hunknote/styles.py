@@ -560,6 +560,10 @@ def render_kernel(
     scope = override_scope or data.get_scope()
     subject = data.get_subject()
 
+    # Strip any existing type prefix from subject
+    # (e.g., "feat: Add feature" -> "Add feature")
+    subject = strip_type_prefix(subject, config.conventional_types)
+
     # Build header
     if scope and config.subsystem_from_scope:
         header_prefix = f"{scope}: "

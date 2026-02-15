@@ -443,6 +443,35 @@ class TestRenderKernel:
 
         assert result.startswith("new: ")
 
+    def test_strips_type_prefix_from_subject(self):
+        """Test kernel style strips type prefix from subject."""
+        # This tests the bug fix for "llm: feat: support commit styles"
+        data = ExtendedCommitJSON(
+            scope="llm",
+            subject="feat: support commit styles",  # Subject has type prefix
+            body_bullets=["Add style support"],
+        )
+        config = StyleConfig(subsystem_from_scope=True)
+        result = render_kernel(data, config)
+
+        # Should have "llm: support commit styles", not "llm: feat: support commit styles"
+        assert result.startswith("llm: support commit styles")
+        assert "llm: feat:" not in result
+
+    def test_strips_type_with_scope_prefix_from_subject(self):
+        """Test kernel style strips type(scope): prefix from subject."""
+        data = ExtendedCommitJSON(
+            scope="net",
+            subject="fix(tcp): handle packet loss",  # Subject has type(scope): prefix
+            body_bullets=["Fix handling"],
+        )
+        config = StyleConfig(subsystem_from_scope=True)
+        result = render_kernel(data, config)
+
+        # Should strip the type(scope): prefix
+        assert result.startswith("net: handle packet loss")
+        assert "fix(tcp):" not in result
+
 
 class TestRenderCommitMessageStyled:
     """Tests for render_commit_message_styled function."""
