@@ -76,19 +76,39 @@ USER_PROMPT_TEMPLATE_CONVENTIONAL = """Given the following git context, produce 
 Rules:
 - Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
 - Subject in imperative mood (e.g., "Add feature" not "Added feature").
-- Choose "type" based on the nature of changes:
+
+TYPE SELECTION - CRITICAL: Look at FILE EXTENSIONS first, then decide type:
+- If ANY .py/.js/.ts/.go/.rs/.java file is modified → type is feat/fix/refactor/perf (NEVER docs)
+- "docs" ONLY when ALL changed files are .md/.rst/.txt documentation files
+- "test" ONLY when ALL changed files are in tests/ or named *_test.py/test_*.py
+
+Type definitions:
   * feat: new feature or capability
-  * fix: bug fix
-  * docs: documentation only changes
-  * refactor: code change that neither fixes a bug nor adds a feature
+  * fix: bug fix, correction, OR improving existing behavior to work better/correctly
+  * docs: ONLY standalone doc files (.md, .rst) - NEVER for .py files regardless of content
+  * refactor: ONLY internal code restructuring with NO behavior change (same inputs → same outputs)
   * perf: performance improvement
-  * test: adding or updating tests
-  * build: build system or external dependencies
-  * ci: CI configuration files and scripts
-  * chore: maintenance tasks, tooling
-  * style: formatting, whitespace, semicolons (no logic change)
-  * revert: reverting a previous commit
-- "scope" should identify the component/module affected (can be null if unclear).
+  * test: ONLY test files
+  * build: build system or dependencies
+  * ci: CI config files (.github/, .gitlab-ci.yml)
+  * chore: maintenance, tooling
+  * style: formatting only (no logic change)
+  * revert: reverting a commit
+
+FIX vs REFACTOR - choose carefully:
+- "fix" = change improves/corrects behavior, fixes a problem, or makes something work better
+- "refactor" = ONLY when behavior stays exactly the same, just internal code structure changes
+- If the change makes the code behave differently or better → use "fix", NOT "refactor"
+- If changing prompts/templates to improve output quality → use "fix" (behavior is improved)
+
+IMPORTANT: A .py file containing prompts/text/instructions is CODE, not documentation. Use fix/feat/refactor.
+
+- "scope" should identify the component/module affected.
+- AVOID REDUNDANT SCOPE: If scope would just repeat the type, set scope to null:
+  * type="test" with scope="tests" → set scope to null (redundant)
+  * type="docs" with scope="docs" or scope="documentation" → set scope to null
+  * type="ci" with scope="ci" → set scope to null
+  * type="build" with scope="build" or scope="deps" → set scope to null
 - Only describe changes shown in the diff. Do not infer or assume other changes.
 - [FILE_CHANGES] shows:
   * NEW files (created in this commit)
@@ -115,6 +135,9 @@ Rules:
   * File changes or context
 - If no ticket is found, set "ticket" to null.
 - "scope" is optional - use it if the change is clearly in one area.
+- AVOID REDUNDANT SCOPE: Do not use scope values that are too generic or that would repeat the change type:
+  * If ALL changes are test files, do not use scope="tests"
+  * If ALL changes are docs, do not use scope="docs"
 - Only describe changes shown in the diff. Do not infer or assume other changes.
 - [FILE_CHANGES] shows:
   * NEW files (created in this commit)
@@ -157,7 +180,7 @@ USER_PROMPT_TEMPLATE_BLUEPRINT = """Analyze the git diff and produce a detailed,
 OUTPUT SCHEMA:
 {{
   "type": "feat|fix|docs|refactor|perf|test|build|ci|chore|style|revert",
-  "scope": "string identifying the affected component/module (provide this whenever possible)",
+  "scope": "string or null (the affected component/module)",
   "title": "string (imperative, <=60 chars, no period)",
   "summary": "string (2-4 sentences)",
   "sections": [
@@ -165,23 +188,42 @@ OUTPUT SCHEMA:
   ]
 }}
 
-TYPE SELECTION (choose accurately based on the PRIMARY purpose of the change):
+TYPE SELECTION - CRITICAL: Look at FILE EXTENSIONS in [FILE_CHANGES] first:
+- If ANY .py/.js/.ts/.go/.rs/.java file is modified → type is feat/fix/refactor/perf (NEVER "docs")
+- "docs" ONLY when ALL changed files are .md/.rst/.txt documentation files
+- "test" ONLY when ALL changed files are in tests/ or named *_test.py/test_*.py
+
+Type definitions:
 - feat: New feature or capability for users
-- fix: Bug fix, error correction, or improvement to existing behavior
-- docs: Documentation only (no code logic changes)
-- refactor: Code restructuring without changing behavior
+- fix: Bug fix, error correction, OR improving existing behavior to work better/correctly
+- docs: ONLY standalone doc files (.md, .rst) - NEVER use for .py files regardless of their content
+- refactor: ONLY internal code restructuring with NO behavior change (same inputs → same outputs)
 - perf: Performance improvement
-- test: Adding or updating tests only
+- test: ONLY test files
 - build: Build system or dependencies
-- ci: CI/CD configuration
+- ci: CI/CD configuration files (.github/, .gitlab-ci.yml)
 - chore: Maintenance, tooling, or other non-user-facing changes
 
-SCOPE (you SHOULD provide a scope - analyze the changes to determine it):
+FIX vs REFACTOR - choose carefully:
+- "fix" = change improves/corrects behavior, fixes a problem, or makes something work better
+- "refactor" = ONLY when behavior stays exactly the same, just internal code structure changes
+- If the change makes the code behave differently or better → use "fix", NOT "refactor"
+- If changing prompts/templates to improve output quality → use "fix" (output behavior is improved)
+
+IMPORTANT: A .py file containing prompts, instructions, or text strings is CODE, not documentation.
+If you see base.py, cli.py, or any .py file in the diff → use fix/feat/refactor, NEVER "docs".
+
+SCOPE RULES:
 Determine the primary component, module, or subsystem affected by analyzing the actual code changes.
 - Focus on WHAT the changes accomplish functionally, not just the file locations
-- Good scopes are concise identifiers: e.g., "auth", "api", "ui", "core", "database", "build", "ci", "cache", "parser", "db", "config", "cli", "docs", "tests", "refactor", "performance", "security", "logging", "monitoring"
+- Good scopes: "auth", "api", "cache", "cli", "config", "core", "db", "parser", "ui", "llm"
+- AVOID REDUNDANT SCOPE: If scope would just repeat or be synonymous with the type, set scope to null:
+  * type="test" with scope="tests" or scope="testing" → set scope to null
+  * type="docs" with scope="docs" or scope="documentation" → set scope to null
+  * type="ci" with scope="ci" or scope="pipeline" → set scope to null
+  * type="build" with scope="build" or scope="deps" → set scope to null
 - If changes affect multiple areas, choose the most significant one as the scope
-- Only omit scope (use null) if changes are truly generic with no identifiable focus
+- Set scope to null if changes are truly generic with no identifiable focus
 
 TITLE: Write a clear, specific title that captures the essence of the change. Use imperative mood ("Add", "Fix", "Update", not "Added", "Fixed", "Updated").
 
