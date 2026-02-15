@@ -8,14 +8,16 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Commit style profiles**: Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style
 - **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
+- **Intelligent type selection**: Automatically selects the correct commit type (feat, fix, docs, test, etc.)
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
+- **Raw JSON debugging**: Inspect the raw LLM response with `--json` flag
 - **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
 - **Editor integration**: Review and edit generated messages before committing
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
-- **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 409 unit tests covering all modules
+- **Debug mode**: Inspect cache metadata, token usage, scope inference, and file change details
+- **Comprehensive test suite**: 436 unit tests covering all modules
 
 ## Installation
 
@@ -209,7 +211,8 @@ hunknote
 | `-e, --edit` | Open the generated message in an editor for manual edits |
 | `-c, --commit` | Automatically commit using the generated message |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
-| `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
+| `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview, scope inference) |
+| `-j, --json` | Show the raw JSON response from the LLM for debugging |
 | `--style` | Override commit style profile (default, blueprint, conventional, ticket, kernel) |
 | `--scope` | Force a scope for the commit message (use 'auto' for inference) |
 | `--no-scope` | Disable scope even if profile supports it |
@@ -271,7 +274,7 @@ hunknote --style ticket --ticket PROJ-123 -e -c
 | Profile | Format                       | Description |
 |---------|------------------------------|-------------|
 | **default** | `<Title>\n\n- <bullet>`      | Simple title + bullet points |
-| **blueprint** | `<type>(<scope>): <title>\n\n<summary>\n\nChanges:\n- ...` | Structured sections (Changes, Implementation, Testing, etc.) |
+| **blueprint** | `<type>(<scope>): <title>\n\n<summary>\n\nChanges:\n- ...` | Structured sections (Changes, Implementation, Testing, Documentation, Notes) |
 | **conventional** | `<type>(<scope>): <subject>` | Conventional Commits format |
 | **ticket** | `<KEY-123> <subject>`       | Ticket-prefixed format |
 | **kernel** | `<subsystem>: <subject>`     | Linux kernel style |
@@ -337,11 +340,20 @@ hunknote -e -c
 # Force regeneration (ignore cache)
 hunknote -r
 
-# Debug: view cache metadata and token usage
+# Debug: view cache metadata, token usage, and scope inference
 hunknote -d
+
+# View raw JSON response from LLM
+hunknote -j
+
+# Force regenerate and view raw JSON
+hunknote -r -j
 
 # Use conventional commits style with scope
 hunknote --style conventional --scope api
+
+# Use blueprint style for detailed commit messages
+hunknote --style blueprint
 
 # Use ticket-prefixed style
 hunknote --style ticket --ticket PROJ-6767 -e -c
@@ -391,6 +403,7 @@ Cache files are stored in `<repo>/.hunknote/`:
 - `hunknote_message.txt` - The cached commit message
 - `hunknote_context_hash.txt` - Hash of the git context
 - `hunknote_metadata.json` - Full metadata (tokens, model, timestamp)
+- `hunknote_llm_response.json` - Raw JSON response from LLM (for debugging with `-j`)
 - `config.yaml` - Repository-specific configuration
 
 **Gitignore recommendation:** Add these to your `.gitignore`:
@@ -456,7 +469,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 409 tests:
+The project includes a comprehensive test suite with 436 tests:
 
 ```bash
 # Run all tests
@@ -476,17 +489,17 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| `formatters.py` | 21 | Commit message formatting and validation |
-| `cache.py` | 34 | Caching utilities and metadata |
-| `user_config.py` | 20 | Repository YAML config file management |
-| `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
-| `git_ctx.py` | 31 | Git context collection and filtering |
-| `styles.py` | 87 | Commit style profiles and rendering (incl. blueprint) |
-| `scope.py` | 54 | Scope inference from file paths |
-| `llm/base.py` | 57 | JSON parsing, schema validation, style prompts |
-| `llm/*.py` providers | 25 | All LLM provider classes |
+| `cache.py` | 40 | Caching utilities, metadata, raw JSON storage |
 | `cli.py` | 42 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
+| `formatters.py` | 21 | Commit message formatting and validation |
+| `git_ctx.py` | 31 | Git context collection and filtering |
+| `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
+| `scope.py` | 54 | Scope inference from file paths |
+| `styles.py` | 96 | Commit style profiles and rendering |
+| `llm/base.py` | 51 | JSON parsing, schema validation, style prompts |
+| `llm/*.py` providers | 31 | All LLM provider classes |
+| `user_config.py` | 20 | Repository YAML config file management |
 
 ### Project Structure
 

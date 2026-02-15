@@ -35,13 +35,15 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
 | **Commit Style Profiles** | Support for Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style |
 | **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
+| **Intelligent Type Selection** | Automatically selects correct commit type (feat, fix, docs, test, etc.) based on changed files |
 | **Smart Caching** | Reuses generated messages when staged changes haven't changed |
+| **Raw JSON Debugging** | Inspect LLM response with `--json` flag |
 | **Structured Output** | Generates title + bullet points following git best practices |
 | **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
 | **Editor Integration** | Review and edit messages before committing |
 | **One-Command Commits** | Generate and commit in a single step with `-c` flag |
 | **Configurable Ignores** | Exclude lock files, build artifacts from analysis |
-| **Debug Mode** | Inspect cache metadata, tokens, and file changes |
+| **Debug Mode** | Inspect cache metadata, tokens, scope inference, and file changes |
 
 ---
 
@@ -121,7 +123,8 @@ Generate an AI-powered commit message from staged changes.
 | `--edit` | `-e` | Open message in editor for manual edits | `false` |
 | `--commit` | `-c` | Automatically commit using the generated message | `false` |
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
-| `--debug` | `-d` | Show cache metadata (files, tokens, diff preview) | `false` |
+| `--debug` | `-d` | Show cache metadata (files, tokens, diff preview, scope inference) | `false` |
+| `--json` | `-j` | Show raw JSON response from LLM for debugging | `false` |
 | `--style` | | Override commit style profile (default, blueprint, conventional, ticket, kernel) | from config |
 | `--scope` | | Force a scope for the commit message (use 'auto' for inference) | auto |
 | `--no-scope` | | Disable scope even if profile supports it | `false` |
@@ -142,14 +145,23 @@ hunknote -e -c
 # Force regeneration (bypass cache)
 hunknote -r
 
-# View debug information
+# View debug information (cache, tokens, scope inference)
 hunknote -d
+
+# View raw JSON response from LLM
+hunknote -j
+
+# Force regenerate and view raw JSON
+hunknote -r -j
 
 # Use conventional commits style with auto scope inference
 hunknote --style conventional
 
 # Use conventional commits style with explicit scope
 hunknote --style conventional --scope api
+
+# Use blueprint style for detailed commit messages
+hunknote --style blueprint
 
 # Use monorepo scope inference strategy
 hunknote --style conventional --scope-strategy monorepo
@@ -593,6 +605,24 @@ When using `conventional` or `blueprint` style, Hunknote can automatically infer
 | Only build/config files (`pyproject.toml`, etc.) | `build` |
 | Mixed changes | LLM determines type |
 
+### Intelligent Type Selection
+
+The LLM uses smart rules to select the correct commit type:
+
+**File Extension Priority:**
+- If ANY `.py/.js/.ts/.go/.rs/.java` file is modified → type is `feat`/`fix`/`refactor`/`perf` (never `docs`)
+- `docs` type is ONLY used when ALL changed files are `.md`/`.rst` documentation files
+- `test` type is ONLY used when ALL changed files are test files
+
+**Fix vs Refactor:**
+- `fix` = change improves/corrects behavior, fixes a problem, or makes something work better
+- `refactor` = ONLY when behavior stays exactly the same, just internal code structure changes
+- If changing prompts/templates to improve output quality → `fix` (behavior is improved)
+
+**Avoiding Redundant Scopes:**
+- `type="test"` with `scope="tests"` → scope is set to null (redundant)
+- `type="docs"` with `scope="docs"` → scope is set to null (redundant)
+
 ---
 
 ## Scope Inference
@@ -716,8 +746,9 @@ Scope is determined in this order (first non-null wins):
 
 1. `--scope <value>` CLI flag (explicit scope)
 2. `--no-scope` CLI flag (disables scope)
-3. Scope inference (if enabled)
-4. No scope
+3. LLM suggested scope (from the AI's analysis of the changes)
+4. Heuristics-based scope inference (if enabled)
+5. No scope
 
 ### Debug Output
 
@@ -729,9 +760,12 @@ hunknote --debug --style conventional
 
 Output includes:
 - Strategy used
-- Inferred scope
+- Inferred scope (from heuristics)
 - Confidence level
 - Reason for decision
+- LLM suggested scope
+- CLI override (if any)
+- Final scope used
 
 ---
 
@@ -927,6 +961,7 @@ Located in `<repo>/.hunknote/`:
 | `hunknote_message.txt` | The cached commit message |
 | `hunknote_context_hash.txt` | SHA256 hash of the git context |
 | `hunknote_metadata.json` | Metadata (tokens, model, timestamp, files) |
+| `hunknote_llm_response.json` | Raw JSON response from LLM (for `-j` debugging) |
 
 ### Gitignore Recommendation
 
@@ -1115,6 +1150,20 @@ hunknote -d
 - Staged files list
 - Diff preview
 - Message edit status
+- Scope inference details (strategy, inferred scope, confidence, LLM suggested scope)
+
+### Raw JSON Mode
+
+Use `-j` flag to inspect the raw LLM response:
+
+```bash
+hunknote -j
+```
+
+**Shows:**
+- Raw JSON response from the LLM
+- Useful for debugging type/scope selection issues
+- Helps understand what the LLM returned before rendering
 
 ### Getting Help
 
@@ -1163,5 +1212,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*Documentation generated for Hunknote v1.1.0*
+*Documentation generated for Hunknote v1.2.0*
 
