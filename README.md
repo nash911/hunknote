@@ -6,7 +6,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 
 - **Automatic commit message generation** from staged git changes
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
-- **Commit style profiles**: Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats
+- **Commit style profiles**: Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style
 - **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
@@ -15,7 +15,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, and file change details
-- **Comprehensive test suite**: 377 unit tests covering all modules
+- **Comprehensive test suite**: 409 unit tests covering all modules
 
 ## Installation
 
@@ -210,7 +210,7 @@ hunknote
 | `-c, --commit` | Automatically commit using the generated message |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview) |
-| `--style` | Override commit style profile (default, conventional, ticket, kernel) |
+| `--style` | Override commit style profile (default, blueprint, conventional, ticket, kernel) |
 | `--scope` | Force a scope for the commit message (use 'auto' for inference) |
 | `--no-scope` | Disable scope even if profile supports it |
 | `--scope-strategy` | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) |
@@ -252,27 +252,29 @@ Hunknote supports multiple commit message formats to match your team's conventio
 hunknote style list
 
 # Show details about a profile
-hunknote style show conventional
+hunknote style show blueprint
 
 # Set default style globally
-hunknote style set conventional
+hunknote style set blueprint
 
 # Set style for current repo only
 hunknote style set ticket --repo
 
 # Override style for a single run
+hunknote --style blueprint --scope api
 hunknote --style conventional --scope api
-hunknote --style ticket --ticket PROJ-6767 -e -c
+hunknote --style ticket --ticket PROJ-123 -e -c
 ```
 
 #### Available Profiles
 
-| Profile | Format                       | Example |
-|---------|------------------------------|---------|
-| **default** | `<Title>\n\n- <bullet>`      | `Add feature\n\n- Implement login` |
-| **conventional** | `<type>(<scope>): <subject>` | `feat(auth): Add login endpoint` |
-| **ticket** | `<KEY-6767> <subject>`       | `PROJ-6767 Add login endpoint` |
-| **kernel** | `<subsystem>: <subject>`     | `auth: Add login endpoint` |
+| Profile | Format                       | Description |
+|---------|------------------------------|-------------|
+| **default** | `<Title>\n\n- <bullet>`      | Simple title + bullet points |
+| **blueprint** | `<type>(<scope>): <title>\n\n<summary>\n\nChanges:\n- ...` | Structured sections (Changes, Implementation, Testing, etc.) |
+| **conventional** | `<type>(<scope>): <subject>` | Conventional Commits format |
+| **ticket** | `<KEY-123> <subject>`       | Ticket-prefixed format |
+| **kernel** | `<subsystem>: <subject>`     | Linux kernel style |
 
 ### Ignore Pattern Management
 
@@ -454,7 +456,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 377 tests:
+The project includes a comprehensive test suite with 409 tests:
 
 ```bash
 # Run all tests
@@ -479,9 +481,9 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 | `user_config.py` | 20 | Repository YAML config file management |
 | `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `git_ctx.py` | 31 | Git context collection and filtering |
-| `styles.py` | 55 | Commit style profiles and rendering |
+| `styles.py` | 87 | Commit style profiles and rendering (incl. blueprint) |
 | `scope.py` | 54 | Scope inference from file paths |
-| `llm/base.py` | 45 | JSON parsing, schema validation, style prompts |
+| `llm/base.py` | 57 | JSON parsing, schema validation, style prompts |
 | `llm/*.py` providers | 25 | All LLM provider classes |
 | `cli.py` | 42 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
@@ -495,7 +497,7 @@ hunknote/
 ├── config.py           # LLM provider configuration
 ├── cache.py            # Caching utilities
 ├── formatters.py       # Commit message formatting
-├── styles.py           # Commit style profiles (default, conventional, ticket, kernel)
+├── styles.py           # Commit style profiles (default, blueprint, conventional, ticket, kernel)
 ├── scope.py            # Scope inference (monorepo, path-prefix, mapping)
 ├── git_ctx.py          # Git context collection
 ├── user_config.py      # Repository config management

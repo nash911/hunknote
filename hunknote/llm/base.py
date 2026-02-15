@@ -149,6 +149,43 @@ Rules:
 GIT CONTEXT:
 {context_bundle}"""
 
+# User prompt template for Blueprint style (structured sections)
+USER_PROMPT_TEMPLATE_BLUEPRINT = """Given the following git context, produce a JSON object for a structured commit message with these keys:
+- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
+- "scope": string or null (the area of code affected, e.g., api, auth, ui, core)
+- "title": string (imperative mood, concise summary, <=60 chars)
+- "summary": string (2-4 sentences describing what changed and why - this is a paragraph, not bullets)
+- "sections": array of section objects, each with:
+  - "title": string (MUST be one of: Changes, Implementation, Testing, Documentation, Notes, Performance, Security, Config, API)
+  - "bullets": array of strings (concise bullet points for this section)
+
+Rules:
+- Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
+- "title" in imperative mood (e.g., "Add feature" not "Added feature").
+- "summary" should be a brief paragraph (2-4 sentences) explaining the change at a high level.
+- "sections" contains structured sections. Use ONLY these allowed titles:
+  * Changes: High-level user-visible or behavior changes, what was added/removed/updated
+  * Implementation: Key modules/files touched, architecture notes, refactors, edge cases handled
+  * Testing: Tests added/updated and what they cover, verification steps
+  * Documentation: Docs updated and what was clarified
+  * Notes: Compatibility, config precedence, migration notes, follow-ups
+  * Performance: Performance-related changes or considerations
+  * Security: Security-related changes or considerations
+  * Config: Configuration changes
+  * API: API changes or additions
+- Include only relevant sections. At minimum include "Changes" OR "Implementation".
+- Be concise - avoid repeating information across sections.
+- Only describe changes shown in the diff. Do not infer or assume other changes.
+- [FILE_CHANGES] shows:
+  * NEW files (created in this commit)
+  * MODIFIED files (already existed)
+  * DELETED files (removed in this commit)
+  * RENAMED files (moved/renamed in this commit).
+  Use these to write accurate descriptions.
+
+GIT CONTEXT:
+{context_bundle}"""
+
 # Backward compatibility: generic styled template (uses conventional as default)
 USER_PROMPT_TEMPLATE_STYLED = USER_PROMPT_TEMPLATE_CONVENTIONAL
 
@@ -321,14 +358,16 @@ class BaseLLMProvider(ABC):
 
         Args:
             context_bundle: The git context string.
-            style: The style profile name (default, conventional, ticket, kernel).
+            style: The style profile name (default, blueprint, conventional, ticket, kernel).
 
         Returns:
             The formatted user prompt for the specified style.
         """
         style_lower = style.lower() if style else "default"
 
-        if style_lower == "conventional":
+        if style_lower == "blueprint":
+            return USER_PROMPT_TEMPLATE_BLUEPRINT.format(context_bundle=context_bundle)
+        elif style_lower == "conventional":
             return USER_PROMPT_TEMPLATE_CONVENTIONAL.format(context_bundle=context_bundle)
         elif style_lower == "ticket":
             return USER_PROMPT_TEMPLATE_TICKET.format(context_bundle=context_bundle)

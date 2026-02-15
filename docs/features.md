@@ -33,7 +33,7 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | Feature | Description |
 |---------|-------------|
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
-| **Commit Style Profiles** | Support for Default, Conventional Commits, Ticket-prefixed, and Kernel-style formats |
+| **Commit Style Profiles** | Support for Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style |
 | **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
 | **Smart Caching** | Reuses generated messages when staged changes haven't changed |
 | **Structured Output** | Generates title + bullet points following git best practices |
@@ -122,7 +122,7 @@ Generate an AI-powered commit message from staged changes.
 | `--commit` | `-c` | Automatically commit using the generated message | `false` |
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
 | `--debug` | `-d` | Show cache metadata (files, tokens, diff preview) | `false` |
-| `--style` | | Override commit style profile (default, conventional, ticket, kernel) | from config |
+| `--style` | | Override commit style profile (default, blueprint, conventional, ticket, kernel) | from config |
 | `--scope` | | Force a scope for the commit message (use 'auto' for inference) | auto |
 | `--no-scope` | | Disable scope even if profile supports it | `false` |
 | `--scope-strategy` | | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) | from config |
@@ -383,7 +383,68 @@ Add user authentication feature
 - Create user model with password hashing
 ```
 
-#### 2. `conventional` (Conventional Commits)
+#### 2. `blueprint` (Structured Sections)
+
+A comprehensive format with summary paragraph and structured sections. Ideal for detailed commit messages that document changes, implementation, testing, and more.
+
+**Format:**
+```
+<type>(<scope>): <title>
+
+<summary paragraph>
+
+Changes:
+- <bullet>
+- <bullet>
+
+Implementation:
+- <bullet>
+
+Testing:
+- <bullet>
+
+Documentation:
+- <bullet>
+
+Notes:
+- <bullet>
+```
+
+**Example:**
+```
+feat(auth): Add user authentication
+
+Implement secure user authentication with JWT tokens and session
+management for the API. This enables users to log in and maintain
+persistent sessions.
+
+Changes:
+- Add login and logout endpoints
+- Implement JWT token validation
+- Add session management middleware
+
+Implementation:
+- Create auth middleware in hunknote/auth.py
+- Add user session storage with Redis backend
+
+Testing:
+- Add unit tests for auth flow
+- Add integration tests for login endpoint
+
+Notes:
+- Requires REDIS_URL environment variable for production
+```
+
+**Allowed section titles:** `Changes`, `Implementation`, `Testing`, `Documentation`, `Notes`, `Performance`, `Security`, `Config`, `API`
+
+**Usage:**
+```bash
+hunknote --style blueprint
+hunknote --style blueprint --scope api
+hunknote --style blueprint --no-scope
+```
+
+#### 3. `conventional` (Conventional Commits)
 
 Following the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
@@ -405,7 +466,7 @@ feat(auth): Add user authentication
 - Implement login and logout endpoints
 - Add session management middleware
 
-Refs: PROJ-6767
+Refs: PROJ-123
 ```
 
 **Valid types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`
@@ -417,34 +478,34 @@ hunknote --style conventional --scope api
 hunknote --style conventional --no-scope  # Disable scope
 ```
 
-#### 3. `ticket` (Ticket-Prefixed)
+#### 4. `ticket` (Ticket-Prefixed)
 
 For teams that require ticket/issue references in commit messages.
 
 **Format (prefix - default):**
 ```
-<KEY-6767> <subject>
+<KEY-123> <subject>
 
 - <bullet>
 ```
 
 **Format (prefix with scope):**
 ```
-<KEY-6767> (<scope>) <subject>
+<KEY-123> (<scope>) <subject>
 
 - <bullet>
 ```
 
 **Format (suffix):**
 ```
-<subject> (<KEY-6767>)
+<subject> (<KEY-123>)
 
 - <bullet>
 ```
 
 **Example:**
 ```
-PROJ-6767 Add user authentication
+PROJ-123 Add user authentication
 
 - Implement login endpoint
 - Add session management
@@ -452,13 +513,13 @@ PROJ-6767 Add user authentication
 
 **Usage:**
 ```bash
-hunknote --style ticket --ticket PROJ-6767
-hunknote --style ticket --ticket PROJ-6767 --scope api
+hunknote --style ticket --ticket PROJ-123
+hunknote --style ticket --ticket PROJ-123 --scope api
 ```
 
 **Automatic ticket extraction:** If `--ticket` is not provided, Hunknote will attempt to extract a ticket from the branch name using the configured regex pattern.
 
-#### 4. `kernel` (Linux Kernel Style)
+#### 5. `kernel` (Linux Kernel Style)
 
 Following the Linux kernel commit message format.
 
@@ -487,10 +548,14 @@ Style settings can be configured in `~/.hunknote/config.yaml` (global) or `<repo
 
 ```yaml
 style:
-  profile: conventional    # default | conventional | ticket | kernel
+  profile: blueprint       # default | blueprint | conventional | ticket | kernel
   include_body: true       # Whether to include bullet body
   max_bullets: 6           # Maximum number of bullets
   wrap_width: 72           # Line wrap width
+
+  # Blueprint style options
+  blueprint:
+    section_titles: [Changes, Implementation, Testing, Documentation, Notes]
 
   # Conventional commits options
   conventional:
@@ -518,7 +583,7 @@ Style settings are applied in this order (later overrides earlier):
 
 ### Automatic Type Inference
 
-When using `conventional` style, Hunknote can automatically infer the commit type based on the files being changed:
+When using `conventional` or `blueprint` style, Hunknote can automatically infer the commit type based on the files being changed:
 
 | Changed Files | Inferred Type |
 |---------------|---------------|

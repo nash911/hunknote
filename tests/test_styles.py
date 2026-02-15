@@ -6,14 +6,17 @@ from hunknote.styles import (
     StyleProfile,
     StyleConfig,
     ExtendedCommitJSON,
+    BlueprintSection,
     PROFILE_DESCRIPTIONS,
     CONVENTIONAL_TYPES,
+    BLUEPRINT_SECTION_TITLES,
     load_style_config_from_dict,
     style_config_to_dict,
     render_default,
     render_conventional,
     render_ticket,
     render_kernel,
+    render_blueprint,
     render_commit_message_styled,
     sanitize_subject,
     wrap_text,
@@ -28,6 +31,10 @@ class TestStyleProfile:
     def test_has_default(self):
         """Test that default profile exists."""
         assert StyleProfile.DEFAULT.value == "default"
+
+    def test_has_blueprint(self):
+        """Test that blueprint profile exists."""
+        assert StyleProfile.BLUEPRINT.value == "blueprint"
 
     def test_has_conventional(self):
         """Test that conventional profile exists."""
@@ -44,6 +51,7 @@ class TestStyleProfile:
     def test_profile_from_string(self):
         """Test creating profile from string."""
         assert StyleProfile("default") == StyleProfile.DEFAULT
+        assert StyleProfile("blueprint") == StyleProfile.BLUEPRINT
         assert StyleProfile("conventional") == StyleProfile.CONVENTIONAL
 
 
@@ -567,3 +575,365 @@ class TestConventionalTypes:
         assert "test" in CONVENTIONAL_TYPES
         assert "chore" in CONVENTIONAL_TYPES
 
+
+class TestBlueprintSectionTitles:
+    """Tests for BLUEPRINT_SECTION_TITLES constant."""
+
+    def test_contains_required_sections(self):
+        """Test contains required section titles."""
+        assert "Changes" in BLUEPRINT_SECTION_TITLES
+        assert "Implementation" in BLUEPRINT_SECTION_TITLES
+        assert "Testing" in BLUEPRINT_SECTION_TITLES
+        assert "Documentation" in BLUEPRINT_SECTION_TITLES
+        assert "Notes" in BLUEPRINT_SECTION_TITLES
+
+    def test_contains_optional_sections(self):
+        """Test contains optional section titles."""
+        assert "Performance" in BLUEPRINT_SECTION_TITLES
+        assert "Security" in BLUEPRINT_SECTION_TITLES
+        assert "Config" in BLUEPRINT_SECTION_TITLES
+        assert "API" in BLUEPRINT_SECTION_TITLES
+
+    def test_section_order(self):
+        """Test sections are in preferred order."""
+        # Changes and Implementation should come before Testing
+        assert BLUEPRINT_SECTION_TITLES.index("Changes") < BLUEPRINT_SECTION_TITLES.index("Testing")
+        assert BLUEPRINT_SECTION_TITLES.index("Implementation") < BLUEPRINT_SECTION_TITLES.index("Testing")
+
+
+class TestBlueprintSection:
+    """Tests for BlueprintSection model."""
+
+    def test_create_section(self):
+        """Test creating a section."""
+        section = BlueprintSection(
+            title="Changes",
+            bullets=["First change", "Second change"],
+        )
+        assert section.title == "Changes"
+        assert len(section.bullets) == 2
+
+    def test_empty_bullets(self):
+        """Test section with no bullets."""
+        section = BlueprintSection(title="Notes", bullets=[])
+        assert section.bullets == []
+
+    def test_none_bullets_becomes_list(self):
+        """Test that None bullets becomes empty list."""
+        section = BlueprintSection(title="Notes", bullets=None)
+        assert section.bullets == []
+
+
+class TestExtendedCommitJSONBlueprint:
+    """Tests for ExtendedCommitJSON blueprint fields."""
+
+    def test_summary_field(self):
+        """Test summary field."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            summary="This is a summary paragraph.",
+        )
+        assert data.get_summary() == "This is a summary paragraph."
+
+    def test_summary_none(self):
+        """Test summary returns None when not set."""
+        data = ExtendedCommitJSON(title="Add feature")
+        assert data.get_summary() is None
+
+    def test_sections_field(self):
+        """Test sections field."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+                BlueprintSection(title="Implementation", bullets=["Impl 1"]),
+            ],
+        )
+        sections = data.get_sections()
+        assert len(sections) == 2
+        assert sections[0].title == "Changes"
+        assert sections[1].title == "Implementation"
+
+    def test_get_sections_filtered_by_allowed(self):
+        """Test get_sections filters by allowed titles."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            sections=[
+                BlueprintSection(title="Testing", bullets=["Test 1"]),
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+                BlueprintSection(title="Implementation", bullets=["Impl 1"]),
+            ],
+        )
+        # Should be ordered by allowed_titles, not input order
+        sections = data.get_sections(["Changes", "Implementation", "Testing"])
+        assert len(sections) == 3
+        assert sections[0].title == "Changes"
+        assert sections[1].title == "Implementation"
+        assert sections[2].title == "Testing"
+
+    def test_sections_from_dict(self):
+        """Test sections can be created from dict."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            sections=[
+                {"title": "Changes", "bullets": ["Change 1"]},
+                {"title": "Testing", "bullets": ["Test 1"]},
+            ],
+        )
+        sections = data.get_sections()
+        assert len(sections) == 2
+        assert isinstance(sections[0], BlueprintSection)
+
+
+class TestRenderBlueprint:
+    """Tests for render_blueprint function."""
+
+    def test_basic_blueprint(self):
+        """Test basic blueprint rendering."""
+        data = ExtendedCommitJSON(
+            title="Add user authentication",
+            type="feat",
+            scope="auth",
+            summary="Implement secure authentication.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Add login endpoint"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        assert "feat(auth): Add user authentication" in result
+        assert "Implement secure authentication." in result
+        assert "Changes:" in result
+        assert "- Add login endpoint" in result
+
+    def test_blueprint_without_scope(self):
+        """Test blueprint without scope."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="A feature summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        assert "feat: Add feature" in result
+        assert "feat():" not in result
+
+    def test_blueprint_no_scope_flag(self):
+        """Test blueprint with no_scope flag."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            scope="api",
+            summary="A feature summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config, no_scope=True)
+
+        assert "feat: Add feature" in result
+        assert "api" not in result
+
+    def test_blueprint_override_scope(self):
+        """Test blueprint with scope override."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            scope="api",
+            summary="A feature summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config, override_scope="core")
+
+        assert "feat(core):" in result
+        assert "feat(api):" not in result
+
+    def test_blueprint_multiple_sections(self):
+        """Test blueprint with multiple sections."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="Summary here.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1", "Change 2"]),
+                BlueprintSection(title="Implementation", bullets=["Impl 1"]),
+                BlueprintSection(title="Testing", bullets=["Test 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        assert "Changes:" in result
+        assert "Implementation:" in result
+        assert "Testing:" in result
+
+    def test_blueprint_section_ordering(self):
+        """Test blueprint sections are ordered correctly."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="Summary.",
+            sections=[
+                BlueprintSection(title="Testing", bullets=["Test 1"]),
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        # Changes should appear before Testing in output
+        changes_pos = result.find("Changes:")
+        testing_pos = result.find("Testing:")
+        assert changes_pos < testing_pos
+
+    def test_blueprint_wraps_summary(self):
+        """Test blueprint wraps long summary."""
+        long_summary = "This is a very long summary that should be wrapped to multiple lines when it exceeds the maximum width configured for the commit message output."
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary=long_summary,
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT, wrap_width=72)
+        result = render_blueprint(data, config)
+
+        # Should be wrapped
+        lines = result.split("\n")
+        for line in lines:
+            assert len(line) <= 72
+
+    def test_blueprint_fallback_to_body_bullets(self):
+        """Test blueprint falls back to body_bullets if no sections."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            body_bullets=["First change", "Second change"],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        # Should use Changes section with body_bullets
+        assert "Changes:" in result
+        assert "- First change" in result
+        assert "- Second change" in result
+
+    def test_blueprint_invalid_type_fallback(self):
+        """Test blueprint with invalid type falls back to chore."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="invalid_type",
+            summary="Summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+
+        assert "chore:" in result
+
+
+class TestRenderCommitMessageStyledBlueprint:
+    """Tests for render_commit_message_styled with blueprint profile."""
+
+    def test_selects_blueprint_renderer(self):
+        """Test blueprint profile selects blueprint renderer."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="Summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_commit_message_styled(data, config)
+
+        assert "feat: Add feature" in result
+        assert "Summary." in result
+        assert "Changes:" in result
+
+    def test_override_to_blueprint(self):
+        """Test overriding to blueprint style."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="Summary.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.DEFAULT)
+        result = render_commit_message_styled(
+            data, config, override_style=StyleProfile.BLUEPRINT
+        )
+
+        assert "Changes:" in result
+
+
+class TestLoadStyleConfigBlueprint:
+    """Tests for load_style_config_from_dict with blueprint config."""
+
+    def test_loads_blueprint_profile(self):
+        """Test loading blueprint profile."""
+        config = load_style_config_from_dict({
+            "style": {"profile": "blueprint"}
+        })
+        assert config.profile == StyleProfile.BLUEPRINT
+
+    def test_loads_blueprint_section_titles(self):
+        """Test loading custom blueprint section titles."""
+        config = load_style_config_from_dict({
+            "style": {
+                "profile": "blueprint",
+                "blueprint": {
+                    "section_titles": ["Changes", "Notes"],
+                }
+            }
+        })
+        assert config.blueprint_section_titles == ["Changes", "Notes"]
+
+
+class TestStyleConfigToDictBlueprint:
+    """Tests for style_config_to_dict with blueprint config."""
+
+    def test_includes_blueprint_config(self):
+        """Test blueprint config is included in dict."""
+        config = StyleConfig(
+            profile=StyleProfile.BLUEPRINT,
+            blueprint_section_titles=["Changes", "Implementation"],
+        )
+        result = style_config_to_dict(config)
+
+        assert result["style"]["profile"] == "blueprint"
+        assert result["style"]["blueprint"]["section_titles"] == ["Changes", "Implementation"]
+
+
+class TestProfileDescriptionsBlueprint:
+    """Tests for PROFILE_DESCRIPTIONS with blueprint."""
+
+    def test_has_blueprint_description(self):
+        """Test blueprint has description."""
+        assert StyleProfile.BLUEPRINT in PROFILE_DESCRIPTIONS
+
+    def test_blueprint_description_fields(self):
+        """Test blueprint description has required fields."""
+        desc = PROFILE_DESCRIPTIONS[StyleProfile.BLUEPRINT]
+        assert desc["name"] == "blueprint"
+        assert "description" in desc
+        assert "format" in desc
+        assert "example" in desc
+        assert "Changes" in desc["example"]
+        assert "Implementation" in desc["example"]

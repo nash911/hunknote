@@ -660,7 +660,7 @@ def style_list() -> None:
 def style_show(
     profile: str = typer.Argument(
         None,
-        help="Profile name to show (default, conventional, ticket, kernel)"
+        help="Profile name to show (default, blueprint, conventional, ticket, kernel)"
     )
 ) -> None:
     """Show details about a style profile."""
@@ -678,7 +678,7 @@ def style_show(
         style_profile = StyleProfile(profile.lower())
     except ValueError:
         typer.echo(f"Invalid profile: {profile}", err=True)
-        typer.echo("Valid profiles: default, conventional, ticket, kernel")
+        typer.echo("Valid profiles: default, blueprint, conventional, ticket, kernel")
         raise typer.Exit(1)
 
     desc = PROFILE_DESCRIPTIONS[style_profile]
@@ -696,7 +696,14 @@ def style_show(
     typer.echo()
 
     # Show profile-specific options
-    if style_profile == StyleProfile.CONVENTIONAL:
+    if style_profile == StyleProfile.BLUEPRINT:
+        typer.echo("Options (in config.yaml):")
+        typer.echo("  style.blueprint.section_titles: [Changes, Implementation, ...]")
+        typer.echo()
+        typer.echo("Allowed section titles:")
+        typer.echo("  Changes, Implementation, Testing, Documentation, Notes,")
+        typer.echo("  Performance, Security, Config, API")
+    elif style_profile == StyleProfile.CONVENTIONAL:
         typer.echo("Options (in config.yaml):")
         typer.echo("  style.conventional.types: [feat, fix, docs, ...]")
         typer.echo("  style.conventional.breaking_footer: true")
@@ -713,7 +720,7 @@ def style_show(
 def style_set(
     profile: str = typer.Argument(
         ...,
-        help="Profile name (default, conventional, ticket, kernel)"
+        help="Profile name (default, blueprint, conventional, ticket, kernel)"
     ),
     repo: bool = typer.Option(
         False,
@@ -727,7 +734,7 @@ def style_set(
         style_profile = StyleProfile(profile.lower())
     except ValueError:
         typer.echo(f"Invalid profile: {profile}", err=True)
-        typer.echo("Valid profiles: default, conventional, ticket, kernel")
+        typer.echo("Valid profiles: default, blueprint, conventional, ticket, kernel")
         raise typer.Exit(1)
 
     if repo:
@@ -824,7 +831,7 @@ def main(
     style: Optional[str] = typer.Option(
         None,
         "--style",
-        help="Override commit style profile (default, conventional, ticket, kernel)",
+        help="Override commit style profile (default, blueprint, conventional, ticket, kernel)",
     ),
     scope: Optional[str] = typer.Option(
         None,
@@ -863,7 +870,7 @@ def main(
             override_style = StyleProfile(style.lower())
         except ValueError:
             typer.echo(f"Invalid style: {style}", err=True)
-            typer.echo("Valid styles: default, conventional, ticket, kernel")
+            typer.echo("Valid styles: default, blueprint, conventional, ticket, kernel")
             raise typer.Exit(1)
 
     # Validate scope strategy if provided
@@ -938,11 +945,14 @@ def main(
             extended_data = ExtendedCommitJSON(
                 title=llm_result.commit_json.title,
                 body_bullets=llm_result.commit_json.body_bullets,
-                # LLM may provide extended fields in the future
+                # LLM may provide extended fields
                 type=getattr(llm_result.commit_json, 'type', None),
                 scope=effective_scope or getattr(llm_result.commit_json, 'scope', None),
                 subject=getattr(llm_result.commit_json, 'subject', None),
                 ticket=ticket,
+                # Blueprint-specific fields
+                summary=getattr(llm_result.commit_json, 'summary', None),
+                sections=getattr(llm_result.commit_json, 'sections', []),
             )
 
             # Try to extract ticket from branch if not provided and using ticket style
@@ -955,8 +965,8 @@ def main(
                 except Exception:
                     pass
 
-            # Infer commit type if using conventional style and not provided
-            if effective_profile == StyleProfile.CONVENTIONAL and not extended_data.type:
+            # Infer commit type if using conventional/blueprint style and not provided
+            if effective_profile in (StyleProfile.CONVENTIONAL, StyleProfile.BLUEPRINT) and not extended_data.type:
                 inferred_type = infer_commit_type(staged_files)
                 if inferred_type:
                     extended_data.type = inferred_type

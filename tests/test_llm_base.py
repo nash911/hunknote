@@ -306,41 +306,71 @@ class TestStyleSpecificPromptTemplates:
         from hunknote.llm.base import USER_PROMPT_TEMPLATE_KERNEL
         assert "lowercase" in USER_PROMPT_TEMPLATE_KERNEL.lower()
 
+    def test_blueprint_template_exists(self):
+        """Test that blueprint template exists."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "{context_bundle}" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "type" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "summary" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "sections" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
+    def test_blueprint_template_has_allowed_sections(self):
+        """Test that blueprint template lists allowed section titles."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Changes" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Implementation" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Testing" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Documentation" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Notes" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
+    def test_blueprint_template_mentions_optional_sections(self):
+        """Test that blueprint template mentions optional sections."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Performance" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "Security" in USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "API" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
     def test_all_templates_mention_json(self):
         """Test that all templates mention JSON output."""
         from hunknote.llm.base import (
             USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_BLUEPRINT,
             USER_PROMPT_TEMPLATE_CONVENTIONAL,
             USER_PROMPT_TEMPLATE_TICKET,
             USER_PROMPT_TEMPLATE_KERNEL,
         )
-        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
-                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_BLUEPRINT,
+                         USER_PROMPT_TEMPLATE_CONVENTIONAL, USER_PROMPT_TEMPLATE_TICKET,
+                         USER_PROMPT_TEMPLATE_KERNEL]:
             assert "JSON" in template
 
     def test_all_templates_mention_file_changes(self):
         """Test that all templates mention FILE_CHANGES section."""
         from hunknote.llm.base import (
             USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_BLUEPRINT,
             USER_PROMPT_TEMPLATE_CONVENTIONAL,
             USER_PROMPT_TEMPLATE_TICKET,
             USER_PROMPT_TEMPLATE_KERNEL,
         )
-        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
-                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_BLUEPRINT,
+                         USER_PROMPT_TEMPLATE_CONVENTIONAL, USER_PROMPT_TEMPLATE_TICKET,
+                         USER_PROMPT_TEMPLATE_KERNEL]:
             assert "FILE_CHANGES" in template
 
     def test_all_templates_can_be_formatted(self):
         """Test that all templates can be formatted with context_bundle."""
         from hunknote.llm.base import (
             USER_PROMPT_TEMPLATE_DEFAULT,
+            USER_PROMPT_TEMPLATE_BLUEPRINT,
             USER_PROMPT_TEMPLATE_CONVENTIONAL,
             USER_PROMPT_TEMPLATE_TICKET,
             USER_PROMPT_TEMPLATE_KERNEL,
         )
         test_context = "test git context here"
-        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_CONVENTIONAL,
-                         USER_PROMPT_TEMPLATE_TICKET, USER_PROMPT_TEMPLATE_KERNEL]:
+        for template in [USER_PROMPT_TEMPLATE_DEFAULT, USER_PROMPT_TEMPLATE_BLUEPRINT,
+                         USER_PROMPT_TEMPLATE_CONVENTIONAL, USER_PROMPT_TEMPLATE_TICKET,
+                         USER_PROMPT_TEMPLATE_KERNEL]:
             formatted = template.format(context_bundle=test_context)
             assert test_context in formatted
 
@@ -398,6 +428,19 @@ class TestBaseLLMProviderPromptMethods:
         provider = TestProvider()
         result = provider.build_user_prompt_for_style("test context", "kernel")
         expected = USER_PROMPT_TEMPLATE_KERNEL.format(context_bundle="test context")
+        assert result == expected
+
+    def test_build_user_prompt_for_style_blueprint(self):
+        """Test build_user_prompt_for_style with blueprint style."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_BLUEPRINT
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_for_style("test context", "blueprint")
+        expected = USER_PROMPT_TEMPLATE_BLUEPRINT.format(context_bundle="test context")
         assert result == expected
 
     def test_build_user_prompt_for_style_case_insensitive(self):

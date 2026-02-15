@@ -2,8 +2,9 @@
 
 Supports multiple commit message formats:
 - default: Title + bullet points (current Hunknote format)
+- blueprint: Structured sections with summary (Changes, Implementation, Testing, etc.)
 - conventional: Conventional Commits (type(scope): subject)
-- ticket: Ticket-prefixed commits (PROJ-6767 subject)
+- ticket: Ticket-prefixed commits (PROJ-123 subject)
 - kernel: Linux kernel style (subsystem: subject)
 """
 
@@ -20,6 +21,7 @@ class StyleProfile(Enum):
     """Available commit style profiles."""
 
     DEFAULT = "default"
+    BLUEPRINT = "blueprint"
     CONVENTIONAL = "conventional"
     TICKET = "ticket"
     KERNEL = "kernel"
@@ -38,6 +40,19 @@ CONVENTIONAL_TYPES = [
     "chore",
     "style",
     "revert",
+]
+
+# Allowed section titles for blueprint style (in preferred order)
+BLUEPRINT_SECTION_TITLES = [
+    "Changes",
+    "Implementation",
+    "Testing",
+    "Documentation",
+    "Notes",
+    "Performance",
+    "Security",
+    "Config",
+    "API",
 ]
 
 
@@ -62,6 +77,30 @@ class StyleConfig:
     # Kernel config
     subsystem_from_scope: bool = True
 
+    # Blueprint config
+    blueprint_section_titles: list[str] = field(
+        default_factory=lambda: BLUEPRINT_SECTION_TITLES.copy())
+
+
+class BlueprintSection(BaseModel):
+    """A section in a blueprint-style commit message.
+
+    Attributes:
+        title: Section title (e.g., "Changes", "Implementation").
+        bullets: List of bullet points for this section.
+    """
+
+    title: str
+    bullets: list[str] = []
+
+    @field_validator("bullets", mode="before")
+    @classmethod
+    def ensure_bullets_list(cls, v):
+        """Ensure bullets is a list."""
+        if v is None:
+            return []
+        return v
+
 
 class ExtendedCommitJSON(BaseModel):
     """Extended Pydantic model for structured commit message data.
@@ -77,7 +116,9 @@ class ExtendedCommitJSON(BaseModel):
         subject: The commit subject line (preferred over title).
         breaking_change: Whether this is a breaking change.
         footers: Additional footer lines (Refs, Co-authored-by, etc.).
-        ticket: Ticket/issue key (e.g., PROJ-6767).
+        ticket: Ticket/issue key (e.g., PROJ-123).
+        summary: Blueprint-style summary paragraph (1-3 sentences).
+        sections: Blueprint-style sections with title and bullets.
     """
 
     # Legacy fields (backward compatible)
@@ -91,6 +132,10 @@ class ExtendedCommitJSON(BaseModel):
     breaking_change: bool = False
     footers: list[str] = []
     ticket: Optional[str] = None
+
+    # Blueprint-specific fields
+    summary: Optional[str] = None
+    sections: list[BlueprintSection] = []
 
     @field_validator("body_bullets", mode="before")
     @classmethod
@@ -107,6 +152,21 @@ class ExtendedCommitJSON(BaseModel):
         if v is None:
             return []
         return v
+
+    @field_validator("sections", mode="before")
+    @classmethod
+    def ensure_sections_list(cls, v):
+        """Ensure sections is a list of BlueprintSection objects."""
+        if v is None:
+            return []
+        # Convert dicts to BlueprintSection if needed
+        result = []
+        for item in v:
+            if isinstance(item, dict):
+                result.append(BlueprintSection(**item))
+            elif isinstance(item, BlueprintSection):
+                result.append(item)
+        return result
 
     def get_subject(self) -> str:
         """Get the subject line, preferring 'subject' over 'title'.
@@ -159,6 +219,39 @@ class ExtendedCommitJSON(BaseModel):
         if max_bullets and len(bullets) > max_bullets:
             return bullets[:max_bullets]
         return bullets
+
+    def get_summary(self) -> Optional[str]:
+        """Get the summary paragraph for blueprint style.
+
+        Returns:
+            The summary string or None.
+        """
+        if self.summary and self.summary.strip():
+            return self.summary.strip()
+        return None
+
+    def get_sections(self, allowed_titles: Optional[list[str]] = None) -> list[BlueprintSection]:
+        """Get sections, optionally filtered by allowed titles.
+
+        Args:
+            allowed_titles: List of allowed section titles (in preferred order).
+
+        Returns:
+            List of BlueprintSection objects.
+        """
+        if not self.sections:
+            return []
+
+        if allowed_titles is None:
+            return self.sections
+
+        # Filter and order by allowed_titles
+        title_to_section = {s.title: s for s in self.sections}
+        result = []
+        for title in allowed_titles:
+            if title in title_to_section:
+                result.append(title_to_section[title])
+        return result
 
 
 def wrap_text(text: str, width: int = 72, initial_indent: str = "", subsequent_indent: str = "") -> str:
@@ -454,6 +547,100 @@ def render_kernel(
     return "\n".join(parts)
 
 
+def render_blueprint(
+    data: ExtendedCommitJSON,
+    config: StyleConfig,
+    override_scope: Optional[str] = None,
+    no_scope: bool = False,
+) -> str:
+    """Render commit message in blueprint style.
+
+    Format:
+        <type>(<scope>): <title>
+
+        <summary paragraph wrapped to wrap_width>
+
+        <Section Title>:
+        - bullet
+        - bullet
+
+    Args:
+        data: The structured commit data.
+        config: Style configuration.
+        override_scope: Force a specific scope.
+        no_scope: Disable scope even if provided.
+
+    Returns:
+        Formatted commit message.
+    """
+    commit_type = data.get_type("feat")
+
+    # Validate type
+    if commit_type not in config.conventional_types:
+        commit_type = "chore"
+
+    # Determine scope
+    scope = None
+    if not no_scope:
+        scope = override_scope or data.get_scope()
+
+    # Build header (conventional format)
+    subject = data.get_subject()
+    header_prefix_len = len(commit_type) + 2  # "type: "
+    if scope:
+        header_prefix_len += len(scope) + 2  # "(scope)"
+
+    max_subject_len = config.wrap_width - header_prefix_len
+    subject = sanitize_subject(subject, max_subject_len)
+
+    if scope:
+        header = f"{commit_type}({scope}): {subject}"
+    else:
+        header = f"{commit_type}: {subject}"
+
+    parts = [header]
+
+    # Add summary paragraph
+    summary = data.get_summary()
+    if summary:
+        wrapped_summary = wrap_text(summary, width=config.wrap_width)
+        parts.append("")  # Blank line after header
+        parts.append(wrapped_summary)
+
+    # Add sections
+    sections = data.get_sections(config.blueprint_section_titles)
+    if sections:
+        for section in sections:
+            if section.bullets:
+                parts.append("")  # Blank line before section
+                parts.append(f"{section.title}:")
+                for bullet in section.bullets:
+                    wrapped = wrap_text(
+                        bullet,
+                        width=config.wrap_width,
+                        initial_indent="- ",
+                        subsequent_indent="  ",
+                    )
+                    parts.append(wrapped)
+
+    # Fallback: if no sections but has body_bullets, render as "Changes" section
+    if not sections and config.include_body:
+        bullets = data.get_bullets(config.max_bullets)
+        if bullets:
+            parts.append("")
+            parts.append("Changes:")
+            for bullet in bullets:
+                wrapped = wrap_text(
+                    bullet,
+                    width=config.wrap_width,
+                    initial_indent="- ",
+                    subsequent_indent="  ",
+                )
+                parts.append(wrapped)
+
+    return "\n".join(parts)
+
+
 def render_commit_message_styled(
     data: ExtendedCommitJSON,
     config: StyleConfig,
@@ -477,7 +664,9 @@ def render_commit_message_styled(
     """
     profile = override_style or config.profile
 
-    if profile == StyleProfile.CONVENTIONAL:
+    if profile == StyleProfile.BLUEPRINT:
+        return render_blueprint(data, config, override_scope, no_scope)
+    elif profile == StyleProfile.CONVENTIONAL:
         return render_conventional(data, config, override_scope, no_scope)
     elif profile == StyleProfile.TICKET:
         return render_ticket(data, config, override_ticket, override_scope)
@@ -592,6 +781,9 @@ def load_style_config_from_dict(config_dict: dict) -> StyleConfig:
     # Get kernel config
     kernel_section = style_section.get("kernel", {})
 
+    # Get blueprint config
+    blueprint_section = style_section.get("blueprint", {})
+
     return StyleConfig(
         profile=profile,
         include_body=style_section.get("include_body", True),
@@ -602,6 +794,7 @@ def load_style_config_from_dict(config_dict: dict) -> StyleConfig:
         ticket_key_regex=ticket_section.get("key_regex", r"([A-Z][A-Z0-9]+-\d+)"),
         ticket_placement=ticket_section.get("placement", "prefix"),
         subsystem_from_scope=kernel_section.get("subsystem_from_scope", True),
+        blueprint_section_titles=blueprint_section.get("section_titles", BLUEPRINT_SECTION_TITLES.copy()),
     )
 
 
@@ -631,11 +824,14 @@ def style_config_to_dict(config: StyleConfig) -> dict:
             "kernel": {
                 "subsystem_from_scope": config.subsystem_from_scope,
             },
+            "blueprint": {
+                "section_titles": config.blueprint_section_titles,
+            },
         }
     }
 
 
-# Profile descriptions for help/display
+# Profile descriptions for help/display (ordered for style list display)
 PROFILE_DESCRIPTIONS = {
     StyleProfile.DEFAULT: {
         "name": "default",
@@ -643,17 +839,23 @@ PROFILE_DESCRIPTIONS = {
         "format": "<Title>\n\n- <bullet>\n- <bullet>",
         "example": "Add user authentication feature\n\n- Implement login endpoint\n- Add session management",
     },
+    StyleProfile.BLUEPRINT: {
+        "name": "blueprint",
+        "description": "Structured sections with summary (Changes, Implementation, Testing, etc.)",
+        "format": "<type>(<scope>): <title>\n\n<summary paragraph>\n\nChanges:\n- <bullet>\n\nImplementation:\n- <bullet>",
+        "example": "feat(auth): Add user authentication\n\nImplement secure user authentication with JWT tokens\nand session management for the API.\n\nChanges:\n- Add login and logout endpoints\n- Implement JWT token validation\n\nImplementation:\n- Create auth middleware\n- Add user session storage\n\nTesting:\n- Add unit tests for auth flow",
+    },
     StyleProfile.CONVENTIONAL: {
         "name": "conventional",
         "description": "Conventional Commits format (type(scope): subject)",
         "format": "<type>(<scope>): <subject>\n\n- <bullet>\n\nBREAKING CHANGE: ...\nRefs: ...",
-        "example": "feat(auth): Add user authentication\n\n- Implement login endpoint\n- Add session management\n\nRefs: PROJ-6767",
+        "example": "feat(auth): Add user authentication\n\n- Implement login endpoint\n- Add session management\n\nRefs: PROJ-123",
     },
     StyleProfile.TICKET: {
         "name": "ticket",
-        "description": "Ticket-prefixed format (PROJ-6767 subject)",
-        "format": "<KEY-6767> <subject>\n\n- <bullet>",
-        "example": "PROJ-6767 Add user authentication\n\n- Implement login endpoint\n- Add session management",
+        "description": "Ticket-prefixed format (PROJ-123 subject)",
+        "format": "<KEY-123> <subject>\n\n- <bullet>",
+        "example": "PROJ-123 Add user authentication\n\n- Implement login endpoint\n- Add session management",
     },
     StyleProfile.KERNEL: {
         "name": "kernel",
