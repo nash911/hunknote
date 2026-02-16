@@ -72,6 +72,199 @@ def get_branch() -> str:
     return branch
 
 
+def is_merge_in_progress(repo_root: Path = None) -> bool:
+    """Check if a merge is currently in progress.
+
+    A merge is in progress when .git/MERGE_HEAD exists.
+
+    Args:
+        repo_root: The root directory of the git repository (optional).
+
+    Returns:
+        True if a merge is in progress, False otherwise.
+    """
+    if repo_root is None:
+        try:
+            repo_root = get_repo_root()
+        except GitError:
+            return False
+
+    merge_head = repo_root / ".git" / "MERGE_HEAD"
+    return merge_head.exists()
+
+
+def get_merge_head(repo_root: Path = None) -> str | None:
+    """Get the commit hash being merged (MERGE_HEAD).
+
+    Args:
+        repo_root: The root directory of the git repository (optional).
+
+    Returns:
+        The commit hash being merged, or None if no merge in progress.
+    """
+    if repo_root is None:
+        try:
+            repo_root = get_repo_root()
+        except GitError:
+            return None
+
+    merge_head_file = repo_root / ".git" / "MERGE_HEAD"
+    if merge_head_file.exists():
+        return merge_head_file.read_text().strip()
+    return None
+
+
+def has_unresolved_conflicts(repo_root: Path = None) -> bool:
+    """Check if there are unresolved merge conflicts.
+
+    Unresolved conflicts are indicated by files with 'U' status in git status.
+
+    Args:
+        repo_root: The root directory of the git repository (optional).
+
+    Returns:
+        True if there are unresolved conflicts, False otherwise.
+    """
+    try:
+        status = _run_git_command(["status", "--porcelain=v1"])
+        for line in status.split("\n"):
+            if len(line) >= 2:
+                # Check for unmerged states: UU, AA, DD, AU, UA, DU, UD
+                xy = line[:2]
+                if "U" in xy or xy in ("AA", "DD"):
+                    return True
+        return False
+    except GitError:
+        return False
+
+
+def get_conflicted_files() -> list[str]:
+    """Get list of files with unresolved conflicts.
+
+    Returns:
+        List of file paths with conflicts.
+    """
+    conflicted = []
+    try:
+        status = _run_git_command(["status", "--porcelain=v1"])
+        for line in status.split("\n"):
+            if len(line) >= 3:
+                xy = line[:2]
+                # Check for unmerged states
+                if "U" in xy or xy in ("AA", "DD"):
+                    filename = line[3:]
+                    conflicted.append(filename)
+    except GitError:
+        pass
+    return conflicted
+
+
+def get_merge_source_branch(repo_root: Path = None) -> str | None:
+    """Get the name of the branch being merged.
+
+    Attempts to determine the source branch from:
+    1. .git/MERGE_MSG (contains "Merge branch 'branch-name'")
+    2. git name-rev of MERGE_HEAD
+
+    Args:
+        repo_root: The root directory of the git repository (optional).
+
+    Returns:
+        The source branch name, or None if cannot be determined.
+    """
+    if repo_root is None:
+        try:
+            repo_root = get_repo_root()
+        except GitError:
+            return None
+
+    # Try to get branch name from MERGE_MSG
+    merge_msg_file = repo_root / ".git" / "MERGE_MSG"
+    if merge_msg_file.exists():
+        try:
+            merge_msg = merge_msg_file.read_text()
+            # Parse "Merge branch 'branch-name'" or "Merge branch 'branch-name' into target"
+            import re
+            match = re.search(r"Merge branch '([^']+)'", merge_msg)
+            if match:
+                return match.group(1)
+            # Also try without quotes: "Merge branch branch-name"
+            match = re.search(r"Merge branch (\S+)", merge_msg)
+            if match:
+                return match.group(1)
+        except Exception:
+            pass
+
+    # Fallback: try to get branch name from MERGE_HEAD using name-rev
+    merge_head = get_merge_head(repo_root)
+    if merge_head:
+        try:
+            # git name-rev gives something like "abc123 remotes/origin/branch-name" or "abc123 branch-name"
+            name_rev = _run_git_command(["name-rev", "--name-only", merge_head])
+            if name_rev and name_rev != "undefined":
+                # Clean up the name (remove ~N suffixes, remotes/origin/ prefix)
+                branch = name_rev.split("~")[0].split("^")[0]
+                if branch.startswith("remotes/origin/"):
+                    branch = branch[len("remotes/origin/"):]
+                return branch
+        except GitError:
+            pass
+
+    return None
+
+
+def get_merge_state(repo_root: Path = None) -> dict:
+    """Get comprehensive merge state information.
+
+    Args:
+        repo_root: The root directory of the git repository (optional).
+
+    Returns:
+        Dictionary with merge state information:
+        - is_merge: True if merge is in progress
+        - merge_head: Commit hash being merged (or None)
+        - source_branch: Name of branch being merged (or None)
+        - has_conflicts: True if there are unresolved conflicts
+        - conflicted_files: List of files with conflicts
+        - state: 'normal', 'merge', or 'merge-conflict'
+    """
+    if repo_root is None:
+        try:
+            repo_root = get_repo_root()
+        except GitError:
+            return {
+                "is_merge": False,
+                "merge_head": None,
+                "source_branch": None,
+                "has_conflicts": False,
+                "conflicted_files": [],
+                "state": "normal",
+            }
+
+    is_merge = is_merge_in_progress(repo_root)
+    merge_head = get_merge_head(repo_root) if is_merge else None
+    source_branch = get_merge_source_branch(repo_root) if is_merge else None
+    has_conflicts = has_unresolved_conflicts(repo_root)
+    conflicted_files = get_conflicted_files() if has_conflicts else []
+
+    # Determine state
+    if has_conflicts:
+        state = "merge-conflict"
+    elif is_merge:
+        state = "merge"
+    else:
+        state = "normal"
+
+    return {
+        "is_merge": is_merge,
+        "merge_head": merge_head,
+        "source_branch": source_branch,
+        "has_conflicts": has_conflicts,
+        "conflicted_files": conflicted_files,
+        "state": state,
+    }
+
+
 def get_status() -> str:
     """Get git status output in porcelain format.
 
@@ -261,6 +454,9 @@ def build_context_bundle(max_chars: int = 50000) -> str:
         NoStagedChangesError: If there are no staged changes.
         GitError: If not in a git repository.
     """
+    # Get repo root for merge state detection
+    repo_root = get_repo_root()
+
     # Get all context pieces
     branch = get_branch()
     # Use staged-only status to avoid confusing LLM with unstaged/untracked files
@@ -268,15 +464,24 @@ def build_context_bundle(max_chars: int = 50000) -> str:
     last_commits = get_last_commits(n=5)
     staged_diff = get_staged_diff(max_chars=max_chars)
 
+    # Get merge state information
+    merge_state = get_merge_state(repo_root)
+
     # Format commits as bullet list
     commits_formatted = "\n".join(f"- {commit}" for commit in last_commits) if last_commits else "- (no commits yet)"
 
     # Parse status to create a clear file change summary
     file_changes = _parse_file_changes(status)
 
+    # Format merge state section
+    merge_section = _format_merge_state(merge_state)
+
     # Build the context bundle
     bundle = f"""[BRANCH]
 {branch}
+
+[MERGE_STATE]
+{merge_section}
 
 [FILE_CHANGES]
 {file_changes}
@@ -288,6 +493,39 @@ def build_context_bundle(max_chars: int = 50000) -> str:
 {staged_diff}"""
 
     return bundle
+
+
+def _format_merge_state(merge_state: dict) -> str:
+    """Format merge state dictionary into human-readable text.
+
+    Args:
+        merge_state: Dictionary from get_merge_state().
+
+    Returns:
+        Formatted merge state string.
+    """
+    if merge_state["state"] == "normal":
+        return "No merge in progress"
+
+    lines = []
+    if merge_state["state"] == "merge":
+        lines.append("MERGE IN PROGRESS")
+        if merge_state["source_branch"]:
+            lines.append(f"Merging branch: {merge_state['source_branch']}")
+        if merge_state["merge_head"]:
+            lines.append(f"Merging commit: {merge_state['merge_head'][:12]}")
+    elif merge_state["state"] == "merge-conflict":
+        lines.append("MERGE CONFLICT - Resolving conflicts")
+        if merge_state["source_branch"]:
+            lines.append(f"Merging branch: {merge_state['source_branch']}")
+        if merge_state["merge_head"]:
+            lines.append(f"Merging commit: {merge_state['merge_head'][:12]}")
+        if merge_state["conflicted_files"]:
+            lines.append("Files with resolved conflicts:")
+            for f in merge_state["conflicted_files"]:
+                lines.append(f"  ! {f}")
+
+    return "\n".join(lines)
 
 
 def _parse_file_changes(status: str) -> str:

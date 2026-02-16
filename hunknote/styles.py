@@ -40,6 +40,7 @@ CONVENTIONAL_TYPES = [
     "chore",
     "style",
     "revert",
+    "merge",
 ]
 
 # Allowed section titles for blueprint style (in preferred order)

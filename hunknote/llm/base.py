@@ -70,7 +70,7 @@ USER_PROMPT_TEMPLATE = USER_PROMPT_TEMPLATE_DEFAULT
 
 # User prompt template for Conventional Commits style
 USER_PROMPT_TEMPLATE_CONVENTIONAL = """Given the following git context, produce a JSON object for a Conventional Commits message with these keys:
-- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert, etc.)
+- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert, merge)
 - "scope": string or null (the area of code affected, e.g., api, ui, auth, core)
 - "subject": string (imperative mood, concise summary, <=60 chars, no period at end)
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
@@ -80,6 +80,21 @@ USER_PROMPT_TEMPLATE_CONVENTIONAL = """Given the following git context, produce 
 Rules:
 - Output ONLY valid JSON. No markdown fences. No extra keys. No commentary.
 - Subject in imperative mood (e.g., "Add feature" not "Added feature").
+
+=== MERGE STATE CHECK (HIGHEST PRIORITY) ===
+
+FIRST, check the [MERGE_STATE] section:
+- If it says "MERGE IN PROGRESS" → type MUST be "merge"
+- If it says "MERGE CONFLICT" → type MUST be "merge"
+  (For merge conflicts that are resolved and staged, use type="merge")
+
+When type="merge":
+- Look for "Merging branch: <branch-name>" in [MERGE_STATE] to get the source branch
+- Subject format: "Merge branch <source-branch>" (e.g., "Merge branch feature-auth")
+- If merging into a specific target, can use: "Merge <source-branch> into <target-branch>"
+- Use the ACTUAL branch name from [MERGE_STATE], not the current branch from [BRANCH]
+- Body bullets should summarize the key changes being merged
+- Scope can indicate the primary area affected by the merge, or set to null
 
 === TYPE SELECTION - ABSOLUTE RULES (FILE EXTENSION DETERMINES TYPE) ===
 
@@ -102,7 +117,8 @@ CRITICAL: Type is determined by WHAT FILES changed, NOT by what the content desc
 - Code that adds features → type = "feat"
 - Code that fixes bugs → type = "fix"
 
-Type definitions (apply after file-based rules):
+Type definitions (apply after merge check and file-based rules):
+  * merge: ONLY when [MERGE_STATE] indicates merge in progress or conflict resolution
   * docs: ONLY for .md/.rst/README files - use this when ALL files are documentation
   * test: ONLY for test files
   * ci: ONLY for CI config files
@@ -184,7 +200,7 @@ USER_PROMPT_TEMPLATE_BLUEPRINT = """Analyze the git diff and produce a detailed,
 
 OUTPUT SCHEMA:
 {{
-  "type": "feat|fix|docs|refactor|perf|test|build|ci|chore|style|revert",
+  "type": "feat|fix|docs|refactor|perf|test|build|ci|chore|style|revert|merge",
   "scope": "string or null (the affected component/module)",
   "title": "string (imperative, <=60 chars, no period)",
   "summary": "string (2-4 sentences)",
@@ -192,6 +208,22 @@ OUTPUT SCHEMA:
     {{"title": "Changes|Implementation|Testing|Documentation|Notes", "bullets": ["..."]}}
   ]
 }}
+
+=== MERGE STATE CHECK (HIGHEST PRIORITY) ===
+
+FIRST, check the [MERGE_STATE] section:
+- If it says "MERGE IN PROGRESS" → type MUST be "merge"
+- If it says "MERGE CONFLICT" → type MUST be "merge"
+  (For merge conflicts that are resolved and staged, use type="merge")
+
+When type="merge":
+- Look for "Merging branch: <branch-name>" in [MERGE_STATE] to get the source branch
+- Title format: "Merge branch <source-branch>" (e.g., "Merge branch feature-auth")
+- If merging into a specific target, can use: "Merge <source-branch> into <target-branch>"
+- Use the ACTUAL branch name from [MERGE_STATE], not the current branch from [BRANCH]
+- Summary should explain what the merged branch introduces
+- "Changes" section should list the key features/fixes being merged
+- Scope can indicate the primary area affected by the merge, or set to null
 
 === TYPE SELECTION - ABSOLUTE RULES (FILE EXTENSION DETERMINES TYPE) ===
 
@@ -216,7 +248,8 @@ CRITICAL: The type is determined by WHAT FILES are changed, NOT by what the cont
 - Documentation that describes bug fixes → type is "docs" (not "fix")
 - Code that improves behavior → type is "fix" or "feat" (not "docs")
 
-Type definitions (use only after applying file-based rules above):
+Type definitions (use only after merge check and file-based rules):
+- merge: ONLY when [MERGE_STATE] indicates merge in progress or conflict resolution
 - feat: New feature or capability (only for code changes)
 - fix: Bug fix or behavior improvement (only for code changes)
 - docs: Documentation files only (.md, .rst, README, docs/)
