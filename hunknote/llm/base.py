@@ -70,7 +70,7 @@ USER_PROMPT_TEMPLATE = USER_PROMPT_TEMPLATE_DEFAULT
 
 # User prompt template for Conventional Commits style
 USER_PROMPT_TEMPLATE_CONVENTIONAL = """Given the following git context, produce a JSON object for a Conventional Commits message with these keys:
-- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert)
+- "type": string (REQUIRED, one of: feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert, etc.)
 - "scope": string or null (the area of code affected, e.g., api, ui, auth, core)
 - "subject": string (imperative mood, concise summary, <=60 chars, no period at end)
 - "body_bullets": array of 2-7 strings (each concise, describe what changed and why)
