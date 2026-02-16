@@ -35,6 +35,10 @@ class LLMResult:
     input_tokens: int
     output_tokens: int
     raw_response: str = ""  # Raw LLM response for debugging
+    # Character counts for debugging
+    input_chars: int = 0  # Characters in context bundle
+    prompt_chars: int = 0  # Characters in full prompt (system + user)
+    output_chars: int = 0  # Characters in LLM response
 
 
 # System prompt for the LLM (shared across all providers)

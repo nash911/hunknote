@@ -44,6 +44,41 @@ class TestCacheMetadata:
         assert metadata.model == "gpt-4"
         assert len(metadata.staged_files) == 2
 
+    def test_create_metadata_with_char_counts(self):
+        """Test creating cache metadata with character counts."""
+        metadata = CacheMetadata(
+            context_hash="abc123",
+            generated_at="2024-01-01T00:00:00+00:00",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file1.py"],
+            original_message="Test message",
+            diff_preview="diff content",
+            input_chars=5000,
+            prompt_chars=8000,
+            output_chars=1500,
+        )
+        assert metadata.input_chars == 5000
+        assert metadata.prompt_chars == 8000
+        assert metadata.output_chars == 1500
+
+    def test_char_counts_default_to_zero(self):
+        """Test that character counts default to zero for backward compatibility."""
+        metadata = CacheMetadata(
+            context_hash="abc123",
+            generated_at="2024-01-01T00:00:00+00:00",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file1.py"],
+            original_message="Test message",
+            diff_preview="diff content",
+        )
+        assert metadata.input_chars == 0
+        assert metadata.prompt_chars == 0
+        assert metadata.output_chars == 0
+
 
 class TestGetCacheDir:
     """Tests for get_cache_dir function."""
@@ -268,6 +303,47 @@ class TestSaveCache:
         assert metadata.input_tokens == 200
         assert metadata.output_tokens == 75
         assert metadata.staged_files == ["a.py", "b.py"]
+
+    def test_saves_char_counts(self, temp_dir):
+        """Test that character counts are saved in metadata."""
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash123",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="preview",
+            input_chars=5000,
+            prompt_chars=8000,
+            output_chars=1500,
+        )
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata is not None
+        assert metadata.input_chars == 5000
+        assert metadata.prompt_chars == 8000
+        assert metadata.output_chars == 1500
+
+    def test_char_counts_default_to_zero_in_metadata(self, temp_dir):
+        """Test that character counts default to zero when not provided."""
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash123",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="preview",
+        )
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata is not None
+        assert metadata.input_chars == 0
+        assert metadata.prompt_chars == 0
+        assert metadata.output_chars == 0
 
 
 class TestLoadRawJsonResponse:

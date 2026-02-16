@@ -87,6 +87,43 @@ class TestLLMResult:
 
         assert result.raw_response == ""
 
+    def test_create_result_with_char_counts(self):
+        """Test creating LLMResult with character counts."""
+        commit_json = CommitMessageJSON(
+            title="Test",
+            body_bullets=["Change 1"],
+        )
+        result = LLMResult(
+            commit_json=commit_json,
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            input_chars=5000,
+            prompt_chars=8000,
+            output_chars=1500,
+        )
+
+        assert result.input_chars == 5000
+        assert result.prompt_chars == 8000
+        assert result.output_chars == 1500
+
+    def test_char_counts_default_to_zero(self):
+        """Test that character counts default to zero."""
+        commit_json = CommitMessageJSON(
+            title="Test",
+            body_bullets=["Change 1"],
+        )
+        result = LLMResult(
+            commit_json=commit_json,
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        assert result.input_chars == 0
+        assert result.prompt_chars == 0
+        assert result.output_chars == 0
+
 
 class TestParseJsonResponse:
     """Tests for parse_json_response function."""

@@ -165,6 +165,10 @@ class GoogleProvider(BaseLLMProvider):
         parsed = parse_json_response(raw_response)
         commit_json = validate_commit_json(parsed, raw_response)
 
+        # Calculate character counts
+        input_chars = len(context_bundle)
+        prompt_chars = len(full_prompt)
+        output_chars = len(raw_response)
 
         return LLMResult(
             commit_json=commit_json,
@@ -172,6 +176,9 @@ class GoogleProvider(BaseLLMProvider):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             raw_response=raw_response,
+            input_chars=input_chars,
+            prompt_chars=prompt_chars,
+            output_chars=output_chars,
         )
 
     def _generate_with_fallback(self, client, full_prompt: str, base_config_kwargs: dict):

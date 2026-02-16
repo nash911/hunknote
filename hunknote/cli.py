@@ -231,7 +231,13 @@ def _display_debug_info(
 
     typer.echo(f"Generated At: {formatted_time}")
     typer.echo(f"LLM Model: {metadata.model}")
-    typer.echo(f"Tokens: {metadata.input_tokens} input / {metadata.output_tokens} output")
+    typer.echo()
+
+    # Token and character counts
+    typer.echo("Usage Statistics:")
+    typer.echo(f"  Tokens:     {metadata.input_tokens:,} input / {metadata.output_tokens:,} output")
+    if metadata.input_chars > 0 or metadata.prompt_chars > 0 or metadata.output_chars > 0:
+        typer.echo(f"  Characters: {metadata.input_chars:,} context / {metadata.prompt_chars:,} prompt / {metadata.output_chars:,} output")
     typer.echo()
 
     # Staged files
@@ -1053,6 +1059,9 @@ def main(
                 staged_files=staged_files,
                 diff_preview=diff_preview,
                 raw_response=llm_raw_response or "",
+                input_chars=llm_result.input_chars,
+                prompt_chars=llm_result.prompt_chars,
+                output_chars=llm_result.output_chars,
             )
             metadata = load_cache_metadata(repo_root)
 

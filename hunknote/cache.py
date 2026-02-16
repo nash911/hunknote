@@ -20,6 +20,10 @@ class CacheMetadata(BaseModel):
     staged_files: list[str]
     original_message: str
     diff_preview: str
+    # Character counts (optional for backward compatibility with existing cache)
+    input_chars: int = 0  # Characters in context bundle
+    prompt_chars: int = 0  # Characters in full prompt (system + user)
+    output_chars: int = 0  # Characters in LLM response
 
 
 def get_cache_dir(repo_root: Path) -> Path:
@@ -126,6 +130,9 @@ def save_cache(
     staged_files: list[str],
     diff_preview: str,
     raw_response: str = "",
+    input_chars: int = 0,
+    prompt_chars: int = 0,
+    output_chars: int = 0,
 ) -> None:
     """Save the generated message and its metadata to cache.
 
@@ -139,6 +146,9 @@ def save_cache(
         staged_files: List of staged file paths.
         diff_preview: Preview of the staged diff.
         raw_response: Raw JSON response from the LLM.
+        input_chars: Number of characters in context bundle.
+        prompt_chars: Number of characters in full prompt.
+        output_chars: Number of characters in LLM response.
     """
     # Save hash
     get_hash_file(repo_root).write_text(context_hash)
@@ -160,6 +170,9 @@ def save_cache(
         staged_files=staged_files,
         original_message=message,
         diff_preview=diff_preview,
+        input_chars=input_chars,
+        prompt_chars=prompt_chars,
+        output_chars=output_chars,
     )
     get_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
 
