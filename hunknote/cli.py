@@ -23,6 +23,7 @@ from hunknote.cache import (
     load_raw_json_response,
     save_cache,
     update_message_cache,
+    update_metadata_overrides,
 )
 from hunknote.formatters import render_commit_message
 from hunknote.git_ctx import (
@@ -35,7 +36,7 @@ from hunknote.git_ctx import (
     get_branch,
 )
 from hunknote.llm import LLMError, MissingAPIKeyError, generate_commit_json
-from hunknote.llm.base import parse_json_response, JSONParseError
+from hunknote.llm.base import parse_json_response, JSONParseError, validate_commit_json
 from hunknote.user_config import (
     add_ignore_pattern,
     get_ignore_patterns,
@@ -920,59 +921,138 @@ def main(
         staged_diff = get_staged_diff(max_chars=max_diff_chars)
         diff_preview = get_diff_preview(staged_diff, max_chars=500)
 
-        # Step 5: Determine CLI scope override and run heuristics (for debug info)
-        # Priority order: CLI override > LLM suggested > Heuristics inference
+        # Step 5: Load saved rendering overrides from metadata and merge with CLI flags
+        # CLI flags take precedence over saved overrides
+        # Don't use saved overrides if regenerating (they will be cleared)
+        saved_metadata = None if regenerate else load_cache_metadata(repo_root)
+
+        # Determine effective CLI scope override
+        # Priority: CLI flag > saved override in metadata (if not regenerating)
         cli_scope_override = None
-        scope_result = None
+        effective_no_scope = no_scope
+        effective_ticket = ticket
 
         if no_scope:
-            # User explicitly disabled scope - will be handled later
+            # User explicitly disabled scope via CLI
             cli_scope_override = None
+            effective_no_scope = True
         elif scope and scope.lower() != "auto":
             # User provided explicit scope via CLI
             cli_scope_override = scope
+        elif saved_metadata:
+            # Use saved overrides from metadata if no CLI flags provided (and not regenerating)
+            if saved_metadata.no_scope_override:
+                effective_no_scope = True
+            elif saved_metadata.scope_override:
+                cli_scope_override = saved_metadata.scope_override
+            if saved_metadata.ticket_override and not ticket:
+                effective_ticket = saved_metadata.ticket_override
 
         # Run heuristics for debug info (but don't use as primary source)
-        if scope_config.enabled and not no_scope:
+        scope_result = None
+        if scope_config.enabled and not effective_no_scope:
             scope_result = infer_scope(staged_files, scope_config)
             if scope_result.scope and debug:
                 typer.echo(f"Inferred scope: {scope_result.scope} ({scope_result.reason})", err=True)
 
-        # For cache hash, we use CLI override if provided (LLM scope is part of context anyway)
-        effective_scope_for_hash = cli_scope_override
-        hash_input = f"{context_bundle}|style={effective_profile.value}|scope={effective_scope_for_hash}|ticket={ticket}"
+        # For cache hash, we only include style (which affects the LLM prompt template).
+        # We do NOT include scope, ticket, or no_scope in the hash because these are
+        # rendering overrides applied after the LLM response - they don't affect what
+        # the LLM generates. This allows users to run:
+        #   hunknote --scope cli  # generates with scope override
+        #   hunknote -d           # uses cached message (same LLM response)
+        #   hunknote -e -c        # uses cached message for editing/committing
+        hash_input = f"{context_bundle}|style={effective_profile.value}"
         current_hash = compute_context_hash(hash_input)
 
         # Step 7: Check cache validity (unless --regenerate)
         cache_valid = not regenerate and is_cache_valid(repo_root, current_hash)
 
         if cache_valid:
-            # Use cached message
+            # Use cached LLM response but re-render with current flags
             typer.echo("Using cached commit message...", err=True)
-            message = load_cached_message(repo_root)
             metadata = load_cache_metadata(repo_root)
 
-            # Load raw JSON response from stored file and extract LLM suggested scope
+            # Load raw JSON response from stored file
             llm_raw_response = load_raw_json_response(repo_root)
             llm_suggested_scope = None
+
             if llm_raw_response:
                 try:
-                    # Use parse_json_response to handle markdown fences
+                    # Parse the cached LLM response to get ExtendedCommitJSON
                     parsed_json = parse_json_response(llm_raw_response)
-                    llm_suggested_scope = parsed_json.get("scope")
-                except (JSONParseError, AttributeError):
-                    pass  # Could not parse, leave as None
+                    extended_data = validate_commit_json(parsed_json, llm_raw_response)
+                    llm_suggested_scope = extended_data.scope
 
-            # Determine effective scope: CLI override > LLM suggested > Heuristics
-            if no_scope:
-                effective_scope = None
-            elif cli_scope_override:
-                effective_scope = cli_scope_override
-            elif llm_suggested_scope:
-                effective_scope = llm_suggested_scope
-            elif scope_result and scope_result.scope:
-                effective_scope = scope_result.scope
+                    # Determine effective scope: CLI override > LLM suggested > Heuristics
+                    if effective_no_scope:
+                        effective_scope = None
+                    elif cli_scope_override:
+                        effective_scope = cli_scope_override
+                    elif llm_suggested_scope:
+                        effective_scope = llm_suggested_scope
+                    elif scope_result and scope_result.scope:
+                        effective_scope = scope_result.scope
+                    else:
+                        effective_scope = None
+
+                    # Strip redundant scope (same logic as new generation path)
+                    commit_type = extended_data.type or extended_data.get_type("feat")
+                    if effective_scope and commit_type:
+                        redundant_scopes = {
+                            "docs": ["docs", "documentation", "doc"],
+                            "test": ["test", "tests", "testing"],
+                            "ci": ["ci", "pipeline", "workflows"],
+                            "build": ["build", "deps", "dependencies"],
+                        }
+                        if commit_type.lower() in redundant_scopes:
+                            if effective_scope.lower() in redundant_scopes[commit_type.lower()]:
+                                effective_scope = None
+
+                    # Apply scope to extended_data
+                    extended_data.scope = effective_scope
+
+                    # Apply ticket override if provided
+                    if effective_ticket:
+                        extended_data.ticket = effective_ticket
+
+                    # Try to extract ticket from branch if not provided and using ticket style
+                    if not extended_data.ticket and effective_profile == StyleProfile.TICKET:
+                        try:
+                            branch = get_branch()
+                            extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
+                            if extracted_ticket:
+                                extended_data.ticket = extracted_ticket
+                        except Exception:
+                            pass
+
+                    # Infer commit type if using conventional/blueprint style and not provided
+                    if effective_profile in (StyleProfile.CONVENTIONAL, StyleProfile.BLUEPRINT) and not extended_data.type:
+                        inferred_type = infer_commit_type(staged_files)
+                        if inferred_type:
+                            extended_data.type = inferred_type
+
+                    # Re-render the commit message with current flags
+                    message = render_commit_message_styled(
+                        data=extended_data,
+                        config=style_config,
+                        override_style=override_style,
+                        override_scope=effective_scope,
+                        override_ticket=effective_ticket,
+                        no_scope=effective_no_scope,
+                    )
+
+                    # Update the message file with the re-rendered message
+                    # This ensures -e and -c flags use the correct scope
+                    update_message_cache(repo_root, message)
+
+                except (JSONParseError, AttributeError):
+                    # Fallback to stored message if parsing fails
+                    message = load_cached_message(repo_root)
+                    effective_scope = None
             else:
+                # No raw response stored, use cached message as-is
+                message = load_cached_message(repo_root)
                 effective_scope = None
         else:
             # Generate new message via LLM with the appropriate style
@@ -988,8 +1068,11 @@ def main(
             # Capture raw LLM response for debugging
             llm_raw_response = llm_result.raw_response
 
+            # Note: Rendering overrides will be saved in metadata when we save_cache below
+            # If user provides CLI flags, they are included; otherwise they're cleared
+
             # Determine effective scope: CLI override > LLM suggested > Heuristics
-            if no_scope:
+            if effective_no_scope:
                 effective_scope = None
             elif cli_scope_override:
                 effective_scope = cli_scope_override
@@ -1019,8 +1102,8 @@ def main(
             extended_data.scope = effective_scope
 
             # Apply ticket override if provided
-            if ticket:
-                extended_data.ticket = ticket
+            if effective_ticket:
+                extended_data.ticket = effective_ticket
 
             # Try to extract ticket from branch if not provided and using ticket style
             if not extended_data.ticket and effective_profile == StyleProfile.TICKET:
@@ -1044,11 +1127,16 @@ def main(
                 config=style_config,
                 override_style=override_style,
                 override_scope=effective_scope,
-                override_ticket=ticket,
-                no_scope=no_scope,
+                override_ticket=effective_ticket,
+                no_scope=effective_no_scope,
             )
 
-            # Save to cache (including raw LLM response)
+            # Determine what overrides to save (only save if user explicitly provided CLI flags)
+            scope_to_save = scope if scope and scope.lower() != "auto" else None
+            ticket_to_save = ticket if ticket else None
+            no_scope_to_save = no_scope
+
+            # Save to cache (including raw LLM response and rendering overrides)
             save_cache(
                 repo_root=repo_root,
                 context_hash=current_hash,
@@ -1062,6 +1150,9 @@ def main(
                 input_chars=llm_result.input_chars,
                 prompt_chars=llm_result.prompt_chars,
                 output_chars=llm_result.output_chars,
+                scope_override=scope_to_save,
+                ticket_override=ticket_to_save,
+                no_scope_override=no_scope_to_save,
             )
             metadata = load_cache_metadata(repo_root)
 
@@ -1108,6 +1199,16 @@ def main(
             update_message_cache(repo_root, message)
             typer.echo("Message updated from editor.", err=True)
 
+        # Save rendering overrides to metadata if user provided any CLI flags
+        # These persist with the cached message until regeneration or commit
+        if scope or no_scope or ticket:
+            update_metadata_overrides(
+                repo_root=repo_root,
+                scope_override=scope if scope and scope.lower() != "auto" else None,
+                ticket_override=ticket,
+                no_scope_override=no_scope,
+            )
+
         # Step 9: Print the final message to stdout
         typer.echo("")
         typer.echo("=" * 60)
@@ -1126,7 +1227,7 @@ def main(
             if result.returncode == 0:
                 typer.echo("Commit successful!", err=True)
                 typer.echo(result.stdout)
-                # Invalidate cache after successful commit
+                # Invalidate cache after successful commit (overrides are stored in metadata)
                 invalidate_cache(repo_root)
             else:
                 typer.echo("Commit failed!", err=True)

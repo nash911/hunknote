@@ -24,6 +24,10 @@ class CacheMetadata(BaseModel):
     input_chars: int = 0  # Characters in context bundle
     prompt_chars: int = 0  # Characters in full prompt (system + user)
     output_chars: int = 0  # Characters in LLM response
+    # Rendering overrides (persist with the cached message)
+    scope_override: Optional[str] = None  # CLI scope override (--scope)
+    ticket_override: Optional[str] = None  # CLI ticket override (--ticket)
+    no_scope_override: bool = False  # Whether scope is disabled (--no-scope)
 
 
 def get_cache_dir(repo_root: Path) -> Path:
@@ -133,6 +137,9 @@ def save_cache(
     input_chars: int = 0,
     prompt_chars: int = 0,
     output_chars: int = 0,
+    scope_override: Optional[str] = None,
+    ticket_override: Optional[str] = None,
+    no_scope_override: bool = False,
 ) -> None:
     """Save the generated message and its metadata to cache.
 
@@ -149,6 +156,9 @@ def save_cache(
         input_chars: Number of characters in context bundle.
         prompt_chars: Number of characters in full prompt.
         output_chars: Number of characters in LLM response.
+        scope_override: CLI scope override.
+        ticket_override: CLI ticket override.
+        no_scope_override: Whether scope is disabled.
     """
     # Save hash
     get_hash_file(repo_root).write_text(context_hash)
@@ -160,7 +170,7 @@ def save_cache(
     if raw_response:
         get_raw_json_file(repo_root).write_text(raw_response)
 
-    # Save metadata
+    # Save metadata (including rendering overrides)
     metadata = CacheMetadata(
         context_hash=context_hash,
         generated_at=datetime.now(timezone.utc).isoformat(),
@@ -173,6 +183,9 @@ def save_cache(
         input_chars=input_chars,
         prompt_chars=prompt_chars,
         output_chars=output_chars,
+        scope_override=scope_override,
+        ticket_override=ticket_override,
+        no_scope_override=no_scope_override,
     )
     get_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
 
@@ -290,3 +303,26 @@ def get_diff_preview(diff: str, max_chars: int = 500) -> str:
     if len(diff) <= max_chars:
         return diff
     return diff[:max_chars] + "\n...[truncated]"
+
+
+def update_metadata_overrides(
+    repo_root: Path,
+    scope_override: Optional[str] = None,
+    ticket_override: Optional[str] = None,
+    no_scope_override: bool = False,
+) -> None:
+    """Update rendering overrides in the cached metadata.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        scope_override: CLI scope override.
+        ticket_override: CLI ticket override.
+        no_scope_override: Whether scope is disabled.
+    """
+    metadata = load_cache_metadata(repo_root)
+    if metadata:
+        metadata.scope_override = scope_override
+        metadata.ticket_override = ticket_override
+        metadata.no_scope_override = no_scope_override
+        get_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
+
