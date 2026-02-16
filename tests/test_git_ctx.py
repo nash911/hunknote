@@ -20,6 +20,11 @@ from hunknote.git_ctx import (
     get_staged_diff,
     get_staged_status,
     get_status,
+    is_merge_in_progress,
+    get_merge_head,
+    has_unresolved_conflicts,
+    get_conflicted_files,
+    get_merge_state,
 )
 
 
@@ -391,4 +396,187 @@ class TestBuildContextBundle:
 
         assert "Modified files" in bundle
         assert "~ existing.py" in bundle
+
+
+class TestMergeStateDetection:
+    """Tests for merge state detection functions."""
+
+    def test_is_merge_in_progress_true(self, temp_dir):
+        """Test detecting merge in progress when MERGE_HEAD exists."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+        merge_head = git_dir / "MERGE_HEAD"
+        merge_head.write_text("abc123def456\n")
+
+        result = is_merge_in_progress(temp_dir)
+        assert result is True
+
+    def test_is_merge_in_progress_false(self, temp_dir):
+        """Test no merge when MERGE_HEAD doesn't exist."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+
+        result = is_merge_in_progress(temp_dir)
+        assert result is False
+
+    def test_get_merge_head_returns_hash(self, temp_dir):
+        """Test getting merge head commit hash."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+        merge_head = git_dir / "MERGE_HEAD"
+        merge_head.write_text("abc123def456789\n")
+
+        result = get_merge_head(temp_dir)
+        assert result == "abc123def456789"
+
+    def test_get_merge_head_returns_none_when_no_merge(self, temp_dir):
+        """Test merge head is None when no merge in progress."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+
+        result = get_merge_head(temp_dir)
+        assert result is None
+
+    def test_has_unresolved_conflicts_true(self, mocker):
+        """Test detecting unresolved conflicts."""
+        mocker.patch(
+            "hunknote.git_ctx._run_git_command",
+            return_value="UU file1.py\nAA file2.py"
+        )
+
+        result = has_unresolved_conflicts()
+        assert result is True
+
+    def test_has_unresolved_conflicts_false(self, mocker):
+        """Test no conflicts detected."""
+        mocker.patch(
+            "hunknote.git_ctx._run_git_command",
+            return_value="M  file1.py\nA  file2.py"
+        )
+
+        result = has_unresolved_conflicts()
+        assert result is False
+
+    def test_get_conflicted_files(self, mocker):
+        """Test getting list of conflicted files."""
+        mocker.patch(
+            "hunknote.git_ctx._run_git_command",
+            return_value="UU file1.py\nAA file2.py\nM  file3.py"
+        )
+
+        result = get_conflicted_files()
+        assert "file1.py" in result
+        assert "file2.py" in result
+        assert "file3.py" not in result
+
+    def test_get_merge_state_normal(self, temp_dir):
+        """Test merge state when no merge in progress."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+
+        result = get_merge_state(temp_dir)
+        assert result["state"] == "normal"
+        assert result["is_merge"] is False
+        assert result["merge_head"] is None
+        assert result["has_conflicts"] is False
+
+    def test_get_merge_state_merge(self, temp_dir, mocker):
+        """Test merge state during merge."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+        merge_head = git_dir / "MERGE_HEAD"
+        merge_head.write_text("abc123\n")
+
+        mocker.patch(
+            "hunknote.git_ctx._run_git_command",
+            return_value="M  file1.py"
+        )
+
+        result = get_merge_state(temp_dir)
+        assert result["state"] == "merge"
+        assert result["is_merge"] is True
+        assert result["merge_head"] == "abc123"
+
+    def test_get_merge_state_conflict(self, temp_dir, mocker):
+        """Test merge state with conflicts."""
+        git_dir = temp_dir / ".git"
+        git_dir.mkdir()
+        merge_head = git_dir / "MERGE_HEAD"
+        merge_head.write_text("abc123\n")
+
+        mocker.patch(
+            "hunknote.git_ctx._run_git_command",
+            return_value="UU conflict.py"
+        )
+
+        result = get_merge_state(temp_dir)
+        assert result["state"] == "merge-conflict"
+        assert result["has_conflicts"] is True
+        assert "conflict.py" in result["conflicted_files"]
+
+
+class TestBuildContextBundleMergeState:
+    """Tests for merge state in context bundle."""
+
+    def test_bundle_includes_merge_state_section(self, mocker, temp_dir):
+        """Test that context bundle includes MERGE_STATE section."""
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nM  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_merge_state", return_value={
+            "is_merge": False,
+            "merge_head": None,
+            "has_conflicts": False,
+            "conflicted_files": [],
+            "state": "normal",
+        })
+
+        bundle = build_context_bundle()
+
+        assert "[MERGE_STATE]" in bundle
+        assert "No merge in progress" in bundle
+
+    def test_bundle_shows_merge_in_progress(self, mocker, temp_dir):
+        """Test that context bundle shows merge in progress."""
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nM  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_merge_state", return_value={
+            "is_merge": True,
+            "merge_head": "abc123def456",
+            "has_conflicts": False,
+            "conflicted_files": [],
+            "state": "merge",
+        })
+
+        bundle = build_context_bundle()
+
+        assert "[MERGE_STATE]" in bundle
+        assert "MERGE IN PROGRESS" in bundle
+        assert "abc123def456"[:12] in bundle
+
+    def test_bundle_shows_merge_conflict(self, mocker, temp_dir):
+        """Test that context bundle shows merge conflict."""
+        mocker.patch("hunknote.git_ctx.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.git_ctx.get_branch", return_value="main")
+        mocker.patch("hunknote.git_ctx.get_staged_status", return_value="## main\nM  file.py")
+        mocker.patch("hunknote.git_ctx.get_last_commits", return_value=[])
+        mocker.patch("hunknote.git_ctx.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.git_ctx.get_merge_state", return_value={
+            "is_merge": True,
+            "merge_head": "abc123def456",
+            "has_conflicts": True,
+            "conflicted_files": ["conflict.py"],
+            "state": "merge-conflict",
+        })
+
+        bundle = build_context_bundle()
+
+        assert "[MERGE_STATE]" in bundle
+        assert "MERGE CONFLICT" in bundle
+        assert "conflict.py" in bundle
 
