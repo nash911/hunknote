@@ -202,16 +202,19 @@ def update_message_cache(repo_root: Path, message: str) -> None:
     get_message_file(repo_root).write_text(message)
 
 
-def load_cached_message(repo_root: Path) -> str:
+def load_cached_message(repo_root: Path) -> Optional[str]:
     """Load the cached message.
 
     Args:
         repo_root: The root directory of the git repository.
 
     Returns:
-        The cached commit message string.
+        The cached commit message string, or None if not found.
     """
-    return get_message_file(repo_root).read_text()
+    message_file = get_message_file(repo_root)
+    if not message_file.exists():
+        return None
+    return message_file.read_text()
 
 
 def load_raw_json_response(repo_root: Path) -> Optional[str]:
