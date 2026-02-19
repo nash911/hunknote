@@ -14,13 +14,15 @@ This documentation covers all features and configuration options available in th
 4. [Command Reference](#command-reference)
 5. [Commit Style Profiles](#commit-style-profiles)
 6. [Scope Inference](#scope-inference)
-7. [Configuration](#configuration)
-8. [LLM Providers](#llm-providers)
-9. [Caching System](#caching-system)
-10. [Ignore Patterns](#ignore-patterns)
-11. [Editor Integration](#editor-integration)
-12. [Git Integration](#git-integration)
-13. [Troubleshooting](#troubleshooting)
+7. [Intent Channel](#intent-channel)
+8. [Merge Detection](#merge-detection)
+9. [Configuration](#configuration)
+10. [LLM Providers](#llm-providers)
+11. [Caching System](#caching-system)
+12. [Ignore Patterns](#ignore-patterns)
+13. [Editor Integration](#editor-integration)
+14. [Git Integration](#git-integration)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -35,13 +37,15 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
 | **Commit Style Profiles** | Support for Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style |
 | **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
-| **Intelligent Type Selection** | Automatically selects correct commit type (feat, fix, docs, test, etc.) based on changed files |
+| **Intelligent Type Selection** | Automatically selects correct commit type (feat, fix, docs, test, merge, etc.) based on changed files |
+| **Intent Channel** | Provide explicit motivation with `--intent` to guide commit message framing |
+| **Merge Detection** | Automatically detects merge commits and conflict resolutions |
 | **Smart Caching** | Reuses generated messages when staged changes haven't changed |
 | **Raw JSON Debugging** | Inspect LLM response with `--json` flag |
 | **Structured Output** | Generates title + bullet points following git best practices |
 | **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
 | **Editor Integration** | Review and edit messages before committing |
-| **One-Command Commits** | Generate and commit in a single step with `-c` flag |
+| **One-Command Commits** | Generate and commit in a single step with `-c` flag (with confirmation) |
 | **Configurable Ignores** | Exclude lock files, build artifacts from analysis |
 | **Debug Mode** | Inspect cache metadata, tokens, scope inference, and file changes |
 
@@ -121,10 +125,12 @@ Generate an AI-powered commit message from staged changes.
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
 | `--edit` | `-e` | Open message in editor for manual edits | `false` |
-| `--commit` | `-c` | Automatically commit using the generated message | `false` |
+| `--commit` | `-c` | Automatically commit using the generated message (with confirmation for new messages) | `false` |
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
 | `--debug` | `-d` | Show cache metadata (files, tokens, diff preview, scope inference) | `false` |
 | `--json` | `-j` | Show raw JSON response from LLM for debugging | `false` |
+| `--intent` | `-i` | Provide explicit intent/motivation to guide commit message framing | |
+| `--intent-file` | | Load intent text from a file | |
 | `--style` | | Override commit style profile (default, blueprint, conventional, ticket, kernel) | from config |
 | `--scope` | | Force a scope for the commit message (use 'auto' for inference) | auto |
 | `--no-scope` | | Disable scope even if profile supports it | `false` |
@@ -174,6 +180,15 @@ hunknote --style ticket --ticket PROJ-123 -e -c
 
 # Kernel style with subsystem
 hunknote --style kernel --scope auth
+
+# Provide explicit intent to guide commit message
+hunknote --intent "Fix race condition in connection handling"
+
+# Load intent from a file
+hunknote --intent-file ./intent.txt
+
+# Combine intent text and file
+hunknote --intent "Primary reason" --intent-file ./details.txt -e -c
 ```
 
 ---
@@ -769,6 +784,129 @@ Output includes:
 
 ---
 
+## Intent Channel
+
+The intent channel allows you to provide explicit motivation or context that guides how the LLM frames your commit message. This is useful when the diff alone doesn't convey the "why" behind your changes.
+
+### Usage
+
+```bash
+# Provide intent directly via CLI
+hunknote --intent "Fix race condition in session handling"
+
+# Load intent from a file
+hunknote --intent-file ./commit-intent.txt
+
+# Combine both (concatenated with blank line)
+hunknote --intent "Primary motivation" --intent-file ./additional-context.txt
+```
+
+### How It Works
+
+1. **Intent is injected into the LLM prompt** as a dedicated `[INTENT]` section
+2. **The intent guides framing**, not technical facts - the LLM still constrains claims to what's in the diff
+3. **If intent contradicts the diff**, the diff takes precedence
+4. **Intent is included in the cache key** - different intents generate different messages
+
+### When to Use Intent
+
+| Scenario | Example Intent |
+|----------|----------------|
+| Non-obvious fix | "Fix memory leak that only occurs under high load" |
+| Business context | "Requested by security team for compliance" |
+| Refactor motivation | "Prepare for upcoming API v2 migration" |
+| Bug reference | "Fixes issue reported in support ticket #1234" |
+| Performance reason | "Optimize for 10x increase in concurrent users" |
+
+### Debug Output
+
+In debug mode (`-d`), the intent is displayed:
+
+```
+Intent: Fix race condition in session han... (48 chars)
+```
+
+Only the first 80 characters are shown, along with the total length.
+
+### Validation
+
+- Whitespace-only intent is treated as "not provided"
+- If `--intent-file` points to a non-existent file, hunknote exits with an error
+- Empty intent content is ignored
+
+---
+
+## Merge Detection
+
+Hunknote automatically detects when you're in a merge state (during `git merge`) and generates appropriate commit messages.
+
+### Detected States
+
+| State | Detection | Commit Type |
+|-------|-----------|-------------|
+| **Merge in progress** | `.git/MERGE_HEAD` exists | `merge` |
+| **Merge conflict resolution** | `.git/MERGE_HEAD` + resolved conflicts staged | `merge` |
+| **Normal commit** | No `.git/MERGE_HEAD` | feat/fix/docs/etc. |
+
+### Merge Message Format
+
+When a merge is detected, the commit message follows this format:
+
+```
+merge: Merge branch feature-auth
+
+- Integrate user authentication module
+- Add login and logout endpoints
+- Include session management
+```
+
+For conventional/blueprint styles:
+
+```
+merge(auth): Merge branch feature-auth into main
+
+Integrate the feature-auth branch which adds user authentication
+with JWT tokens and session management.
+
+Changes:
+- Add login and logout endpoints
+- Implement JWT token validation
+- Add session management middleware
+```
+
+### Source Branch Detection
+
+Hunknote extracts the source branch name from:
+1. `.git/MERGE_MSG` (e.g., "Merge branch 'feature-auth'")
+2. `git name-rev` of the merge head commit
+
+This ensures the commit message accurately reflects what's being merged.
+
+### Context Bundle
+
+The merge state is included in the `[MERGE_STATE]` section of the context sent to the LLM:
+
+```
+[MERGE_STATE]
+MERGE IN PROGRESS
+Merging branch: feature-auth
+Merging commit: abc123def456
+```
+
+Or for conflict resolution:
+
+```
+[MERGE_STATE]
+MERGE CONFLICT - Resolving conflicts
+Merging branch: feature-auth
+Merging commit: abc123def456
+Files with resolved conflicts:
+  ! src/auth.py
+  ! tests/test_auth.py
+```
+
+---
+
 ## Configuration
 
 Hunknote uses two configuration locations:
@@ -1212,5 +1350,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*Documentation generated for Hunknote v1.2.0*
+*Documentation generated for Hunknote v1.3.0*
 

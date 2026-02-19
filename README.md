@@ -8,16 +8,18 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Commit style profiles**: Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style
 - **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
-- **Intelligent type selection**: Automatically selects the correct commit type (feat, fix, docs, test, etc.)
+- **Intelligent type selection**: Automatically selects the correct commit type (feat, fix, docs, test, merge, etc.)
+- **Intent channel**: Provide explicit motivation/context with `--intent` to guide commit message framing
+- **Merge state detection**: Automatically detects merge commits and conflict resolutions
 - **Structured output**: Title line + bullet-point body following git best practices
 - **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Raw JSON debugging**: Inspect the raw LLM response with `--json` flag
 - **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
 - **Editor integration**: Review and edit generated messages before committing
-- **One-command commits**: Generate and commit in a single step
+- **One-command commits**: Generate and commit in a single step with confirmation prompt
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, scope inference, and file change details
-- **Comprehensive test suite**: 436 unit tests covering all modules
+- **Comprehensive test suite**: 471 unit tests covering all modules
 
 ## Installation
 
@@ -209,10 +211,12 @@ hunknote
 | Flag | Description |
 |------|-------------|
 | `-e, --edit` | Open the generated message in an editor for manual edits |
-| `-c, --commit` | Automatically commit using the generated message |
+| `-c, --commit` | Automatically commit using the generated message (with confirmation for new messages) |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview, scope inference) |
 | `-j, --json` | Show the raw JSON response from the LLM for debugging |
+| `-i, --intent` | Provide explicit intent/motivation to guide commit message framing |
+| `--intent-file` | Load intent text from a file |
 | `--style` | Override commit style profile (default, blueprint, conventional, ticket, kernel) |
 | `--scope` | Force a scope for the commit message (use 'auto' for inference) |
 | `--no-scope` | Disable scope even if profile supports it |
@@ -245,6 +249,26 @@ hunknote --scope-strategy path-prefix --style conventional
 - **path-prefix**: Use the most common path segment
 - **mapping**: Use explicit path-to-scope mapping in config
 - **none**: Disable scope inference
+
+### Intent Channel
+
+When the diff alone doesn't convey the "why" behind your changes, use the intent channel to provide context:
+
+```bash
+# Provide intent directly
+hunknote --intent "Fix race condition in session handling"
+
+# Load intent from a file
+hunknote --intent-file ./commit-intent.txt
+
+# Combine both (concatenated with blank line)
+hunknote --intent "Primary motivation" --intent-file ./additional-context.txt
+```
+
+The intent guides the LLM's framing of the commit message while keeping technical claims constrained to what's actually in the diff. Useful for:
+- Explaining non-obvious changes
+- Providing business context
+- Guiding the narrative when the diff is ambiguous
 
 ### Commit Style Profiles
 
@@ -331,8 +355,11 @@ hunknote
 # Generate and open in editor
 hunknote -e
 
-# Generate and commit directly
+# Generate and commit directly (uses cached message if available)
 hunknote -c
+
+# Generate new message and commit with confirmation prompt
+hunknote -r -c
 
 # Edit message then commit
 hunknote -e -c
@@ -360,6 +387,12 @@ hunknote --style ticket --ticket PROJ-6767 -e -c
 
 # Force kernel style for this commit
 hunknote --style kernel --scope auth
+
+# Provide intent to guide the commit message
+hunknote --intent "Fix memory leak in connection pool"
+
+# Load intent from a file
+hunknote --intent-file ./intent.txt -e -c
 ```
 
 ### Git Subcommand
@@ -469,7 +502,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 436 tests:
+The project includes a comprehensive test suite with 471 tests:
 
 ```bash
 # Run all tests
@@ -489,15 +522,15 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| `cache.py` | 40 | Caching utilities, metadata, raw JSON storage |
-| `cli.py` | 42 | CLI commands and subcommands |
+| `cache.py` | 44 | Caching utilities, metadata, raw JSON storage |
+| `cli.py` | 55 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
 | `formatters.py` | 21 | Commit message formatting and validation |
-| `git_ctx.py` | 31 | Git context collection and filtering |
+| `git_ctx.py` | 47 | Git context collection, filtering, merge detection |
 | `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `scope.py` | 54 | Scope inference from file paths |
 | `styles.py` | 96 | Commit style profiles and rendering |
-| `llm/base.py` | 51 | JSON parsing, schema validation, style prompts |
+| `llm/base.py` | 53 | JSON parsing, schema validation, style prompts |
 | `llm/*.py` providers | 31 | All LLM provider classes |
 | `user_config.py` | 20 | Repository YAML config file management |
 
