@@ -199,11 +199,101 @@ def _open_editor(file_path: Path) -> None:
         raise typer.Exit(1)
 
 
+def _process_intent_options(intent: Optional[str], intent_file: Optional[Path]) -> Optional[str]:
+    """Process --intent and --intent-file options.
+
+    Args:
+        intent: Direct intent text from --intent option.
+        intent_file: Path to file containing intent from --intent-file option.
+
+    Returns:
+        Combined intent content, or None if no intent provided.
+
+    Raises:
+        typer.Exit: If intent_file cannot be read.
+    """
+    parts = []
+
+    # Add --intent content first
+    if intent:
+        trimmed = intent.strip()
+        if trimmed:
+            parts.append(trimmed)
+
+    # Add --intent-file content
+    if intent_file:
+        if not intent_file.exists():
+            typer.echo(f"Error: Intent file not found: {intent_file}", err=True)
+            raise typer.Exit(1)
+        try:
+            file_content = intent_file.read_text().strip()
+            if file_content:
+                parts.append(file_content)
+        except Exception as e:
+            typer.echo(f"Error reading intent file: {e}", err=True)
+            raise typer.Exit(1)
+
+    # Combine with blank line if both provided
+    if not parts:
+        return None
+
+    return "\n\n".join(parts)
+
+
+def _compute_intent_fingerprint(intent_content: Optional[str]) -> Optional[str]:
+    """Compute a fingerprint for intent content for cache keying.
+
+    Args:
+        intent_content: The intent content string.
+
+    Returns:
+        A 12-character hex fingerprint, or None if no intent.
+    """
+    if not intent_content:
+        return None
+
+    import hashlib
+    return hashlib.sha256(intent_content.encode("utf-8")).hexdigest()[:12]
+
+
+def _inject_intent_into_context(context_bundle: str, intent_content: str) -> str:
+    """Inject the [INTENT] block into the context bundle.
+
+    The intent block is placed after [FILE_CHANGES] and before [LAST_5_COMMITS].
+
+    Args:
+        context_bundle: The original context bundle string.
+        intent_content: The intent content to inject.
+
+    Returns:
+        The context bundle with the [INTENT] block inserted.
+    """
+    intent_block = f"\n[INTENT]\n{intent_content}\n"
+
+    # Insert before [LAST_5_COMMITS] section
+    if "[LAST_5_COMMITS]" in context_bundle:
+        return context_bundle.replace(
+            "[LAST_5_COMMITS]",
+            f"{intent_block}\n[LAST_5_COMMITS]"
+        )
+
+    # Fallback: append before [STAGED_DIFF] if LAST_5_COMMITS not found
+    if "[STAGED_DIFF]" in context_bundle:
+        return context_bundle.replace(
+            "[STAGED_DIFF]",
+            f"{intent_block}\n[STAGED_DIFF]"
+        )
+
+    # Last resort: append at the end
+    return context_bundle + intent_block
+
+
 def _display_debug_info(
     repo_root: Path,
     metadata: CacheMetadata,
     current_message: str,
     cache_valid: bool,
+    intent_content: Optional[str] = None,
 ) -> None:
     """Display debug information about the cache.
 
@@ -212,6 +302,7 @@ def _display_debug_info(
         metadata: The cache metadata.
         current_message: The current commit message (may be edited).
         cache_valid: Whether the cache is currently valid.
+        intent_content: The intent content if provided.
     """
     typer.echo("=" * 60)
     typer.echo("                  HUNKNOTE DEBUG INFO")
@@ -246,6 +337,18 @@ def _display_debug_info(
     for f in metadata.staged_files:
         typer.echo(f"  - {f}")
     typer.echo()
+
+    # Intent info (if provided)
+    if intent_content:
+        # Show first ~80 chars plus total length (as per spec)
+        preview = intent_content[:80]
+        if len(intent_content) > 80:
+            preview += "..."
+        typer.echo(f"Intent: {preview} ({len(intent_content)} chars)")
+        typer.echo()
+    else:
+        typer.echo("Intent: (not provided)")
+        typer.echo()
 
     # Diff preview
     typer.echo("Diff Preview:")
@@ -868,6 +971,17 @@ def main(
         "--ticket",
         help="Force a ticket key (e.g., PROJ-123) for ticket-style commits",
     ),
+    intent: Optional[str] = typer.Option(
+        None,
+        "--intent",
+        "-i",
+        help="Provide explicit intent/motivation for the commit (influences why/motivation framing)",
+    ),
+    intent_file: Optional[Path] = typer.Option(
+        None,
+        "--intent-file",
+        help="Load intent text from a file",
+    ),
 ) -> None:
     """Generate an AI-powered git commit message from staged changes."""
     # If a subcommand is invoked, don't run the default behavior
@@ -898,6 +1012,9 @@ def main(
             typer.echo("Valid strategies: auto, monorepo, path-prefix, mapping, none")
             raise typer.Exit(1)
 
+    # Process intent options
+    intent_content = _process_intent_options(intent, intent_file)
+
     try:
         # Step 1: Get repo root
         repo_root = get_repo_root()
@@ -905,6 +1022,12 @@ def main(
         # Step 2: Build context bundle
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
+
+        # Inject intent block into context bundle if provided
+        # The intent block is placed after FILE_CHANGES and before LAST_5_COMMITS
+        if intent_content:
+            # Insert [INTENT] block into the context bundle
+            context_bundle = _inject_intent_into_context(context_bundle, intent_content)
 
         # Step 3: Get configurations
         style_config = _get_effective_style_config()
@@ -955,14 +1078,18 @@ def main(
             if scope_result.scope and debug:
                 typer.echo(f"Inferred scope: {scope_result.scope} ({scope_result.reason})", err=True)
 
-        # For cache hash, we only include style (which affects the LLM prompt template).
+        # Compute intent fingerprint for cache key
+        intent_fingerprint = _compute_intent_fingerprint(intent_content)
+
+        # For cache hash, we include style and intent (which affect the LLM prompt).
         # We do NOT include scope, ticket, or no_scope in the hash because these are
         # rendering overrides applied after the LLM response - they don't affect what
         # the LLM generates. This allows users to run:
         #   hunknote --scope cli  # generates with scope override
         #   hunknote -d           # uses cached message (same LLM response)
         #   hunknote -e -c        # uses cached message for editing/committing
-        hash_input = f"{context_bundle}|style={effective_profile.value}"
+        # Intent IS included because it changes what the LLM generates.
+        hash_input = f"{context_bundle}|style={effective_profile.value}|intent={intent_fingerprint or ''}"
         current_hash = compute_context_hash(hash_input)
 
         # Step 7: Check cache validity (unless --regenerate)
@@ -1193,7 +1320,7 @@ def main(
         # Step 8b: Handle --debug flag
         if debug:
             if metadata:
-                _display_debug_info(repo_root, metadata, message, cache_valid)
+                _display_debug_info(repo_root, metadata, message, cache_valid, intent_content)
                 # Show scope inference info
                 typer.echo(f"\n[SCOPE INFERENCE]", err=True)
                 if scope_result:

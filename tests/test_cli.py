@@ -571,3 +571,149 @@ class TestStyleFlags:
 
         assert result.exit_code == 1
         assert "Invalid style" in result.output or "invalid" in result.output.lower()
+
+
+class TestIntentOptions:
+    """Tests for --intent and --intent-file CLI options."""
+
+    def test_intent_flag_in_help(self):
+        """Test that --intent flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--intent" in result.output
+
+    def test_intent_file_flag_in_help(self):
+        """Test that --intent-file flag appears in help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--intent-file" in result.output
+
+    def test_intent_file_not_found_error(self, mocker, temp_dir):
+        """Test error when intent file does not exist."""
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+
+        result = runner.invoke(app, ["--intent-file", "/nonexistent/file.txt"])
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower() or "error" in result.output.lower()
+
+
+class TestIntentProcessing:
+    """Tests for intent processing helper functions."""
+
+    def test_process_intent_options_with_intent_only(self):
+        """Test processing --intent option only."""
+        from hunknote.cli import _process_intent_options
+
+        result = _process_intent_options("Fix the bug in login", None)
+        assert result == "Fix the bug in login"
+
+    def test_process_intent_options_with_intent_file_only(self, temp_dir):
+        """Test processing --intent-file option only."""
+        from hunknote.cli import _process_intent_options
+
+        intent_file = temp_dir / "intent.txt"
+        intent_file.write_text("This change improves performance")
+
+        result = _process_intent_options(None, intent_file)
+        assert result == "This change improves performance"
+
+    def test_process_intent_options_both_combined(self, temp_dir):
+        """Test combining --intent and --intent-file with blank line."""
+        from hunknote.cli import _process_intent_options
+
+        intent_file = temp_dir / "intent.txt"
+        intent_file.write_text("Additional context from file")
+
+        result = _process_intent_options("Primary intent", intent_file)
+        assert result == "Primary intent\n\nAdditional context from file"
+
+    def test_process_intent_options_empty_intent_ignored(self):
+        """Test that whitespace-only intent is treated as not provided."""
+        from hunknote.cli import _process_intent_options
+
+        result = _process_intent_options("   ", None)
+        assert result is None
+
+    def test_process_intent_options_none_when_nothing_provided(self):
+        """Test that None is returned when no intent is provided."""
+        from hunknote.cli import _process_intent_options
+
+        result = _process_intent_options(None, None)
+        assert result is None
+
+    def test_compute_intent_fingerprint_returns_12_chars(self):
+        """Test that fingerprint is 12 characters."""
+        from hunknote.cli import _compute_intent_fingerprint
+
+        fingerprint = _compute_intent_fingerprint("Some intent text")
+        assert fingerprint is not None
+        assert len(fingerprint) == 12
+
+    def test_compute_intent_fingerprint_none_for_no_content(self):
+        """Test that fingerprint is None when no content."""
+        from hunknote.cli import _compute_intent_fingerprint
+
+        assert _compute_intent_fingerprint(None) is None
+        assert _compute_intent_fingerprint("") is None
+
+    def test_compute_intent_fingerprint_different_for_different_content(self):
+        """Test that different intents produce different fingerprints."""
+        from hunknote.cli import _compute_intent_fingerprint
+
+        fp1 = _compute_intent_fingerprint("Intent A")
+        fp2 = _compute_intent_fingerprint("Intent B")
+        assert fp1 != fp2
+
+    def test_inject_intent_into_context(self):
+        """Test that intent is injected into context bundle."""
+        from hunknote.cli import _inject_intent_into_context
+
+        context = """[BRANCH]
+main
+
+[FILE_CHANGES]
+Modified files:
+  ~ file.py
+
+[LAST_5_COMMITS]
+- Previous commit
+
+[STAGED_DIFF]
+diff content"""
+
+        result = _inject_intent_into_context(context, "This is the intent")
+
+        assert "[INTENT]" in result
+        assert "This is the intent" in result
+        # Intent should be before LAST_5_COMMITS
+        intent_pos = result.find("[INTENT]")
+        commits_pos = result.find("[LAST_5_COMMITS]")
+        assert intent_pos < commits_pos
+
+    def test_inject_intent_preserves_original_sections(self):
+        """Test that all original sections are preserved."""
+        from hunknote.cli import _inject_intent_into_context
+
+        context = """[BRANCH]
+main
+
+[FILE_CHANGES]
+Modified files
+
+[LAST_5_COMMITS]
+- Commit
+
+[STAGED_DIFF]
+diff"""
+
+        result = _inject_intent_into_context(context, "Intent text")
+
+        assert "[BRANCH]" in result
+        assert "[FILE_CHANGES]" in result
+        assert "[LAST_5_COMMITS]" in result
+        assert "[STAGED_DIFF]" in result
+        assert "[INTENT]" in result
+
