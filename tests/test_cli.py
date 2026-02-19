@@ -134,7 +134,7 @@ class TestMainCommand:
         assert result.exit_code == 0
         assert "AI-powered" in result.output
         assert "--edit" in result.output
-        assert "--commit" in result.output
+        assert "commit" in result.output  # commit is now a subcommand
 
     def test_no_staged_changes_error(self, mocker, temp_dir):
         """Test error when no staged changes."""
@@ -571,6 +571,43 @@ class TestStyleFlags:
 
         assert result.exit_code == 1
         assert "Invalid style" in result.output or "invalid" in result.output.lower()
+
+
+class TestCommitSubcommand:
+    """Tests for commit subcommand."""
+
+    def test_commit_in_main_help(self):
+        """Test that commit subcommand appears in main help."""
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "commit" in result.output
+
+    def test_commit_help(self):
+        """Test that commit subcommand has help."""
+        result = runner.invoke(app, ["commit", "--help"])
+
+        assert result.exit_code == 0
+        assert "Commit staged changes" in result.output
+
+    def test_yes_flag_in_commit_help(self):
+        """Test that --yes flag appears in commit help."""
+        result = runner.invoke(app, ["commit", "--help"])
+
+        assert result.exit_code == 0
+        assert "--yes" in result.output
+        assert "-y" in result.output
+
+    def test_commit_requires_cached_message(self, mocker, temp_dir):
+        """Test that commit requires a cached message."""
+        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.load_cache_metadata", return_value=None)
+        mocker.patch("hunknote.cli.load_cached_message", return_value=None)
+
+        result = runner.invoke(app, ["commit"])
+
+        assert result.exit_code == 1
+        assert "No cached commit message" in result.output
 
 
 class TestIntentOptions:

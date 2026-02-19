@@ -19,7 +19,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step with confirmation prompt
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, scope inference, and file change details
-- **Comprehensive test suite**: 498 unit tests covering all modules
+- **Comprehensive test suite**: 502 unit tests covering all modules
 
 ## Installation
 
@@ -73,8 +73,14 @@ git add <files>
 # Generate a commit message
 hunknote
 
-# Or generate, edit, and commit in one step
-hunknote -e -c
+# Edit the message (optional)
+hunknote -e
+
+# Commit with the generated message
+hunknote commit
+
+# Or commit immediately without confirmation
+hunknote commit -y
 ```
 
 ## Configuration
@@ -211,7 +217,6 @@ hunknote
 | Flag | Description |
 |------|-------------|
 | `-e, --edit` | Open the generated message in an editor for manual edits |
-| `-c, --commit` | Automatically commit using the generated message (with confirmation for new messages) |
 | `-r, --regenerate` | Force regenerate, ignoring cached message |
 | `-d, --debug` | Show full cache metadata (staged files, tokens, diff preview, scope inference) |
 | `-j, --json` | Show the raw JSON response from the LLM for debugging |
@@ -223,6 +228,19 @@ hunknote
 | `--scope-strategy` | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) |
 | `--ticket` | Force a ticket key (e.g., PROJ-123) for ticket-style commits |
 | `--max-diff-chars` | Maximum characters for staged diff (default: 50000) |
+
+### Commit Subcommand
+
+Use `hunknote commit` to commit using the generated message:
+
+```bash
+# Commit with the cached message (prompts for confirmation)
+hunknote commit
+
+# Commit immediately without confirmation (for CI/scripts)
+hunknote commit -y
+hunknote commit --yes
+```
 
 ### Scope Inference
 
@@ -355,14 +373,18 @@ hunknote
 # Generate and open in editor
 hunknote -e
 
-# Generate and commit directly (uses cached message if available)
-hunknote -c
+# Generate commit message
+hunknote
 
-# Generate new message and commit with confirmation prompt
-hunknote -r -c
+# Commit with the generated message (prompts for confirmation)
+hunknote commit
 
-# Edit message then commit
-hunknote -e -c
+# Commit immediately without confirmation (for CI/scripts)
+hunknote commit -y
+
+# Edit message before committing
+hunknote -e
+hunknote commit
 
 # Force regeneration (ignore cache)
 hunknote -r
@@ -383,7 +405,8 @@ hunknote --style conventional --scope api
 hunknote --style blueprint
 
 # Use ticket-prefixed style
-hunknote --style ticket --ticket PROJ-6767 -e -c
+hunknote --style ticket --ticket PROJ-6767
+hunknote commit
 
 # Force kernel style for this commit
 hunknote --style kernel --scope auth
@@ -392,7 +415,8 @@ hunknote --style kernel --scope auth
 hunknote --intent "Fix memory leak in connection pool"
 
 # Load intent from a file
-hunknote --intent-file ./intent.txt -e -c
+hunknote --intent-file ./intent.txt
+hunknote commit -y
 ```
 
 ### Git Subcommand
@@ -401,7 +425,9 @@ You can also use it as a git subcommand:
 
 ```bash
 git hunknote
-git hunknote -e -c
+git hunknote -e
+git hunknote commit
+git hunknote commit -y
 ```
 
 ## How It Works
@@ -502,7 +528,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 498 tests:
+The project includes a comprehensive test suite with 502 tests:
 
 ```bash
 # Run all tests
@@ -523,7 +549,7 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 | Module | Tests | Description |
 |--------|-------|-------------|
 | `cache.py` | 52 | Caching utilities, metadata, raw JSON storage |
-| `cli.py` | 55 | CLI commands and subcommands |
+| `cli.py` | 59 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
 | `formatters.py` | 21 | Commit message formatting and validation |
 | `git_ctx.py` | 47 | Git context collection, filtering, merge detection |

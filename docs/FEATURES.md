@@ -102,10 +102,17 @@ git add <files>
 hunknote
 ```
 
-### 3. Generate, Edit, and Commit
+### 3. Edit and Commit
 
 ```bash
-hunknote -e -c
+hunknote -e
+hunknote commit
+```
+
+Or commit immediately without confirmation:
+
+```bash
+hunknote commit -y
 ```
 
 ---
@@ -125,7 +132,6 @@ Generate an AI-powered commit message from staged changes.
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
 | `--edit` | `-e` | Open message in editor for manual edits | `false` |
-| `--commit` | `-c` | Automatically commit using the generated message (with confirmation for new messages) | `false` |
 | `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
 | `--debug` | `-d` | Show cache metadata (files, tokens, diff preview, scope inference) | `false` |
 | `--json` | `-j` | Show raw JSON response from LLM for debugging | `false` |
@@ -145,8 +151,14 @@ Generate an AI-powered commit message from staged changes.
 # Generate and print message
 hunknote
 
-# Generate, edit in editor, then commit
-hunknote -e -c
+# Edit message in editor
+hunknote -e
+
+# Commit with generated message (prompts for confirmation)
+hunknote commit
+
+# Commit immediately without confirmation
+hunknote commit -y
 
 # Force regeneration (bypass cache)
 hunknote -r
@@ -176,7 +188,8 @@ hunknote --style conventional --scope-strategy monorepo
 hunknote --style conventional --no-scope
 
 # Use ticket-prefixed style
-hunknote --style ticket --ticket PROJ-123 -e -c
+hunknote --style ticket --ticket PROJ-123
+hunknote commit
 
 # Kernel style with subsystem
 hunknote --style kernel --scope auth
@@ -187,8 +200,9 @@ hunknote --intent "Fix race condition in connection handling"
 # Load intent from a file
 hunknote --intent-file ./intent.txt
 
-# Combine intent text and file
-hunknote --intent "Primary reason" --intent-file ./details.txt -e -c
+# Combine intent text and file, then commit
+hunknote --intent "Primary reason" --intent-file ./details.txt
+hunknote commit -y
 ```
 
 ---
@@ -210,6 +224,52 @@ hunknote init
 
 **If already configured:**
 - Asks for confirmation before overwriting
+
+---
+
+### `hunknote commit`
+
+Commit staged changes using the generated message.
+
+```bash
+hunknote commit [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--yes` | `-y` | Bypass confirmation prompt and commit immediately |
+
+**What it does:**
+- Uses the cached commit message from the last `hunknote` run
+- Prompts for confirmation before committing (unless `-y` is used)
+- If no cached message exists, shows an error asking to run `hunknote` first
+- After successful commit, invalidates the cache
+
+**Examples:**
+
+```bash
+# Commit with confirmation prompt
+hunknote commit
+
+# Commit immediately without prompt (for CI/scripts)
+hunknote commit -y
+hunknote commit --yes
+```
+
+**Workflow:**
+
+```bash
+# 1. Generate message
+hunknote
+
+# 2. (Optional) Edit message
+hunknote -e
+
+# 3. Commit
+hunknote commit
+```
 
 ---
 
