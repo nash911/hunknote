@@ -1082,6 +1082,39 @@ def main(
                 typer.echo(f"  Final scope used: {effective_scope or 'None'}", err=True)
                 raise typer.Exit(0)
 
+        # Early exit for --commit flag alone: use existing cached message without regenerating
+        # Check if commit flag is used without any override flags that would require regeneration
+        has_override_flags = scope or no_scope or ticket or style or intent_content or regenerate or edit
+        if commit and not has_override_flags:
+            metadata = load_cache_metadata(repo_root)
+            message = load_cached_message(repo_root)
+            message_file = get_message_file(repo_root)
+
+            if metadata and message:
+                # Use existing cached message - commit directly
+                typer.echo("Using cached commit message...", err=True)
+                typer.echo("")
+                typer.echo("=" * 60)
+                typer.echo(message)
+                typer.echo("=" * 60)
+                typer.echo("")
+                typer.echo("Committing...", err=True)
+                result = subprocess.run(
+                    ["git", "commit", "-F", str(message_file)],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    typer.echo("Commit successful!", err=True)
+                    typer.echo(result.stdout)
+                    invalidate_cache(repo_root)
+                else:
+                    typer.echo("Commit failed!", err=True)
+                    typer.echo(result.stderr, err=True)
+                    raise typer.Exit(1)
+                raise typer.Exit(0)
+            # If no cached message, fall through to generate a new one
+
         # Step 2: Build context bundle
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
@@ -1157,6 +1190,10 @@ def main(
 
         # Step 7: Check cache validity (unless --regenerate)
         cache_valid = not regenerate and is_cache_valid(repo_root, current_hash)
+
+        # Track whether a new message was generated (vs using cache)
+        # This is used for the confirmation prompt when --commit flag is used
+        message_newly_generated = False
 
         if cache_valid:
             # Use cached commit message
@@ -1271,6 +1308,7 @@ def main(
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
             llm_result = generate_commit_json(context_bundle, style=effective_profile.value)
+            message_newly_generated = True
 
             # llm_result.commit_json is already an ExtendedCommitJSON with all style fields
             extended_data = llm_result.commit_json
@@ -1399,6 +1437,19 @@ def main(
 
         # Step 10: If --commit flag, perform the commit
         if commit:
+            # If message was newly generated, ask for confirmation before committing
+            if message_newly_generated:
+                typer.echo("")
+                confirm = typer.prompt(
+                    "Commit with this message? [Y/n]",
+                    default="y",
+                    show_default=False,
+                )
+                if confirm.lower() not in ("y", "yes", ""):
+                    typer.echo("Commit cancelled.", err=True)
+                    typer.echo("The message has been saved. Run 'hunknote -c' to commit later.", err=True)
+                    raise typer.Exit(0)
+
             typer.echo("")
             typer.echo("Committing...", err=True)
             result = subprocess.run(
