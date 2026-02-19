@@ -573,3 +573,142 @@ class TestGetDiffPreview:
         diff = "a" * 100
         result = get_diff_preview(diff, max_chars=100)
         assert result == diff
+
+
+class TestLoadCachedMessage:
+    """Tests for load_cached_message function."""
+
+    def test_returns_message_when_exists(self, temp_dir):
+        """Test that message is returned when file exists."""
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="Test commit message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="diff",
+        )
+
+        result = load_cached_message(temp_dir)
+        assert result == "Test commit message"
+
+    def test_returns_none_when_file_missing(self, temp_dir):
+        """Test that None is returned when message file doesn't exist."""
+        # Create .hunknote dir but no message file
+        cache_dir = temp_dir / ".hunknote"
+        cache_dir.mkdir()
+
+        result = load_cached_message(temp_dir)
+        assert result is None
+
+    def test_returns_none_when_dir_missing(self, temp_dir):
+        """Test that None is returned when .hunknote dir doesn't exist."""
+        result = load_cached_message(temp_dir)
+        assert result is None
+
+
+class TestUpdateMetadataOverrides:
+    """Tests for update_metadata_overrides function."""
+
+    def test_updates_scope_override(self, temp_dir):
+        """Test updating scope override in metadata."""
+        from hunknote.cache import update_metadata_overrides
+
+        # First create initial cache
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="diff",
+        )
+
+        # Update with scope override
+        update_metadata_overrides(temp_dir, scope_override="api")
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata.scope_override == "api"
+
+    def test_updates_ticket_override(self, temp_dir):
+        """Test updating ticket override in metadata."""
+        from hunknote.cache import update_metadata_overrides
+
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="diff",
+        )
+
+        update_metadata_overrides(temp_dir, ticket_override="PROJ-123")
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata.ticket_override == "PROJ-123"
+
+    def test_updates_no_scope_override(self, temp_dir):
+        """Test updating no_scope override in metadata."""
+        from hunknote.cache import update_metadata_overrides
+
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="diff",
+        )
+
+        update_metadata_overrides(temp_dir, no_scope_override=True)
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata.no_scope_override is True
+
+    def test_updates_multiple_overrides(self, temp_dir):
+        """Test updating multiple overrides at once."""
+        from hunknote.cache import update_metadata_overrides
+
+        save_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            message="message",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            staged_files=["file.py"],
+            diff_preview="diff",
+        )
+
+        update_metadata_overrides(
+            temp_dir,
+            scope_override="ui",
+            ticket_override="BUG-456",
+            no_scope_override=False,
+        )
+
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata.scope_override == "ui"
+        assert metadata.ticket_override == "BUG-456"
+        assert metadata.no_scope_override is False
+
+    def test_does_nothing_if_no_metadata(self, temp_dir):
+        """Test that update does nothing if metadata doesn't exist."""
+        from hunknote.cache import update_metadata_overrides
+
+        # Should not raise error
+        update_metadata_overrides(temp_dir, scope_override="api")
+
+        # Metadata should still not exist
+        metadata = load_cache_metadata(temp_dir)
+        assert metadata is None
+

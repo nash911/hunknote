@@ -1056,3 +1056,76 @@ class TestProfileDescriptionsBlueprint:
         assert "example" in desc
         assert "Changes" in desc["example"]
         assert "Implementation" in desc["example"]
+
+
+class TestConventionalTypesMerge:
+    """Tests for merge type in conventional commits."""
+
+    def test_conventional_types_includes_merge(self):
+        """Test that merge is in CONVENTIONAL_TYPES."""
+        assert "merge" in CONVENTIONAL_TYPES
+
+    def test_merge_type_renders_correctly(self):
+        """Test that merge type renders correctly in conventional style."""
+        data = ExtendedCommitJSON(
+            type="merge",
+            scope=None,
+            title="Merge branch feature-auth",
+            body_bullets=["Integrate authentication module"],
+        )
+        config = StyleConfig()
+        result = render_conventional(data, config)
+        assert result.startswith("merge:")
+        assert "Merge branch feature-auth" in result
+
+    def test_merge_type_with_scope(self):
+        """Test merge type with scope in conventional style."""
+        data = ExtendedCommitJSON(
+            type="merge",
+            scope="auth",
+            title="Merge feature-auth into main",
+            body_bullets=["Integrate authentication module"],
+        )
+        config = StyleConfig()
+        result = render_conventional(data, config)
+        assert result.startswith("merge(auth):")
+
+    def test_merge_type_in_blueprint_style(self):
+        """Test merge type renders correctly in blueprint style."""
+        data = ExtendedCommitJSON(
+            type="merge",
+            scope="auth",
+            title="Merge feature-auth branch",
+            summary="Integrate the feature-auth branch with user authentication.",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Add login endpoint"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+        assert result.startswith("merge(auth):")
+        assert "Merge feature-auth branch" in result
+
+
+class TestExtendedCommitJSONMergeType:
+    """Tests for ExtendedCommitJSON with merge type."""
+
+    def test_extended_json_accepts_merge_type(self):
+        """Test that ExtendedCommitJSON accepts merge type."""
+        data = ExtendedCommitJSON(
+            type="merge",
+            title="Merge branch feature",
+            body_bullets=["Merge changes"],
+        )
+        assert data.type == "merge"
+
+    def test_extended_json_get_type_merge(self):
+        """Test get_type returns merge when set."""
+        data = ExtendedCommitJSON(
+            type="merge",
+            title="Merge branch",
+            body_bullets=[],
+        )
+        assert data.get_type("feat") == "merge"
+
+

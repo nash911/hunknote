@@ -581,3 +581,76 @@ class TestBaseLLMProviderPromptMethods:
         expected = USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle="test")
         assert result == expected
 
+
+class TestSystemPromptContent:
+    """Tests for SYSTEM_PROMPT content."""
+
+    def test_system_prompt_contains_intent_handling(self):
+        """Test that system prompt includes intent handling rules."""
+        assert "INTENT HANDLING" in SYSTEM_PROMPT
+        assert "[INTENT]" in SYSTEM_PROMPT
+
+    def test_system_prompt_intent_guides_framing(self):
+        """Test that intent handling mentions guiding framing."""
+        assert "framing" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_intent_prefers_diff(self):
+        """Test that intent handling says to prefer diff over contradicting intent."""
+        assert "prefer the diff" in SYSTEM_PROMPT.lower()
+
+
+class TestUserPromptIntentHandling:
+    """Tests for intent handling in prompts."""
+
+    def test_system_prompt_has_intent_section(self):
+        """Test that SYSTEM_PROMPT has intent handling section."""
+        assert "INTENT HANDLING" in SYSTEM_PROMPT
+        assert "[INTENT]" in SYSTEM_PROMPT
+
+    def test_system_prompt_intent_guides_why(self):
+        """Test that intent handling describes guiding WHY/motivation."""
+        assert "WHY" in SYSTEM_PROMPT or "motivation" in SYSTEM_PROMPT
+
+    def test_system_prompt_intent_not_fabricate(self):
+        """Test that intent handling says not to fabricate details."""
+        assert "fabricate" in SYSTEM_PROMPT.lower() or "invent" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_intent_prefers_diff_on_conflict(self):
+        """Test that if intent contradicts diff, prefer diff."""
+        assert "prefer the diff" in SYSTEM_PROMPT.lower()
+
+
+class TestMergeStateInPrompts:
+    """Tests for merge state handling in prompts."""
+
+    def test_conventional_prompt_includes_merge_type(self):
+        """Test that conventional prompt includes merge as valid type."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        # merge should be in the type list
+        assert "merge" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_conventional_prompt_merge_state_check(self):
+        """Test that conventional prompt has merge state check section."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "MERGE_STATE" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_conventional_prompt_merge_in_progress(self):
+        """Test that conventional prompt checks for merge in progress."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "merge in progress" in USER_PROMPT_TEMPLATE_CONVENTIONAL.lower()
+
+    def test_blueprint_prompt_includes_merge_type(self):
+        """Test that blueprint prompt includes merge as valid type."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "merge" in USER_PROMPT_TEMPLATE_BLUEPRINT.lower()
+
+    def test_blueprint_prompt_merge_state_check(self):
+        """Test that blueprint prompt has merge state check section."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+        assert "MERGE_STATE" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
+    def test_prompts_mention_merging_branch(self):
+        """Test that prompts mention extracting branch name from merge state."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "Merging branch" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+

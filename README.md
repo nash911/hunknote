@@ -19,7 +19,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step with confirmation prompt
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, scope inference, and file change details
-- **Comprehensive test suite**: 471 unit tests covering all modules
+- **Comprehensive test suite**: 498 unit tests covering all modules
 
 ## Installation
 
@@ -502,7 +502,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 471 tests:
+The project includes a comprehensive test suite with 498 tests:
 
 ```bash
 # Run all tests
@@ -522,15 +522,15 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| `cache.py` | 44 | Caching utilities, metadata, raw JSON storage |
+| `cache.py` | 52 | Caching utilities, metadata, raw JSON storage |
 | `cli.py` | 55 | CLI commands and subcommands |
 | `config.py` | 24 | Configuration constants and enums |
 | `formatters.py` | 21 | Commit message formatting and validation |
 | `git_ctx.py` | 47 | Git context collection, filtering, merge detection |
 | `global_config.py` | 26 | Global user configuration (~/.hunknote/) |
 | `scope.py` | 54 | Scope inference from file paths |
-| `styles.py` | 96 | Commit style profiles and rendering |
-| `llm/base.py` | 53 | JSON parsing, schema validation, style prompts |
+| `styles.py` | 102 | Commit style profiles and rendering |
+| `llm/base.py` | 66 | JSON parsing, schema validation, style prompts |
 | `llm/*.py` providers | 31 | All LLM provider classes |
 | `user_config.py` | 20 | Repository YAML config file management |
 

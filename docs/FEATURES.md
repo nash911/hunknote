@@ -1350,5 +1350,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*Documentation generated for Hunknote v1.3.0*
+*Documentation generated for Hunknote v1.4.0*
 
