@@ -969,91 +969,114 @@ def main(
         cache_valid = not regenerate and is_cache_valid(repo_root, current_hash)
 
         if cache_valid:
-            # Use cached LLM response but re-render with current flags
+            # Use cached commit message
             typer.echo("Using cached commit message...", err=True)
             metadata = load_cache_metadata(repo_root)
 
-            # Load raw JSON response from stored file
-            llm_raw_response = load_raw_json_response(repo_root)
-            llm_suggested_scope = None
+            # Check if user provided any override flags that require re-rendering
+            # If no overrides, use the saved message file directly (user may have edited it)
+            has_override_flags = scope or no_scope or ticket
 
-            if llm_raw_response:
-                try:
-                    # Parse the cached LLM response to get ExtendedCommitJSON
-                    parsed_json = parse_json_response(llm_raw_response)
-                    extended_data = validate_commit_json(parsed_json, llm_raw_response)
-                    llm_suggested_scope = extended_data.scope
+            if has_override_flags:
+                # User provided override flags - need to re-render from JSON
+                # Load raw JSON response from stored file
+                llm_raw_response = load_raw_json_response(repo_root)
+                llm_suggested_scope = None
 
-                    # Determine effective scope: CLI override > LLM suggested > Heuristics
-                    if effective_no_scope:
+                if llm_raw_response:
+                    try:
+                        # Parse the cached LLM response to get ExtendedCommitJSON
+                        parsed_json = parse_json_response(llm_raw_response)
+                        extended_data = validate_commit_json(parsed_json, llm_raw_response)
+                        llm_suggested_scope = extended_data.scope
+
+                        # Determine effective scope: CLI override > LLM suggested > Heuristics
+                        if effective_no_scope:
+                            effective_scope = None
+                        elif cli_scope_override:
+                            effective_scope = cli_scope_override
+                        elif llm_suggested_scope:
+                            effective_scope = llm_suggested_scope
+                        elif scope_result and scope_result.scope:
+                            effective_scope = scope_result.scope
+                        else:
+                            effective_scope = None
+
+                        # Strip redundant scope (same logic as new generation path)
+                        commit_type = extended_data.type or extended_data.get_type("feat")
+                        if effective_scope and commit_type:
+                            redundant_scopes = {
+                                "docs": ["docs", "documentation", "doc"],
+                                "test": ["test", "tests", "testing"],
+                                "ci": ["ci", "pipeline", "workflows"],
+                                "build": ["build", "deps", "dependencies"],
+                            }
+                            if commit_type.lower() in redundant_scopes:
+                                if effective_scope.lower() in redundant_scopes[commit_type.lower()]:
+                                    effective_scope = None
+
+                        # Apply scope to extended_data
+                        extended_data.scope = effective_scope
+
+                        # Apply ticket override if provided
+                        if effective_ticket:
+                            extended_data.ticket = effective_ticket
+
+                        # Try to extract ticket from branch if not provided and using ticket style
+                        if not extended_data.ticket and effective_profile == StyleProfile.TICKET:
+                            try:
+                                branch = get_branch()
+                                extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
+                                if extracted_ticket:
+                                    extended_data.ticket = extracted_ticket
+                            except Exception:
+                                pass
+
+                        # Infer commit type if using conventional/blueprint style and not provided
+                        if effective_profile in (StyleProfile.CONVENTIONAL, StyleProfile.BLUEPRINT) and not extended_data.type:
+                            inferred_type = infer_commit_type(staged_files)
+                            if inferred_type:
+                                extended_data.type = inferred_type
+
+                        # Re-render the commit message with current flags
+                        message = render_commit_message_styled(
+                            data=extended_data,
+                            config=style_config,
+                            override_style=override_style,
+                            override_scope=effective_scope,
+                            override_ticket=effective_ticket,
+                            no_scope=effective_no_scope,
+                        )
+
+                        # Update the message file with the re-rendered message
+                        update_message_cache(repo_root, message)
+
+                    except (JSONParseError, AttributeError):
+                        # Fallback to stored message if parsing fails
+                        message = load_cached_message(repo_root)
                         effective_scope = None
-                    elif cli_scope_override:
-                        effective_scope = cli_scope_override
-                    elif llm_suggested_scope:
-                        effective_scope = llm_suggested_scope
-                    elif scope_result and scope_result.scope:
-                        effective_scope = scope_result.scope
-                    else:
-                        effective_scope = None
-
-                    # Strip redundant scope (same logic as new generation path)
-                    commit_type = extended_data.type or extended_data.get_type("feat")
-                    if effective_scope and commit_type:
-                        redundant_scopes = {
-                            "docs": ["docs", "documentation", "doc"],
-                            "test": ["test", "tests", "testing"],
-                            "ci": ["ci", "pipeline", "workflows"],
-                            "build": ["build", "deps", "dependencies"],
-                        }
-                        if commit_type.lower() in redundant_scopes:
-                            if effective_scope.lower() in redundant_scopes[commit_type.lower()]:
-                                effective_scope = None
-
-                    # Apply scope to extended_data
-                    extended_data.scope = effective_scope
-
-                    # Apply ticket override if provided
-                    if effective_ticket:
-                        extended_data.ticket = effective_ticket
-
-                    # Try to extract ticket from branch if not provided and using ticket style
-                    if not extended_data.ticket and effective_profile == StyleProfile.TICKET:
-                        try:
-                            branch = get_branch()
-                            extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
-                            if extracted_ticket:
-                                extended_data.ticket = extracted_ticket
-                        except Exception:
-                            pass
-
-                    # Infer commit type if using conventional/blueprint style and not provided
-                    if effective_profile in (StyleProfile.CONVENTIONAL, StyleProfile.BLUEPRINT) and not extended_data.type:
-                        inferred_type = infer_commit_type(staged_files)
-                        if inferred_type:
-                            extended_data.type = inferred_type
-
-                    # Re-render the commit message with current flags
-                    message = render_commit_message_styled(
-                        data=extended_data,
-                        config=style_config,
-                        override_style=override_style,
-                        override_scope=effective_scope,
-                        override_ticket=effective_ticket,
-                        no_scope=effective_no_scope,
-                    )
-
-                    # Update the message file with the re-rendered message
-                    # This ensures -e and -c flags use the correct scope
-                    update_message_cache(repo_root, message)
-
-                except (JSONParseError, AttributeError):
-                    # Fallback to stored message if parsing fails
+                        llm_suggested_scope = None
+                else:
+                    # No raw response stored, use cached message as-is
                     message = load_cached_message(repo_root)
                     effective_scope = None
+                    llm_suggested_scope = None
             else:
-                # No raw response stored, use cached message as-is
+                # No override flags - use the saved message directly
+                # This preserves any manual edits the user may have made
                 message = load_cached_message(repo_root)
+
+                # Still try to get LLM suggested scope for debug info
+                llm_raw_response = load_raw_json_response(repo_root)
+                llm_suggested_scope = None
                 effective_scope = None
+
+                if llm_raw_response:
+                    try:
+                        parsed_json = parse_json_response(llm_raw_response)
+                        llm_suggested_scope = parsed_json.get("scope")
+                    except (JSONParseError, AttributeError):
+                        pass
         else:
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
