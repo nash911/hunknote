@@ -1019,6 +1019,69 @@ def main(
         # Step 1: Get repo root
         repo_root = get_repo_root()
 
+        # Early exit for --debug and --json flags: show existing cache without regenerating
+        # These flags should never trigger commit message generation
+        if debug or show_json:
+            metadata = load_cache_metadata(repo_root)
+            if metadata is None:
+                typer.echo("No cached commit message found.", err=True)
+                typer.echo("Run 'hunknote' first to generate a commit message.", err=True)
+                raise typer.Exit(1)
+
+            message = load_cached_message(repo_root)
+            if not message:
+                typer.echo("No cached commit message found.", err=True)
+                typer.echo("Run 'hunknote' first to generate a commit message.", err=True)
+                raise typer.Exit(1)
+
+            if show_json:
+                typer.echo("\n[RAW LLM RESPONSE]", err=True)
+                stored_json = load_raw_json_response(repo_root)
+                if stored_json:
+                    typer.echo(stored_json, err=True)
+                else:
+                    typer.echo("(Raw JSON not available)", err=True)
+                typer.echo("")
+                raise typer.Exit(0)
+
+            if debug:
+                # Get scope inference info for debug display
+                status_output = get_status()
+                staged_files = extract_staged_files(status_output)
+                scope_config = _get_effective_scope_config()
+                scope_result = None
+                if scope_config.enabled:
+                    scope_result = infer_scope(staged_files, scope_config)
+
+                # Get LLM suggested scope from raw response
+                llm_suggested_scope = None
+                llm_raw_response = load_raw_json_response(repo_root)
+                if llm_raw_response:
+                    try:
+                        parsed_json = parse_json_response(llm_raw_response)
+                        llm_suggested_scope = parsed_json.get("scope")
+                    except (JSONParseError, AttributeError):
+                        pass
+
+                # Get effective scope from metadata
+                effective_scope = metadata.scope_override
+                cli_scope_override = metadata.scope_override
+
+                _display_debug_info(repo_root, metadata, message, True, intent_content)
+                # Show scope inference info
+                typer.echo(f"\n[SCOPE INFERENCE]", err=True)
+                if scope_result:
+                    typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
+                    typer.echo(f"  Inferred scope (heuristics): {scope_result.scope or 'None'}", err=True)
+                    typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
+                    typer.echo(f"  Reason: {scope_result.reason}", err=True)
+                else:
+                    typer.echo(f"  Inferred scope (heuristics): None (inference not run)", err=True)
+                typer.echo(f"  LLM suggested scope: {llm_suggested_scope or 'None'}", err=True)
+                typer.echo(f"  CLI override: {cli_scope_override or 'None'}", err=True)
+                typer.echo(f"  Final scope used: {effective_scope or 'None'}", err=True)
+                raise typer.Exit(0)
+
         # Step 2: Build context bundle
         typer.echo("Collecting git context...", err=True)
         context_bundle = build_context_bundle(max_chars=max_diff_chars)
@@ -1306,41 +1369,10 @@ def main(
             )
             metadata = load_cache_metadata(repo_root)
 
-        # Step 8a: Handle --json flag (show raw LLM output from stored file)
-        if show_json:
-            typer.echo("\n[RAW LLM RESPONSE]", err=True)
-            stored_json = load_raw_json_response(repo_root)
-            if stored_json:
-                typer.echo(stored_json, err=True)
-            else:
-                typer.echo("(Not available - no cached LLM response found. Run hunknote first to generate.)", err=True)
-            typer.echo("")
-            raise typer.Exit(0)
-
-        # Step 8b: Handle --debug flag
-        if debug:
-            if metadata:
-                _display_debug_info(repo_root, metadata, message, cache_valid, intent_content)
-                # Show scope inference info
-                typer.echo(f"\n[SCOPE INFERENCE]", err=True)
-                if scope_result:
-                    typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
-                    typer.echo(f"  Inferred scope (heuristics): {scope_result.scope or 'None'}", err=True)
-                    typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
-                    typer.echo(f"  Reason: {scope_result.reason}", err=True)
-                else:
-                    typer.echo(f"  Inferred scope (heuristics): None (inference not run)", err=True)
-                typer.echo(f"  LLM suggested scope: {llm_suggested_scope or 'None'}", err=True)
-                typer.echo(f"  CLI override: {cli_scope_override or 'None'}", err=True)
-                typer.echo(f"  Final scope used: {effective_scope or 'None'}", err=True)
-            else:
-                typer.echo("No cache metadata found.", err=True)
-            raise typer.Exit(0)
-
-        # Step 9: Get message file path
+        # Step 8: Get message file path
         message_file = get_message_file(repo_root)
 
-        # Step 8: If --edit flag, open editor
+        # Step 9: If --edit flag, open editor
         if edit:
             _open_editor(message_file)
             # Re-read the file after editing
