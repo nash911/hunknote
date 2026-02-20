@@ -7,12 +7,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ============================================================================
 # Data Models
 # ============================================================================
+
+# Regex to match conventional commit prefix: type(scope): or type:
+_CONVENTIONAL_PREFIX_RE = re.compile(
+    r"^(?P<type>[a-zA-Z]+)"          # type (e.g., feat, fix, refactor)
+    r"(?:\((?P<scope>[^)]*)\))?"     # optional (scope)
+    r":\s*"                           # colon + optional space
+)
 
 
 @dataclass
@@ -69,6 +76,19 @@ class PlannedCommit(BaseModel):
     summary: Optional[str] = None  # For blueprint style
     sections: Optional[list[BlueprintSection]] = None  # For blueprint style
     hunks: list[str]  # Hunk IDs (e.g., ["H1", "H7"])
+
+    @model_validator(mode="after")
+    def strip_conventional_prefix_from_title(self) -> "PlannedCommit":
+        """Strip the conventional commit prefix from the title if it duplicates the type/scope fields.
+
+        LLMs sometimes return titles like "feat(env): Allow EnvMaster ..." even though
+        type and scope are separate JSON fields. This validator removes the redundant prefix.
+        """
+        if self.type and self.title:
+            match = _CONVENTIONAL_PREFIX_RE.match(self.title)
+            if match and match.group("type").lower() == self.type.lower():
+                self.title = self.title[match.end():]
+        return self
 
 
 class ComposePlan(BaseModel):
