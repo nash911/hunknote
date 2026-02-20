@@ -5,6 +5,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 ## Features
 
 - **Automatic commit message generation** from staged git changes
+- **Compose mode**: Split working tree changes into a clean commit stack automatically
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Commit style profiles**: Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style
 - **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
@@ -430,6 +431,81 @@ git hunknote commit
 git hunknote commit -y
 ```
 
+## Compose Mode (Commit Stacking)
+
+Split messy working tree changes into a clean stack of atomic commits:
+
+```bash
+# Preview the proposed commit stack (plan-only, no changes)
+hunknote compose
+
+# Execute the plan and create commits
+hunknote compose --commit
+
+# Skip confirmation prompt
+hunknote compose --commit --yes
+
+# Limit to 3 commits
+hunknote compose --max-commits 3
+
+# Use a specific style
+hunknote compose --style conventional
+
+# Force regenerate (ignore cache)
+hunknote compose -r
+
+# Show cached compose plan JSON
+hunknote compose -j
+
+# Load plan from external file
+hunknote compose --from-plan my_plan.json --commit
+
+# Debug mode: show inventory and patch details
+hunknote compose --debug
+```
+
+### What Compose Does
+
+1. **Collects all tracked changes** (staged + unstaged) from `git diff HEAD`
+2. **Parses the diff** into files and hunks with stable IDs
+3. **Asks the LLM** to split changes into logical, atomic commits
+4. **Validates the plan** (no duplicate hunks, all hunks assigned, etc.)
+5. **Optionally executes** by applying patches and creating commits
+
+### Safety Features
+
+- **Plan-only by default**: Does not modify git state unless `--commit` is passed
+- **Pre-execution snapshot**: Saves staged state before committing for recovery
+- **Best-effort restore**: Attempts to restore previous state on failure
+- **Binary file handling**: Skips binary files with warnings
+- **Untracked file warnings**: Reminds you to stage untracked files
+
+### Compose Options
+
+| Flag | Description |
+|------|-------------|
+| `--max-commits` | Maximum commits in the plan (default: 6) |
+| `--style` | Override commit style profile |
+| `-c, --commit` | Execute the plan and create commits |
+| `-y, --yes` | Skip confirmation prompt |
+| `--dry-run` | Force plan-only even if `--commit` present |
+| `-r, --regenerate` | Force regenerate the plan, ignoring cache |
+| `-j, --json` | Show the cached compose plan JSON for debugging |
+| `--from-plan` | Load plan from external JSON file (skip LLM) |
+| `--debug` | Print diagnostics |
+
+### Caching
+
+Compose uses smart caching similar to the main command:
+- Cache key is computed from: diff content + style + max_commits
+- Cached files are stored in `.hunknote/`:
+  - `hunknote_compose_plan.json` - The full compose plan
+  - `hunknote_compose_metadata.json` - Generation metadata
+  - `hunknote_hunk_ids.json` - All hunks with their diffs and commit assignments
+- Use `-r` to force regeneration
+- Use `-j` to inspect the cached plan
+- Cache is automatically invalidated after successful commit execution
+
 ## How It Works
 
 1. **Collects git context**: branch name, file changes (new vs modified), last 5 commits, and staged diff
@@ -550,6 +626,7 @@ pytest tests/test_cache.py::TestSaveCache::test_saves_all_files
 |--------|-------|-------------|
 | `cache.py` | 52 | Caching utilities, metadata, raw JSON storage |
 | `cli.py` | 59 | CLI commands and subcommands |
+| `compose.py` | 51 | Compose feature (diff parsing, plan validation, caching, execution) |
 | `config.py` | 24 | Configuration constants and enums |
 | `formatters.py` | 21 | Commit message formatting and validation |
 | `git_ctx.py` | 47 | Git context collection, filtering, merge detection |
