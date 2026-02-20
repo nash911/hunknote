@@ -4,6 +4,7 @@ import difflib
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -707,7 +708,11 @@ def compose(
                 cwd=repo_root,
             )
 
-            for commit in plan.commits:
+            for i, commit in enumerate(plan.commits):
+                # Delay between commits so each gets a distinct timestamp
+                if i > 0:
+                    time.sleep(1)
+
                 typer.echo(f"  Creating commit {commit.id}: {commit.title[:50]}...", err=True)
 
                 # Build patch for this commit
