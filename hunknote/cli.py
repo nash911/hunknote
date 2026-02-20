@@ -623,6 +623,10 @@ def compose(
         style_config = _get_effective_style_config()
         effective_profile = override_style or style_config.profile
 
+        # Use a wider wrap width for preview rendering so titles are not truncated
+        from dataclasses import replace as dc_replace
+        preview_config = dc_replace(style_config, wrap_width=200)
+
         for planned_commit in plan.commits:
             # Convert to ExtendedCommitJSON for rendering
             sections = None
@@ -643,10 +647,10 @@ def compose(
                 ticket=planned_commit.ticket,
             )
 
-            # Render message
+            # Render message (using wider wrap width for preview)
             rendered = render_commit_message_styled(
                 extended_json,
-                style_config,
+                preview_config,
                 override_style=effective_profile,
             )
 
