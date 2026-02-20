@@ -26,7 +26,6 @@ from hunknote.cache import (
     update_message_cache,
     update_metadata_overrides,
 )
-from hunknote.formatters import render_commit_message
 from hunknote.git_ctx import (
     GitError,
     NoStagedChangesError,
@@ -48,7 +47,6 @@ from hunknote.user_config import (
 from hunknote.styles import (
     StyleProfile,
     StyleConfig,
-    ExtendedCommitJSON,
     PROFILE_DESCRIPTIONS,
     load_style_config_from_dict,
     render_commit_message_styled,
@@ -58,7 +56,6 @@ from hunknote.styles import (
 from hunknote.scope import (
     ScopeStrategy,
     ScopeConfig,
-    ScopeResult,
     infer_scope,
     load_scope_config_from_dict,
 )
@@ -242,13 +239,11 @@ def compose(
         save_compose_hunk_ids,
         load_compose_plan,
         load_compose_metadata,
-        load_compose_hunk_ids,
         invalidate_compose_cache,
     )
     from hunknote.compose import (
         parse_unified_diff,
         build_hunk_inventory,
-        format_inventory_for_llm,
         validate_plan,
         build_commit_patch,
         build_compose_prompt,
@@ -257,8 +252,6 @@ def compose(
         execute_commit,
         cleanup_temp_files,
         ComposePlan,
-        PlannedCommit,
-        PlanValidationError,
         ComposeExecutionError,
         COMPOSE_SYSTEM_PROMPT,
     )
@@ -266,9 +259,7 @@ def compose(
         ExtendedCommitJSON,
         BlueprintSection as StyleBlueprintSection,
         render_commit_message_styled,
-        StyleConfig,
         StyleProfile,
-        load_style_config_from_dict,
     )
 
     load_config()

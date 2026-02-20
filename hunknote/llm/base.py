@@ -4,8 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from hunknote.formatters import CommitMessageJSON
-from hunknote.styles import ExtendedCommitJSON, BlueprintSection
+from hunknote.styles import ExtendedCommitJSON
 
 
 class LLMError(Exception):
