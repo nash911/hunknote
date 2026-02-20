@@ -2001,14 +2001,14 @@ def main(
 
                 _display_debug_info(repo_root, metadata, message, True, intent_content)
                 # Show scope inference info
-                typer.echo(f"\n[SCOPE INFERENCE]", err=True)
+                typer.echo("\n[SCOPE INFERENCE]", err=True)
                 if scope_result:
                     typer.echo(f"  Strategy: {scope_result.strategy_used.value if scope_result.strategy_used else 'N/A'}", err=True)
                     typer.echo(f"  Inferred scope (heuristics): {scope_result.scope or 'None'}", err=True)
                     typer.echo(f"  Confidence: {scope_result.confidence:.0%}", err=True)
                     typer.echo(f"  Reason: {scope_result.reason}", err=True)
                 else:
-                    typer.echo(f"  Inferred scope (heuristics): None (inference not run)", err=True)
+                    typer.echo("  Inferred scope (heuristics): None (inference not run)", err=True)
                 typer.echo(f"  LLM suggested scope: {llm_suggested_scope or 'None'}", err=True)
                 typer.echo(f"  CLI override: {cli_scope_override or 'None'}", err=True)
                 typer.echo(f"  Final scope used: {effective_scope or 'None'}", err=True)

@@ -223,7 +223,6 @@ def infer_scope_from_mapping(
     # Get the most common scope
     most_common = scope_counts.most_common()
     top_scope, top_count = most_common[0]
-    total_matched = sum(scope_counts.values())
 
     confidence = top_count / len(files) if files else 0.0
 

@@ -201,7 +201,7 @@ class TestMainCommand:
         mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
         mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
         mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mock_is_valid = mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
 
         from hunknote.formatters import CommitMessageJSON
         from hunknote.llm.base import LLMResult
