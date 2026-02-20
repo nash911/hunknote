@@ -12,17 +12,18 @@ This documentation covers all features and configuration options available in th
 2. [Installation](#installation)
 3. [Quick Start](#quick-start)
 4. [Command Reference](#command-reference)
-5. [Commit Style Profiles](#commit-style-profiles)
-6. [Scope Inference](#scope-inference)
-7. [Intent Channel](#intent-channel)
-8. [Merge Detection](#merge-detection)
-9. [Configuration](#configuration)
-10. [LLM Providers](#llm-providers)
-11. [Caching System](#caching-system)
-12. [Ignore Patterns](#ignore-patterns)
-13. [Editor Integration](#editor-integration)
-14. [Git Integration](#git-integration)
-15. [Troubleshooting](#troubleshooting)
+5. [Compose Mode](#compose-mode)
+6. [Commit Style Profiles](#commit-style-profiles)
+7. [Scope Inference](#scope-inference)
+8. [Intent Channel](#intent-channel)
+9. [Merge Detection](#merge-detection)
+10. [Configuration](#configuration)
+11. [LLM Providers](#llm-providers)
+12. [Caching System](#caching-system)
+13. [Ignore Patterns](#ignore-patterns)
+14. [Editor Integration](#editor-integration)
+15. [Git Integration](#git-integration)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -35,6 +36,7 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | Feature | Description |
 |---------|-------------|
 | **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
+| **Compose Mode** | Split working tree changes into a clean stack of atomic commits |
 | **Commit Style Profiles** | Support for Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style |
 | **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
 | **Intelligent Type Selection** | Automatically selects correct commit type (feat, fix, docs, test, merge, etc.) based on changed files |
@@ -439,6 +441,136 @@ hunknote style set conventional
 
 # Set for current repo only
 hunknote style set ticket --repo
+```
+
+---
+
+## Compose Mode
+
+Compose mode takes a messy working tree (tracked text changes) and produces a clean **commit stack** — splitting your changes into coherent, atomic commits.
+
+### Basic Usage
+
+```bash
+# Preview the proposed commit stack (plan-only mode)
+hunknote compose
+
+# Execute the plan and create commits
+hunknote compose --commit
+
+# Skip confirmation prompt
+hunknote compose --commit --yes
+```
+
+### What Compose Does
+
+1. **Collects all tracked changes** (staged + unstaged) from `git diff HEAD`
+2. **Parses the diff** into files and hunks with stable IDs
+3. **Asks the LLM** to split changes into logical, atomic commits
+4. **Validates the plan** (no duplicate hunks, all hunks assigned, etc.)
+5. **Optionally executes** by applying patches and creating commits
+
+### Compose Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-commits` | 6 | Maximum number of commits in the plan |
+| `--style` | (from config) | Override commit style profile |
+| `-c, --commit` | false | Execute the plan and create commits |
+| `-y, --yes` | false | Skip confirmation prompt in commit mode |
+| `--dry-run` | false | Force plan-only even if `--commit` present |
+| `-r, --regenerate` | false | Force regenerate the plan, ignoring cache |
+| `-j, --json` | false | Show the cached compose plan JSON for debugging |
+| `--from-plan` | none | Load plan from external JSON file (skip LLM) |
+| `--debug` | false | Print diagnostics (inventory, patch paths) |
+
+### Caching
+
+Compose uses smart caching to avoid redundant LLM calls:
+- Cache key is computed from: diff content + style + max_commits
+- Cached files are stored in `.hunknote/`:
+  - `hunknote_compose_hash.txt` - Cache key hash
+  - `hunknote_compose_plan.json` - The full compose plan
+  - `hunknote_compose_metadata.json` - Generation metadata
+  - `hunknote_hunk_ids.json` - All hunks with diffs and commit assignments
+- Use `-r` or `--regenerate` to force regeneration
+- Use `-j` or `--json` to inspect the cached plan
+- Cache is automatically invalidated after successful commit execution
+
+### Hunk IDs File
+
+The `hunknote_hunk_ids.json` file contains detailed information about each hunk:
+
+```json
+[
+  {
+    "hunk_id": "H1_abc123",
+    "file": "src/main.py",
+    "commit_id": "C1",
+    "header": "@@ -10,6 +10,8 @@ def main():",
+    "diff": "@@ -10,6 +10,8 @@ def main():\n     print(\"Hello\")\n+    print(\"World\")\n     return 0"
+  },
+  {
+    "hunk_id": "H2_def456",
+    "file": "src/util.py",
+    "commit_id": "unassigned",
+    "header": "@@ -1,3 +1,4 @@",
+    "diff": "..."
+  }
+]
+```
+
+This file is useful for:
+- Debugging unassigned hunk warnings
+- Understanding how changes are grouped
+- Reviewing the actual diff content for each hunk
+
+### Safety Features
+
+**Plan mode (default)** does not modify git state:
+- No `git add`
+- No `git reset`
+- No `git apply`
+- No `git commit`
+
+**Commit mode** includes recovery mechanisms:
+- Saves current staged patch before execution
+- Saves current HEAD reference
+- Attempts best-effort restore on failure
+- Prints manual recovery instructions
+
+### Limitations (v1)
+
+- **Untracked files**: Not included by default. Add them first with `git add -N <file>`
+- **Binary files**: Detected and skipped with warnings
+- **Large diffs**: May hit token limits; use `--max-diff-chars` to control
+
+### Examples
+
+```bash
+# Preview split without executing
+hunknote compose
+
+# Use conventional commits style
+hunknote compose --style conventional
+
+# Limit to 3 commits max
+hunknote compose --max-commits 3
+
+# Execute without confirmation (for scripts)
+hunknote compose -c -y
+
+# Force regenerate (ignore cache)
+hunknote compose -r
+
+# Show cached compose plan JSON
+hunknote compose -j
+
+# Load a previously saved plan
+hunknote compose --from-plan plan.json --commit
+
+# Debug: see inventory and patch details
+hunknote compose --debug
 ```
 
 ---
