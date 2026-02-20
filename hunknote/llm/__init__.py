@@ -115,6 +115,7 @@ __all__ = [
     "MissingAPIKeyError",
     "JSONParseError",
     "LLMResult",
+    "RawLLMResult",
     "get_provider",
     "generate_commit_json",
 ]

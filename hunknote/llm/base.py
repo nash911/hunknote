@@ -273,7 +273,7 @@ Type definitions (use only after merge check and file-based rules):
 - test: Test files only
 - build: Build system or dependencies
 - ci: CI/CD configuration files
-- chore: Maintenance, tooling
+- chore: Maintenance, cleanup, lint warning fixes, tooling, non-user-facing changes
 
 FIX vs REFACTOR (for code changes only):
 - "fix" = change improves/corrects behavior
