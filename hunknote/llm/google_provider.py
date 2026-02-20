@@ -94,14 +94,14 @@ class GoogleProvider(BaseLLMProvider):
         # For thinking models, we need a higher max_output_tokens budget
         # because internal "thinking" consumes tokens from this budget
         # even though it's not visible in the output
-        effective_max_tokens = MAX_TOKENS
+        effective_max_tokens = _config.MAX_TOKENS
         if self._is_thinking_model():
-            effective_max_tokens = MAX_TOKENS * THINKING_TOKEN_MULTIPLIER
+            effective_max_tokens = _config.MAX_TOKENS * THINKING_TOKEN_MULTIPLIER
 
         # Build base generation config
         base_config_kwargs = {
             "max_output_tokens": effective_max_tokens,
-            "temperature": TEMPERATURE,
+            "temperature": _config.TEMPERATURE,
         }
 
         # Try to generate response, with fallback for thinking config errors

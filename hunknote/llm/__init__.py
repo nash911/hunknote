@@ -36,8 +36,11 @@ def get_provider(
     Raises:
         ValueError: If the provider is not supported.
     """
-    provider = provider or ACTIVE_PROVIDER
-    model = model or ACTIVE_MODEL
+    # Read config values at call time (not import time) so that
+    # load_config() updates are visible even if this module was
+    # imported before load_config() ran.
+    provider = provider or _config.ACTIVE_PROVIDER
+    model = model or _config.ACTIVE_MODEL
     style = style or "default"
 
     if provider == LLMProvider.ANTHROPIC:
