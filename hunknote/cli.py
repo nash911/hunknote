@@ -603,9 +603,15 @@ def compose(
         # Print commit summaries
         typer.echo("")
         for i, planned_commit in enumerate(plan.commits, 1):
-            type_str = f"{planned_commit.type}: " if planned_commit.type else ""
-            scope_str = f"({planned_commit.scope}) " if planned_commit.scope else ""
-            typer.echo(f"  {i}. {type_str}{scope_str}{planned_commit.title}")
+            title = planned_commit.title
+            if planned_commit.type:
+                if planned_commit.scope:
+                    prefix = f"{planned_commit.type}({planned_commit.scope}): "
+                else:
+                    prefix = f"{planned_commit.type}: "
+                typer.echo(f"  {i}. {prefix}{title}")
+            else:
+                typer.echo(f"  {i}. {title}")
             typer.echo(f"     ({len(planned_commit.hunks)} hunks)")
 
         # Print detailed previews
