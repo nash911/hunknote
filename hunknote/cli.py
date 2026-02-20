@@ -1,10 +1,13 @@
 """CLI entry point for hunknote."""
 
 import difflib
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import time
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -229,8 +232,6 @@ def compose(
 
     Use --commit to execute the plan and create the commits.
     """
-    import json
-    import os as os_module
     from hunknote.config import load_config
     from hunknote.cache import (
         compute_context_hash,
@@ -279,7 +280,7 @@ def compose(
 
     try:
         repo_root = get_repo_root()
-        pid = os_module.getpid()
+        pid = os.getpid()
 
         # If --json flag is used alone, just show cached plan
         if show_json and not regenerate and not do_commit:
@@ -512,8 +513,7 @@ def compose(
             # Metadata info (if available from cache)
             if cached_metadata:
                 try:
-                    from datetime import datetime as dt_parse
-                    generated_dt = dt_parse.fromisoformat(cached_metadata.generated_at)
+                    generated_dt = datetime.fromisoformat(cached_metadata.generated_at)
                     formatted_time = generated_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
                 except (ValueError, AttributeError):
                     formatted_time = cached_metadata.generated_at
@@ -941,7 +941,6 @@ def _compute_intent_fingerprint(intent_content: Optional[str]) -> Optional[str]:
     if not intent_content:
         return None
 
-    import hashlib
     return hashlib.sha256(intent_content.encode("utf-8")).hexdigest()[:12]
 
 
@@ -1558,7 +1557,6 @@ def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
         repo_root: Repository root path.
         compose_id: The compose commit ID (e.g., 'C1', '1', 'c3').
     """
-    import json
     from hunknote.cache import (
         load_compose_plan,
         load_compose_hunk_ids,
@@ -1611,7 +1609,6 @@ def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
     hunk_lookup = {h["hunk_id"]: h for h in hunk_ids_data}
 
     # Collect hunks for this commit, grouped by file
-    from collections import OrderedDict
     hunks_by_file: OrderedDict[str, list[dict]] = OrderedDict()
     missing_hunks = []
     for hid in commit_hunks:
@@ -1705,10 +1702,8 @@ def _show_in_pager(text: str) -> None:
     Args:
         text: The text to display.
     """
-    import shutil
-    import subprocess
-
     # Prefer 'less' with options for color and raw control chars
+    # noinspection PyArgumentList
     less_path = shutil.which("less")
     if less_path:
         try:
