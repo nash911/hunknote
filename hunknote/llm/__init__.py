@@ -6,12 +6,14 @@ The active provider is configured in hunknote/config.py.
 
 from dotenv import load_dotenv
 
-from hunknote.config import ACTIVE_MODEL, ACTIVE_PROVIDER, LLMProvider
+import hunknote.config as _config
+from hunknote.config import LLMProvider
 from hunknote.llm.base import (
     BaseLLMProvider,
     JSONParseError,
     LLMError,
     LLMResult,
+    RawLLMResult,
     MissingAPIKeyError,
 )
 

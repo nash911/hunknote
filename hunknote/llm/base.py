@@ -41,6 +41,16 @@ class LLMResult:
     output_chars: int = 0  # Characters in LLM response
 
 
+@dataclass
+class RawLLMResult:
+    """Result from a raw LLM call (no JSON parsing)."""
+
+    raw_response: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
 # System prompt for the LLM (shared across all providers)
 SYSTEM_PROMPT = """You are an expert software engineer writing git commit messages.
 Be precise: only describe changes actually shown in the diff.
@@ -470,6 +480,30 @@ class BaseLLMProvider(ABC):
             LLMError: For other LLM-related errors.
         """
         pass
+
+    def generate_raw(
+        self, system_prompt: str, user_prompt: str
+    ) -> RawLLMResult:
+        """Generate a raw LLM response without JSON parsing.
+
+        This is used for compose and other features that need custom prompts.
+        Default implementation raises NotImplementedError; providers can override.
+
+        Args:
+            system_prompt: The system prompt to use.
+            user_prompt: The user prompt to use.
+
+        Returns:
+            A RawLLMResult containing the raw response and token usage.
+
+        Raises:
+            MissingAPIKeyError: If the API key is not set.
+            LLMError: For other LLM-related errors.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support generate_raw. "
+            "This provider cannot be used for compose."
+        )
 
     @abstractmethod
     def get_api_key(self) -> str:

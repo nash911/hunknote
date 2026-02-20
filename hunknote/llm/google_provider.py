@@ -8,14 +8,14 @@ from google.genai import types
 from hunknote.config import (
     API_KEY_ENV_VARS,
     LLMProvider,
-    MAX_TOKENS,
-    TEMPERATURE,
 )
+import hunknote.config as _config
 from hunknote.llm.base import (
     SYSTEM_PROMPT,
     BaseLLMProvider,
     LLMError,
     LLMResult,
+    RawLLMResult,
     MissingAPIKeyError,
     parse_json_response,
     validate_commit_json,
@@ -206,4 +206,91 @@ class GoogleProvider(BaseLLMProvider):
             )
         except Exception as e:
             raise LLMError(f"Google Gemini API call failed: {e}")
+
+    def generate_raw(
+        self, system_prompt: str, user_prompt: str
+    ) -> RawLLMResult:
+        """Generate a raw LLM response without JSON parsing.
+
+        Args:
+            system_prompt: The system prompt to use.
+            user_prompt: The user prompt to use.
+
+        Returns:
+            A RawLLMResult containing the raw response and token usage.
+
+        Raises:
+            MissingAPIKeyError: If the API key is not set.
+            LLMError: For other LLM-related errors.
+        """
+        api_key = self.get_api_key()
+        client = genai.Client(api_key=api_key)
+
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+        # Compose plans (and other raw generation tasks) need a much higher
+        # token budget than single commit messages.  Use at least 8192 tokens
+        # as the base so that large multi-commit plans are not truncated.
+        base_max_tokens = max(_config.MAX_TOKENS, 8192)
+
+        # For thinking models, further multiply to account for internal reasoning
+        effective_max_tokens = base_max_tokens
+        if self._is_thinking_model():
+            effective_max_tokens = base_max_tokens * THINKING_TOKEN_MULTIPLIER
+
+        base_config_kwargs = {
+            "max_output_tokens": effective_max_tokens,
+            "temperature": _config.TEMPERATURE,
+        }
+
+        response = self._generate_with_fallback(client, full_prompt, base_config_kwargs)
+
+        try:
+            if not response.candidates:
+                raise LLMError("Google Gemini returned no candidates in response")
+
+            candidate = response.candidates[0]
+            if hasattr(candidate, "finish_reason"):
+                finish_reason = str(candidate.finish_reason)
+                if "SAFETY" in finish_reason:
+                    raise LLMError(f"Google Gemini blocked response: {finish_reason}")
+                elif "MAX_TOKENS" in finish_reason:
+                    raise LLMError("Response truncated due to max tokens limit.")
+
+            raw_response = response.text
+
+            if not raw_response or not raw_response.strip():
+                raise LLMError("Google Gemini returned empty response")
+
+            # Get token counts
+            input_tokens = 0
+            output_tokens = 0
+
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                if hasattr(response.usage_metadata, "prompt_token_count"):
+                    input_tokens = response.usage_metadata.prompt_token_count or 0
+                if hasattr(response.usage_metadata, "candidates_token_count"):
+                    output_tokens = response.usage_metadata.candidates_token_count or 0
+                if hasattr(response.usage_metadata, "thoughts_token_count"):
+                    thoughts_tokens = response.usage_metadata.thoughts_token_count or 0
+                    output_tokens = output_tokens + thoughts_tokens
+
+            if input_tokens == 0:
+                input_tokens = len(full_prompt) // 4
+            if output_tokens == 0:
+                output_tokens = len(raw_response) // 4
+
+        except MissingAPIKeyError:
+            raise
+        except LLMError:
+            raise
+        except Exception as e:
+            raise LLMError(f"Google Gemini API call failed: {e}")
+
+        return RawLLMResult(
+            raw_response=raw_response,
+            model=self.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
