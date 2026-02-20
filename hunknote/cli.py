@@ -847,6 +847,7 @@ def _find_editor() -> list[str]:
         List of command parts to run the editor.
     """
     # Try gedit first
+    # noinspection PyArgumentList
     if shutil.which("gedit"):
         return ["gedit", "--wait"]
 
@@ -856,6 +857,7 @@ def _find_editor() -> list[str]:
         return [editor]
 
     # Fallback to nano
+    # noinspection PyArgumentList
     if shutil.which("nano"):
         return ["nano"]
 
@@ -1718,6 +1720,7 @@ def _show_in_pager(text: str) -> None:
             pass
 
     # Fallback: try 'more'
+    # noinspection PyArgumentList
     more_path = shutil.which("more")
     if more_path:
         try:
