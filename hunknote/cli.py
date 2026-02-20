@@ -330,9 +330,9 @@ def compose(
             typer.echo("Add them first with: git add -N <file> (or git add <file>)", err=True)
             typer.echo("", err=True)
 
-        # Get diff of all tracked changes (staged + unstaged)
+        # Get diff of staged changes only (like the main hunknote command)
         diff_result = subprocess.run(
-            ["git", "diff", "HEAD", "--patch"],
+            ["git", "diff", "--cached", "--patch"],
             capture_output=True,
             text=True,
             cwd=repo_root,
@@ -344,8 +344,8 @@ def compose(
         diff_output = diff_result.stdout
 
         if not diff_output.strip():
-            typer.echo("No changes to compose.", err=True)
-            typer.echo("Make some changes to tracked files first.", err=True)
+            typer.echo("No staged changes to compose.", err=True)
+            typer.echo("Stage your changes first with: git add <files>", err=True)
             raise typer.Exit(0)
 
         # Parse diff
