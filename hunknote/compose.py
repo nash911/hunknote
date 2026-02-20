@@ -557,7 +557,7 @@ Return a JSON object with this exact structure:
       "type": "<feat|fix|docs|refactor|test|chore|build|ci|perf|style>",
       "scope": "<optional scope>",
       "ticket": null,
-      "title": "<imperative mood, max 72 chars>",
+      "title": "<short description in imperative mood, max 72 chars, WITHOUT type/scope prefix>",
       "bullets": ["<change 1>", "<change 2>"],
       "summary": null,
       "sections": null,
@@ -565,6 +565,17 @@ Return a JSON object with this exact structure:
     }}
   ]
 }}
+
+IMPORTANT: The "title" field must contain ONLY the description, NOT the conventional commit prefix.
+The type and scope are already separate JSON fields — do NOT repeat them inside the title.
+  Correct:   "type": "feat", "scope": "api", "title": "Add pagination support to list endpoints"
+  WRONG:     "type": "feat", "scope": "api", "title": "feat(api): Add pagination support to list endpoints"
+
+  Correct:   "type": "fix", "title": "Prevent null pointer on empty input"
+  WRONG:     "type": "fix", "title": "fix: Prevent null pointer on empty input"
+
+  Correct:   "type": "refactor", "scope": "cache", "title": "Replace dict lookup with constant-time set"
+  WRONG:     "type": "refactor", "scope": "cache", "title": "refactor(cache): Replace dict lookup with constant-time set"
 
 [RULES]
 1. Reference ONLY hunk IDs from the inventory above
