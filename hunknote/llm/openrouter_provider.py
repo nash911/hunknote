@@ -4,12 +4,9 @@ OpenRouter provides unified access to 200+ models through a single API.
 It uses an OpenAI-compatible API format.
 """
 
-import os
-
 from openai import OpenAI
 
 from hunknote.config import (
-    ACTIVE_MODEL,
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,

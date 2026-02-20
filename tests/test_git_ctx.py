@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -10,7 +10,6 @@ from hunknote.git_ctx import (
     DEFAULT_DIFF_EXCLUDE_PATTERNS,
     GitError,
     NoStagedChangesError,
-    _get_staged_files_list,
     _run_git_command,
     _should_exclude_file,
     build_context_bundle,

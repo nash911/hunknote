@@ -1,6 +1,5 @@
 """Tests for hunknote.scope module."""
 
-import pytest
 
 from hunknote.scope import (
     ScopeStrategy,

@@ -1,6 +1,5 @@
 """Tests for hunknote.user_config module."""
 
-import pytest
 import yaml
 
 from hunknote.user_config import (

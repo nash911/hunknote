@@ -1,6 +1,5 @@
 """Tests for hunknote.config module."""
 
-import pytest
 
 from hunknote.config import (
     ACTIVE_MODEL,

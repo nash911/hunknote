@@ -1,6 +1,5 @@
 """Tests for hunknote.styles module."""
 
-import pytest
 
 from hunknote.styles import (
     StyleProfile,

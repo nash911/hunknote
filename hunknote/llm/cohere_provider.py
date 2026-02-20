@@ -1,11 +1,8 @@
 """Cohere provider implementation."""
 
-import os
-
 import cohere
 
 from hunknote.config import (
-    ACTIVE_MODEL,
     API_KEY_ENV_VARS,
     LLMProvider,
     MAX_TOKENS,

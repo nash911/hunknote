@@ -7,7 +7,6 @@ Handles user-level configuration stored in ~/.hunknote/:
 
 import os
 import stat
-import sys
 from pathlib import Path
 from typing import Dict, Optional, Any
 

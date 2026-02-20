@@ -1,6 +1,5 @@
 """Anthropic Claude provider implementation."""
 
-import os
 
 from anthropic import Anthropic
 
