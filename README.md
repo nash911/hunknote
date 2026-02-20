@@ -19,7 +19,7 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **One-command commits**: Generate and commit in a single step with confirmation prompt
 - **Configurable ignore patterns**: Exclude lock files, build artifacts, etc. from diff analysis
 - **Debug mode**: Inspect cache metadata, token usage, scope inference, and file change details
-- **Comprehensive test suite**: 502 unit tests covering all modules
+- **Comprehensive test suite**: 553 unit tests covering all modules
 
 ## Installation
 
@@ -528,7 +528,7 @@ Add user authentication feature
 
 ### Running Tests
 
-The project includes a comprehensive test suite with 502 tests:
+The project includes a comprehensive test suite with 553 tests:
 
 ```bash
 # Run all tests

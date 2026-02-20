@@ -4,7 +4,7 @@ Comprehensive test suite for the `hunknote` CLI tool.
 
 ## Overview
 
-This test suite contains **502 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
+This test suite contains **553 unit tests** covering all modules of the hunknote project. The tests use `pytest` and `pytest-mock` for mocking external dependencies.
 
 ## Important Notes
 
