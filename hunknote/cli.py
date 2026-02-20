@@ -830,7 +830,7 @@ def _get_current_branch_safe() -> str:
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
         return "unknown"
-    except Exception:
+    except OSError:
         return "unknown"
 
 
@@ -2137,7 +2137,7 @@ def main(
                                 extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
                                 if extracted_ticket:
                                     extended_data.ticket = extracted_ticket
-                            except Exception:
+                            except (GitError, ValueError, AttributeError):
                                 pass
 
                         # Infer commit type if using conventional/blueprint style and not provided
@@ -2227,7 +2227,7 @@ def main(
                     extracted_ticket = extract_ticket_from_branch(branch, style_config.ticket_key_regex)
                     if extracted_ticket:
                         extended_data.ticket = extracted_ticket
-                except Exception:
+                except (GitError, ValueError, AttributeError):
                     pass
 
             # Infer commit type if using conventional/blueprint style and not provided
