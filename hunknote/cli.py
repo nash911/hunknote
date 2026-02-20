@@ -217,11 +217,16 @@ def compose(
         "--debug",
         help="Print diagnostics (inventory stats, patch paths, git apply output)",
     ),
+    show: Optional[str] = typer.Option(
+        None,
+        "--show",
+        help="Show the full diff for a compose commit ID (e.g., --show C1)",
+    ),
 ) -> None:
-    """Split working tree changes into a clean commit stack.
+    """Split staged changes into a clean commit stack.
 
-    Analyzes tracked changes (staged + unstaged) and proposes splitting them
-    into multiple atomic commits. By default, only shows the plan without
+    Analyzes staged changes and proposes splitting them into multiple
+    atomic commits. By default, only shows the plan without
     modifying git state.
 
     Use --commit to execute the plan and create the commits.
@@ -236,6 +241,7 @@ def compose(
         save_compose_hunk_ids,
         load_compose_plan,
         load_compose_metadata,
+        load_compose_hunk_ids,
         invalidate_compose_cache,
     )
     from hunknote.compose import (
@@ -306,6 +312,11 @@ def compose(
                 typer.echo("No cached compose plan found.", err=True)
                 typer.echo("Run 'hunknote compose' first to generate a plan.", err=True)
                 raise typer.Exit(1)
+
+        # Handle --show <COMPOSE_ID>: show full diff for a specific commit
+        if show is not None:
+            _compose_show_diff(repo_root, show)
+            raise typer.Exit(0)
 
         # Get branch and recent commits for context
         branch = get_branch()
@@ -1542,6 +1553,155 @@ def style_set(
     else:
         global_config.set_style_profile(style_profile.value)
         typer.echo(f"✓ Style profile set to '{style_profile.value}' in global config")
+
+
+def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
+    """Show the full diff for a specific compose commit ID in a scrollable pager.
+
+    Args:
+        repo_root: Repository root path.
+        compose_id: The compose commit ID (e.g., 'C1', '1', 'c3').
+    """
+    import json
+    from hunknote.cache import (
+        load_compose_plan,
+        load_compose_hunk_ids,
+    )
+
+    # Normalize the compose ID: accept 'C1', 'c1', or just '1'
+    cid = compose_id.strip().upper()
+    if not cid.startswith("C"):
+        cid = f"C{cid}"
+
+    # Load cached plan
+    cached_plan_json = load_compose_plan(repo_root)
+    if not cached_plan_json:
+        typer.echo("No cached compose plan found.", err=True)
+        typer.echo("Run 'hunknote compose' first to generate a plan.", err=True)
+        raise typer.Exit(1)
+
+    try:
+        plan_data = json.loads(cached_plan_json)
+    except json.JSONDecodeError:
+        typer.echo("Failed to parse cached compose plan.", err=True)
+        raise typer.Exit(1)
+
+    # Find the target commit
+    target_commit = None
+    for commit in plan_data.get("commits", []):
+        if commit.get("id", "").upper() == cid:
+            target_commit = commit
+            break
+
+    if not target_commit:
+        available = [c.get("id", "?") for c in plan_data.get("commits", [])]
+        typer.echo(f"Compose commit '{cid}' not found in cached plan.", err=True)
+        typer.echo(f"Available IDs: {', '.join(available)}", err=True)
+        raise typer.Exit(1)
+
+    commit_hunks = target_commit.get("hunks", [])
+    if not commit_hunks:
+        typer.echo(f"Commit {cid} has no hunks assigned.", err=True)
+        raise typer.Exit(1)
+
+    # Load cached hunk IDs data
+    hunk_ids_data = load_compose_hunk_ids(repo_root)
+    if not hunk_ids_data:
+        typer.echo("No cached hunk data found.", err=True)
+        typer.echo("Run 'hunknote compose' first to generate a plan.", err=True)
+        raise typer.Exit(1)
+
+    # Build lookup: hunk_id -> hunk data
+    hunk_lookup = {h["hunk_id"]: h for h in hunk_ids_data}
+
+    # Collect hunks for this commit, grouped by file
+    from collections import OrderedDict
+    hunks_by_file: OrderedDict[str, list[dict]] = OrderedDict()
+    missing_hunks = []
+    for hid in commit_hunks:
+        hunk_data = hunk_lookup.get(hid)
+        if hunk_data:
+            fpath = hunk_data["file"]
+            if fpath not in hunks_by_file:
+                hunks_by_file[fpath] = []
+            hunks_by_file[fpath].append(hunk_data)
+        else:
+            missing_hunks.append(hid)
+
+    if missing_hunks:
+        typer.echo(f"Warning: {len(missing_hunks)} hunk(s) not found in cache: {', '.join(missing_hunks)}", err=True)
+
+    if not hunks_by_file:
+        typer.echo(f"No diff content available for {cid}.", err=True)
+        raise typer.Exit(1)
+
+    # Build the diff output
+    title = target_commit.get("title", "")
+
+    lines = []
+    lines.append(f"Compose {cid}: {title}")
+    lines.append(f"Hunks: {len(commit_hunks)} across {len(hunks_by_file)} file(s)")
+    lines.append("=" * 72)
+    lines.append("")
+
+    for fpath, file_hunks in hunks_by_file.items():
+        lines.append(f"diff --git a/{fpath} b/{fpath}")
+        lines.append(f"--- a/{fpath}")
+        lines.append(f"+++ b/{fpath}")
+        for hunk_data in file_hunks:
+            diff_content = hunk_data.get("diff", "")
+            if diff_content:
+                lines.append(diff_content)
+            lines.append("")
+
+    diff_text = "\n".join(lines)
+
+    # Display in a scrollable pager
+    _show_in_pager(diff_text)
+
+
+def _show_in_pager(text: str) -> None:
+    """Display text in a scrollable pager.
+
+    Uses the system pager (less) which supports arrow-key scrolling
+    and q/Q to quit. Falls back to direct output if pager is unavailable.
+
+    Args:
+        text: The text to display.
+    """
+    import shutil
+    import subprocess
+
+    # Prefer 'less' with options for color and raw control chars
+    less_path = shutil.which("less")
+    if less_path:
+        try:
+            proc = subprocess.Popen(
+                [less_path, "-R", "--quit-if-one-screen"],
+                stdin=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            proc.communicate(input=text)
+            return
+        except (OSError, BrokenPipeError):
+            pass
+
+    # Fallback: try 'more'
+    more_path = shutil.which("more")
+    if more_path:
+        try:
+            proc = subprocess.Popen(
+                [more_path],
+                stdin=subprocess.PIPE,
+                encoding="utf-8",
+            )
+            proc.communicate(input=text)
+            return
+        except (OSError, BrokenPipeError):
+            pass
+
+    # Final fallback: print directly
+    typer.echo(text)
 
 
 def _build_hunk_ids_data(
