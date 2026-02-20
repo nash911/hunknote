@@ -321,18 +321,6 @@ def compose(
         )
         recent_commits = recent_commits_result.stdout.strip().split("\n") if recent_commits_result.returncode == 0 else []
 
-        # Check for untracked files and warn
-        untracked_result = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        if untracked_result.stdout.strip():
-            untracked_files = untracked_result.stdout.strip().split("\n")
-            typer.echo(f"Warning: {len(untracked_files)} untracked file(s) not included.", err=True)
-            typer.echo("Add them first with: git add -N <file> (or git add <file>)", err=True)
-            typer.echo("", err=True)
 
         # Get diff of staged changes only (like the main hunknote command)
         diff_result = subprocess.run(
@@ -1633,11 +1621,12 @@ def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
     # Build the diff output
     title = target_commit.get("title", "")
 
-    lines = []
-    lines.append(f"Compose {cid}: {title}")
-    lines.append(f"Hunks: {len(commit_hunks)} across {len(hunks_by_file)} file(s)")
-    lines.append("=" * 72)
-    lines.append("")
+    lines = [
+        f"Compose {cid}: {title}",
+        f"Hunks: {len(commit_hunks)} across {len(hunks_by_file)} file(s)",
+        "=" * 72,
+        "",
+    ]
 
     for fpath, file_hunks in hunks_by_file.items():
         lines.append(f"diff --git a/{fpath} b/{fpath}")
@@ -1672,24 +1661,24 @@ def _colorize_diff(text: str) -> str:
     Returns:
         Colorized diff text with ANSI escape codes.
     """
-    RED = "\033[31m"
-    GREEN = "\033[32m"
-    CYAN = "\033[36m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
+    red = "\033[31m"
+    green = "\033[32m"
+    cyan = "\033[36m"
+    bold = "\033[1m"
+    reset = "\033[0m"
 
     colorized = []
     for line in text.split("\n"):
         if line.startswith("@@"):
-            colorized.append(f"{CYAN}{line}{RESET}")
+            colorized.append(f"{cyan}{line}{reset}")
         elif line.startswith("---") or line.startswith("+++"):
-            colorized.append(f"{BOLD}{line}{RESET}")
+            colorized.append(f"{bold}{line}{reset}")
         elif line.startswith("-"):
-            colorized.append(f"{RED}{line}{RESET}")
+            colorized.append(f"{red}{line}{reset}")
         elif line.startswith("+"):
-            colorized.append(f"{GREEN}{line}{RESET}")
+            colorized.append(f"{green}{line}{reset}")
         elif line.startswith("diff --git"):
-            colorized.append(f"{BOLD}{line}{RESET}")
+            colorized.append(f"{bold}{line}{reset}")
         else:
             colorized.append(line)
     return "\n".join(colorized)
