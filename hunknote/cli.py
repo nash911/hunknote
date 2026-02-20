@@ -1661,8 +1661,48 @@ def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
 
     diff_text = "\n".join(lines)
 
+    # Colorize diff output
+    diff_text = _colorize_diff(diff_text)
+
     # Display in a scrollable pager
     _show_in_pager(diff_text)
+
+
+def _colorize_diff(text: str) -> str:
+    """Add ANSI color codes to diff lines like git diff.
+
+    - Red for removed lines (-)
+    - Green for added lines (+)
+    - Cyan for hunk headers (@@)
+    - Bold for diff/file header lines
+
+    Args:
+        text: Raw diff text.
+
+    Returns:
+        Colorized diff text with ANSI escape codes.
+    """
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    CYAN = "\033[36m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+    colorized = []
+    for line in text.split("\n"):
+        if line.startswith("@@"):
+            colorized.append(f"{CYAN}{line}{RESET}")
+        elif line.startswith("---") or line.startswith("+++"):
+            colorized.append(f"{BOLD}{line}{RESET}")
+        elif line.startswith("-"):
+            colorized.append(f"{RED}{line}{RESET}")
+        elif line.startswith("+"):
+            colorized.append(f"{GREEN}{line}{RESET}")
+        elif line.startswith("diff --git"):
+            colorized.append(f"{BOLD}{line}{RESET}")
+        else:
+            colorized.append(line)
+    return "\n".join(colorized)
 
 
 def _show_in_pager(text: str) -> None:
