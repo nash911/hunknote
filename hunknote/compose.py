@@ -30,7 +30,7 @@ class HunkRef:
 
     def snippet(self, max_lines: int = 5) -> str:
         """Get a snippet of the hunk content for display."""
-        content_lines = [l for l in self.lines if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
+        content_lines = [ln for ln in self.lines if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))]
         if len(content_lines) <= max_lines:
             return "\n".join(content_lines)
         return "\n".join(content_lines[:max_lines]) + f"\n... ({len(content_lines) - max_lines} more lines)"
