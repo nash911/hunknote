@@ -977,7 +977,7 @@ def _inject_intent_into_context(context_bundle: str, intent_content: str) -> str
 
 
 def _display_debug_info(
-    repo_root: Path,
+    _repo_root: Path,
     metadata: CacheMetadata,
     current_message: str,
     cache_valid: bool,
@@ -986,7 +986,7 @@ def _display_debug_info(
     """Display debug information about the cache.
 
     Args:
-        repo_root: The root directory of the git repository.
+        _repo_root: The root directory of the git repository.
         metadata: The cache metadata.
         current_message: The current commit message (may be edited).
         cache_valid: Whether the cache is currently valid.
@@ -1737,14 +1737,14 @@ def _show_in_pager(text: str) -> None:
 
 def _build_hunk_ids_data(
     inventory: dict,
-    file_diffs: list,
+    _file_diffs: list,
     plan,
 ) -> list[dict]:
     """Build hunk IDs data for the hunknote_hunk_ids.json file.
 
     Args:
         inventory: Dictionary mapping hunk ID to HunkRef.
-        file_diffs: List of FileDiff objects.
+        _file_diffs: List of FileDiff objects.
         plan: The ComposePlan object.
 
     Returns:
@@ -2079,7 +2079,7 @@ def main(
         if cache_valid:
             # Use cached commit message
             typer.echo("Using cached commit message...", err=True)
-            metadata = load_cache_metadata(repo_root)
+            _metadata = load_cache_metadata(repo_root)
 
             # Check if user provided any override flags that require re-rendering
             # If no overrides, use the saved message file directly (user may have edited it)
@@ -2089,7 +2089,7 @@ def main(
                 # User provided override flags - need to re-render from JSON
                 # Load raw JSON response from stored file
                 llm_raw_response = load_raw_json_response(repo_root)
-                llm_suggested_scope = None
+                # llm_suggested_scope = None
 
                 if llm_raw_response:
                     try:
@@ -2162,29 +2162,13 @@ def main(
                     except (JSONParseError, AttributeError):
                         # Fallback to stored message if parsing fails
                         message = load_cached_message(repo_root)
-                        effective_scope = None
-                        llm_suggested_scope = None
                 else:
                     # No raw response stored, use cached message as-is
                     message = load_cached_message(repo_root)
-                    effective_scope = None
-                    llm_suggested_scope = None
             else:
                 # No override flags - use the saved message directly
                 # This preserves any manual edits the user may have made
                 message = load_cached_message(repo_root)
-
-                # Still try to get LLM suggested scope for debug info
-                llm_raw_response = load_raw_json_response(repo_root)
-                llm_suggested_scope = None
-                effective_scope = None
-
-                if llm_raw_response:
-                    try:
-                        parsed_json = parse_json_response(llm_raw_response)
-                        llm_suggested_scope = parsed_json.get("scope")
-                    except (JSONParseError, AttributeError):
-                        pass
         else:
             # Generate new message via LLM with the appropriate style
             typer.echo("Generating commit message...", err=True)
@@ -2285,7 +2269,6 @@ def main(
                 ticket_override=ticket_to_save,
                 no_scope_override=no_scope_to_save,
             )
-            metadata = load_cache_metadata(repo_root)
 
         # Step 8: Get message file path
         message_file = get_message_file(repo_root)
