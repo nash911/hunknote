@@ -614,11 +614,11 @@ def compose(
 
         # Print commit summaries
         typer.echo("")
-        for i, commit in enumerate(plan.commits, 1):
-            type_str = f"{commit.type}: " if commit.type else ""
-            scope_str = f"({commit.scope}) " if commit.scope else ""
-            typer.echo(f"  {i}. {type_str}{scope_str}{commit.title}")
-            typer.echo(f"     ({len(commit.hunks)} hunks)")
+        for i, planned_commit in enumerate(plan.commits, 1):
+            type_str = f"{planned_commit.type}: " if planned_commit.type else ""
+            scope_str = f"({planned_commit.scope}) " if planned_commit.scope else ""
+            typer.echo(f"  {i}. {type_str}{scope_str}{planned_commit.title}")
+            typer.echo(f"     ({len(planned_commit.hunks)} hunks)")
 
         # Print detailed previews
         typer.echo("")
@@ -629,24 +629,24 @@ def compose(
         style_config = _get_effective_style_config()
         effective_profile = override_style or style_config.profile
 
-        for commit in plan.commits:
+        for planned_commit in plan.commits:
             # Convert to ExtendedCommitJSON for rendering
             sections = None
-            if commit.sections:
+            if planned_commit.sections:
                 sections = [
                     StyleBlueprintSection(title=s.title, bullets=s.bullets)
-                    for s in commit.sections
+                    for s in planned_commit.sections
                 ]
 
             extended_json = ExtendedCommitJSON(
-                type=commit.type,
-                scope=commit.scope,
-                title=commit.title,
-                subject=commit.title,
-                body_bullets=commit.bullets or [],
-                summary=commit.summary,
+                type=planned_commit.type,
+                scope=planned_commit.scope,
+                title=planned_commit.title,
+                subject=planned_commit.title,
+                body_bullets=planned_commit.bullets or [],
+                summary=planned_commit.summary,
                 sections=sections,
-                ticket=commit.ticket,
+                ticket=planned_commit.ticket,
             )
 
             # Render message
@@ -657,7 +657,7 @@ def compose(
             )
 
             typer.echo("")
-            typer.echo(f"[{commit.id}]")
+            typer.echo(f"[{planned_commit.id}]")
             typer.echo(rendered)
 
         typer.echo("")
@@ -699,36 +699,36 @@ def compose(
                 cwd=repo_root,
             )
 
-            for i, commit in enumerate(plan.commits):
+            for i, planned_commit in enumerate(plan.commits):
                 # Delay between commits so each gets a distinct timestamp
                 if i > 0:
                     time.sleep(1)
 
-                typer.echo(f"  Creating commit {commit.id}: {commit.title[:50]}...", err=True)
+                typer.echo(f"  Creating commit {planned_commit.id}: {planned_commit.title[:50]}...", err=True)
 
                 # Build patch for this commit
-                patch_content = build_commit_patch(commit, inventory, file_diffs)
+                patch_content = build_commit_patch(planned_commit, inventory, file_diffs)
 
                 if not patch_content.strip():
-                    raise ComposeExecutionError(f"Empty patch for commit {commit.id}")
+                    raise ComposeExecutionError(f"Empty patch for commit {planned_commit.id}")
 
                 # Convert to ExtendedCommitJSON for rendering
                 sections = None
-                if commit.sections:
+                if planned_commit.sections:
                     sections = [
                         StyleBlueprintSection(title=s.title, bullets=s.bullets)
-                        for s in commit.sections
+                        for s in planned_commit.sections
                     ]
 
                 extended_json = ExtendedCommitJSON(
-                    type=commit.type,
-                    scope=commit.scope,
-                    title=commit.title,
-                    subject=commit.title,
-                    body_bullets=commit.bullets or [],
-                    summary=commit.summary,
+                    type=planned_commit.type,
+                    scope=planned_commit.scope,
+                    title=planned_commit.title,
+                    subject=planned_commit.title,
+                    body_bullets=planned_commit.bullets or [],
+                    summary=planned_commit.summary,
                     sections=sections,
-                    ticket=commit.ticket,
+                    ticket=planned_commit.ticket,
                 )
 
                 # Render message
@@ -739,7 +739,7 @@ def compose(
                 )
 
                 # Execute commit
-                execute_commit(repo_root, commit, patch_content, message, pid, debug)
+                execute_commit(repo_root, planned_commit, patch_content, message, pid, debug)
                 commits_created += 1
 
             typer.echo("")
@@ -1582,9 +1582,9 @@ def _compose_show_diff(repo_root: Path, compose_id: str) -> None:
 
     # Find the target commit
     target_commit = None
-    for commit in plan_data.get("commits", []):
-        if commit.get("id", "").upper() == cid:
-            target_commit = commit
+    for entry in plan_data.get("commits", []):
+        if entry.get("id", "").upper() == cid:
+            target_commit = entry
             break
 
     if not target_commit:
@@ -1752,9 +1752,9 @@ def _build_hunk_ids_data(
     """
     # Build mapping of hunk ID to commit ID
     hunk_to_commit: dict[str, str] = {}
-    for commit in plan.commits:
-        for hunk_id in commit.hunks:
-            hunk_to_commit[hunk_id] = commit.id
+    for planned in plan.commits:
+        for h_id in planned.hunks:
+            hunk_to_commit[h_id] = planned.id
 
     # Build hunk data list
     hunk_ids_data = []
@@ -1774,9 +1774,9 @@ def _build_hunk_ids_data(
     # Sort by hunk ID (extract numeric part for proper sorting)
     def sort_key(h):
         # Extract numeric part from hunk ID like "H1_abc123" -> 1
-        hunk_id = h["hunk_id"]
+        h_id_str = h["hunk_id"]
         try:
-            num_part = int(hunk_id.split("_")[0][1:])  # "H1_abc" -> 1
+            num_part = int(h_id_str.split("_")[0][1:])  # "H1_abc" -> 1
             return num_part
         except (ValueError, IndexError):
             return 0
