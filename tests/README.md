@@ -25,6 +25,7 @@ tests/
 ├── conftest.py             # Shared fixtures
 ├── test_cache.py           # Cache module tests (52 tests)
 ├── test_cli.py             # CLI command tests (59 tests)
+├── test_compose.py         # Compose feature tests (51 tests)
 ├── test_config.py          # Configuration tests (24 tests)
 ├── test_formatters.py      # Formatters module tests (21 tests)
 ├── test_git_ctx.py         # Git context tests (47 tests)
