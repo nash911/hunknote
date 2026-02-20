@@ -1,17 +1,12 @@
 """Tests for hunknote.compose module."""
 
 import json
-import os
 import subprocess
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from hunknote.compose import (
     HunkRef,
-    FileDiff,
     PlannedCommit,
     ComposePlan,
     BlueprintSection,
@@ -22,11 +17,6 @@ from hunknote.compose import (
     build_commit_patch,
     build_compose_prompt,
     create_snapshot,
-    restore_from_snapshot,
-    execute_commit,
-    cleanup_temp_files,
-    PlanValidationError,
-    ComposeExecutionError,
     COMPOSE_SYSTEM_PROMPT,
 )
 
