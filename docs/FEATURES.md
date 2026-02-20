@@ -47,7 +47,7 @@ Hunknote is a command-line tool that analyzes your staged git changes and genera
 | **Structured Output** | Generates title + bullet points following git best practices |
 | **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
 | **Editor Integration** | Review and edit messages before committing |
-| **One-Command Commits** | Generate and commit in a single step with `-c` flag (with confirmation) |
+| **One-Command Commits** | Generate and commit in a single step with `hunknote commit` |
 | **Configurable Ignores** | Exclude lock files, build artifacts from analysis |
 | **Debug Mode** | Inspect cache metadata, tokens, scope inference, and file changes |
 
