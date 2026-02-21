@@ -1,28 +1,37 @@
-"""Backward compatibility shim for hunknote.styles.
+"""Commit style profiles and rendering for hunknote.
 
-This module re-exports all symbols from the new hunknote.styles package
-to maintain backward compatibility with existing imports.
+Supports multiple commit message formats:
+- default: Title + bullet points (current Hunknote format)
+- blueprint: Structured sections with summary (Changes, Implementation, Testing, etc.)
+- conventional: Conventional Commits (type(scope): subject)
+- ticket: Ticket-prefixed commits (PROJ-123 subject)
+- kernel: Linux kernel style (subsystem: subject)
 
-The styles module has been refactored into a package with the following structure:
-- hunknote/styles/constants.py: StyleProfile, CONVENTIONAL_TYPES, BLUEPRINT_SECTION_TITLES, PROFILE_DESCRIPTIONS
-- hunknote/styles/models.py: StyleConfig, BlueprintSection, ExtendedCommitJSON
-- hunknote/styles/renderers/: Individual render functions for each style
-- hunknote/styles/inference.py: extract_ticket_from_branch, infer_commit_type
-- hunknote/styles/config.py: load_style_config_from_dict, style_config_to_dict
+This package provides modular style handling with:
+- constants: StyleProfile enum, CONVENTIONAL_TYPES, BLUEPRINT_SECTION_TITLES, PROFILE_DESCRIPTIONS
+- models: StyleConfig, BlueprintSection, ExtendedCommitJSON
+- renderers: Individual render functions for each style
+- inference: extract_ticket_from_branch, infer_commit_type
+- config: load_style_config_from_dict, style_config_to_dict
 """
 
-# Re-export everything from the new package
-from hunknote.styles import (
-    # Constants
+# Constants
+from hunknote.styles.constants import (
     BLUEPRINT_SECTION_TITLES,
     CONVENTIONAL_TYPES,
     PROFILE_DESCRIPTIONS,
     StyleProfile,
-    # Models
+)
+
+# Models
+from hunknote.styles.models import (
     BlueprintSection,
     ExtendedCommitJSON,
     StyleConfig,
-    # Renderers
+)
+
+# Renderers
+from hunknote.styles.renderers import (
     render_blueprint,
     render_commit_message_styled,
     render_conventional,
@@ -32,13 +41,20 @@ from hunknote.styles import (
     sanitize_subject,
     strip_type_prefix,
     wrap_text,
-    # Inference
+)
+
+# Inference utilities
+from hunknote.styles.inference import (
     extract_ticket_from_branch,
     infer_commit_type,
-    # Configuration
+)
+
+# Configuration utilities
+from hunknote.styles.config import (
     load_style_config_from_dict,
     style_config_to_dict,
 )
+
 
 __all__ = [
     # Constants
@@ -68,3 +84,4 @@ __all__ = [
     "load_style_config_from_dict",
     "style_config_to_dict",
 ]
+
