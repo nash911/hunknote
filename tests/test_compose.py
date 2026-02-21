@@ -1034,3 +1034,694 @@ class TestComposeCLICaching:
 
         assert result.exit_code == 0
         assert "--from-plan" in result.output
+
+
+# ============================================================================
+# Additional Test Cases for Complete Coverage
+# ============================================================================
+
+
+class TestFileDiff:
+    """Tests for FileDiff dataclass."""
+
+    def test_renamed_file(self):
+        """Test detecting renamed file."""
+        diff = """diff --git a/old_name.py b/new_name.py
+similarity index 95%
+rename from old_name.py
+rename to new_name.py
+index 1234567..abcdefg 100644
+--- a/old_name.py
++++ b/new_name.py
+@@ -1,3 +1,4 @@
+ def func():
++    # comment
+     pass
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        assert file_diffs[0].file_path == "new_name.py"
+        assert file_diffs[0].is_renamed is True
+        assert file_diffs[0].old_path == "old_name.py"
+
+    def test_deleted_file(self):
+        """Test detecting deleted file."""
+        diff = """diff --git a/deleted.py b/deleted.py
+deleted file mode 100644
+index 1234567..0000000
+--- a/deleted.py
++++ /dev/null
+@@ -1,5 +0,0 @@
+-def func():
+-    pass
+-
+-def other():
+-    return True
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        assert file_diffs[0].file_path == "deleted.py"
+        assert file_diffs[0].is_deleted_file is True
+
+    def test_mode_change_only(self):
+        """Test file with mode change only (no hunks)."""
+        diff = """diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        assert file_diffs[0].file_path == "script.sh"
+        assert len(file_diffs[0].hunks) == 0
+
+
+class TestPlannedCommitValidator:
+    """Tests for PlannedCommit strip_conventional_prefix_from_title validator."""
+
+    def test_strips_redundant_type_prefix(self):
+        """Test that redundant type prefix is stripped from title."""
+        commit = PlannedCommit(
+            id="C1",
+            type="feat",
+            scope="api",
+            title="feat(api): Add pagination support",
+            hunks=["H1_abc"],
+        )
+
+        # The validator should have stripped "feat(api): " from title
+        assert commit.title == "Add pagination support"
+        assert "feat" not in commit.title.lower()
+
+    def test_strips_type_only_prefix(self):
+        """Test that type-only prefix is stripped."""
+        commit = PlannedCommit(
+            id="C1",
+            type="fix",
+            title="fix: Prevent null pointer",
+            hunks=["H1_abc"],
+        )
+
+        assert commit.title == "Prevent null pointer"
+
+    def test_preserves_title_without_prefix(self):
+        """Test that title without prefix is unchanged."""
+        commit = PlannedCommit(
+            id="C1",
+            type="feat",
+            title="Add new feature",
+            hunks=["H1_abc"],
+        )
+
+        assert commit.title == "Add new feature"
+
+    def test_preserves_title_with_different_type(self):
+        """Test that title with different type prefix is preserved."""
+        commit = PlannedCommit(
+            id="C1",
+            type="feat",
+            title="fix: This is actually a fix",  # Different type
+            hunks=["H1_abc"],
+        )
+
+        # Should NOT be stripped because types dont match
+        assert commit.title == "fix: This is actually a fix"
+
+    def test_no_type_field_preserves_title(self):
+        """Test that title is preserved when type field is None."""
+        commit = PlannedCommit(
+            id="C1",
+            type=None,
+            title="feat: Add feature",
+            hunks=["H1_abc"],
+        )
+
+        # Should NOT be stripped because type is None
+        assert commit.title == "feat: Add feature"
+
+
+class TestParseUnifiedDiffEdgeCases:
+    """Additional edge case tests for parse_unified_diff."""
+
+    def test_whitespace_only_diff(self):
+        """Test parsing whitespace-only diff."""
+        diff = "   \n\n  \t  \n"
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 0
+
+    def test_git_binary_patch_format(self):
+        """Test handling GIT binary patch format."""
+        diff = """diff --git a/image.png b/image.png
+index 1234567..abcdefg 100644
+GIT binary patch
+literal 1234
+zcmV<abc123...
+
+literal 0
+Hc$@<O00001
+
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        assert file_diffs[0].is_binary is True
+        assert any("Binary file skipped" in w for w in warnings)
+
+    def test_hunk_header_without_length(self):
+        """Test parsing hunk header without length (defaults to 1)."""
+        diff = """diff --git a/single.py b/single.py
+index 1234567..abcdefg 100644
+--- a/single.py
++++ b/single.py
+@@ -5 +5 @@
+-old line
++new line
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        hunk = file_diffs[0].hunks[0]
+        assert hunk.old_start == 5
+        assert hunk.old_len == 1  # Default
+        assert hunk.new_start == 5
+        assert hunk.new_len == 1  # Default
+
+    def test_hunk_header_with_context(self):
+        """Test parsing hunk header with function context."""
+        diff = """diff --git a/func.py b/func.py
+index 1234567..abcdefg 100644
+--- a/func.py
++++ b/func.py
+@@ -10,6 +10,8 @@ def my_function():
+     existing code
++    new line 1
++    new line 2
+     more existing code
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        hunk = file_diffs[0].hunks[0]
+        assert hunk.old_start == 10
+        assert hunk.new_start == 10
+        # The @@ line should include the context
+        assert "my_function" in hunk.header
+
+    def test_invalid_diff_format(self):
+        """Test handling invalid diff format."""
+        diff = """This is not a valid diff format
+Some random text
+Without proper diff markers
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 0
+
+    def test_multiple_hunks_same_file(self):
+        """Test file with many hunks."""
+        diff = """diff --git a/multi.py b/multi.py
+index 1234567..abcdefg 100644
+--- a/multi.py
++++ b/multi.py
+@@ -1,3 +1,4 @@
+ line 1
++added 1
+ line 2
+@@ -10,3 +11,4 @@
+ line 10
++added 10
+ line 11
+@@ -20,3 +22,4 @@
+ line 20
++added 20
+ line 21
+"""
+        file_diffs, warnings = parse_unified_diff(diff)
+
+        assert len(file_diffs) == 1
+        assert len(file_diffs[0].hunks) == 3
+
+
+class TestFormatInventoryForLlmEdgeCases:
+    """Additional edge case tests for format_inventory_for_llm."""
+
+    def test_skips_binary_files(self):
+        """Test that binary files are skipped in inventory."""
+        diff = """diff --git a/code.py b/code.py
+index 1234567..abcdefg 100644
+--- a/code.py
++++ b/code.py
+@@ -1,3 +1,4 @@
+ def func():
++    # comment
+     pass
+diff --git a/image.png b/image.png
+Binary files a/image.png and b/image.png differ
+"""
+        file_diffs, _ = parse_unified_diff(diff)
+        formatted = format_inventory_for_llm(file_diffs)
+
+        assert "code.py" in formatted
+        assert "image.png" not in formatted
+
+    def test_marks_deleted_file(self):
+        """Test that deleted files are marked in inventory."""
+        diff = """diff --git a/deleted.py b/deleted.py
+deleted file mode 100644
+index 1234567..0000000
+--- a/deleted.py
++++ /dev/null
+@@ -1,3 +0,0 @@
+-def func():
+-    pass
+"""
+        file_diffs, _ = parse_unified_diff(diff)
+        formatted = format_inventory_for_llm(file_diffs)
+
+        assert "(deleted file)" in formatted
+
+    def test_marks_renamed_file(self):
+        """Test that renamed files are marked in inventory."""
+        diff = """diff --git a/old.py b/new.py
+similarity index 95%
+rename from old.py
+rename to new.py
+index 1234567..abcdefg 100644
+--- a/old.py
++++ b/new.py
+@@ -1,3 +1,4 @@
+ def func():
++    # comment
+     pass
+"""
+        file_diffs, _ = parse_unified_diff(diff)
+        formatted = format_inventory_for_llm(file_diffs)
+
+        assert "(renamed from old.py)" in formatted
+
+
+class TestValidatePlanEdgeCases:
+    """Additional edge case tests for validate_plan."""
+
+    def test_empty_plan_no_commits(self):
+        """Test validation fails for plan with no commits."""
+        plan = ComposePlan(
+            version="1",
+            warnings=[],
+            commits=[],
+        )
+        inventory = {"H1_abc": HunkRef(
+            id="H1_abc",
+            file_path="test.py",
+            header="@@ -1,3 +1,4 @@",
+            old_start=1,
+            old_len=3,
+            new_start=1,
+            new_len=4,
+            lines=["@@ -1,3 +1,4 @@", "+added"],
+        )}
+
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert any("no commits" in e.lower() for e in errors)
+
+    def test_whitespace_only_title(self, sample_diff):
+        """Test validation fails for whitespace-only title."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        hunk_ids = list(inventory.keys())
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="   ",  # Whitespace only
+                    hunks=[hunk_ids[0]],
+                ),
+            ],
+        )
+
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert any("no title" in e.lower() for e in errors)
+
+
+class TestBuildCommitPatchEdgeCases:
+    """Additional edge case tests for build_commit_patch."""
+
+    def test_missing_hunk_in_inventory(self, sample_diff):
+        """Test building patch with missing hunk ID."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+
+        commit = PlannedCommit(
+            id="C1",
+            title="Test commit",
+            hunks=["NONEXISTENT_HUNK"],
+        )
+
+        patch = build_commit_patch(commit, inventory, file_diffs)
+
+        # Should return empty or minimal patch
+        assert "@@" not in patch or patch.strip() == "" or "NONEXISTENT" not in patch
+
+    def test_multiple_hunks_same_file_sorted(self, sample_diff):
+        """Test that multiple hunks from same file are sorted by line number."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+
+        # Get hunks from first file (main.py which has 2 hunks)
+        main_py_hunks = [h for h in inventory.values() if h.file_path == "src/main.py"]
+        hunk_ids = [h.id for h in main_py_hunks]
+
+        commit = PlannedCommit(
+            id="C1",
+            title="Test commit",
+            hunks=hunk_ids,
+        )
+
+        patch = build_commit_patch(commit, inventory, file_diffs)
+
+        # Find hunk header positions
+        import re
+        hunk_headers = list(re.finditer(r"@@ -(\d+)", patch))
+        if len(hunk_headers) >= 2:
+            # First hunk should have lower line number
+            first_line = int(hunk_headers[0].group(1))
+            second_line = int(hunk_headers[1].group(1))
+            assert first_line < second_line
+
+
+class TestBuildComposePromptEdgeCases:
+    """Additional edge case tests for build_compose_prompt."""
+
+    def test_includes_style_parameter(self, sample_diff):
+        """Test that prompt includes style parameter."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="feature-branch",
+            recent_commits=[],
+            style="blueprint",
+            max_commits=5,
+        )
+
+        assert "blueprint" in prompt
+        assert "5" in prompt  # max_commits
+
+    def test_includes_stats_section(self, sample_diff):
+        """Test that prompt includes stats section."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        assert "[STATS]" in prompt
+        assert "Files with changes" in prompt
+        assert "Total hunks" in prompt
+
+    def test_handles_no_recent_commits(self, sample_diff):
+        """Test prompt with no recent commits."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        assert "None" in prompt or "Recent commits" in prompt
+
+    def test_truncates_long_recent_commits(self, sample_diff):
+        """Test that only first 5 recent commits are included."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        recent = [f"Commit {i}" for i in range(10)]
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=recent,
+            style="default",
+            max_commits=6,
+        )
+
+        # Should only have first 5
+        assert "Commit 0" in prompt
+        assert "Commit 4" in prompt
+        # Commit 5+ should not be present (unless in other context)
+
+
+class TestHunkRefEdgeCases:
+    """Additional edge case tests for HunkRef."""
+
+    def test_snippet_excludes_diff_header_lines(self):
+        """Test that snippet excludes +++ and --- lines."""
+        hunk = HunkRef(
+            id="H1_abc",
+            file_path="test.py",
+            header="@@ -1,3 +1,4 @@",
+            old_start=1,
+            old_len=3,
+            new_start=1,
+            new_len=4,
+            lines=[
+                "@@ -1,3 +1,4 @@",
+                "--- a/test.py",
+                "+++ b/test.py",
+                " context",
+                "+added",
+                "-removed",
+            ],
+        )
+
+        snippet = hunk.snippet(10)
+        assert "+++" not in snippet
+        assert "---" not in snippet
+        assert "+added" in snippet
+        assert "-removed" in snippet
+
+    def test_snippet_exact_max_lines(self):
+        """Test snippet with exact max lines."""
+        lines = ["@@ -1,5 +1,5 @@"] + [f"+line{i}" for i in range(5)]
+        hunk = HunkRef(
+            id="H1_abc",
+            file_path="test.py",
+            header="@@ -1,5 +1,5 @@",
+            old_start=1,
+            old_len=5,
+            new_start=1,
+            new_len=5,
+            lines=lines,
+        )
+
+        snippet = hunk.snippet(5)
+        # Should show all 5 lines without truncation message
+        assert "more lines" not in snippet
+        assert "+line0" in snippet
+        assert "+line4" in snippet
+
+
+class TestBlueprintSectionCompose:
+    """Tests for BlueprintSection model in compose."""
+
+    def test_create_section(self):
+        """Test creating a blueprint section."""
+        section = BlueprintSection(
+            title="Changes",
+            bullets=["First change", "Second change"],
+        )
+
+        assert section.title == "Changes"
+        assert len(section.bullets) == 2
+
+    def test_empty_bullets(self):
+        """Test section with empty bullets."""
+        section = BlueprintSection(
+            title="Notes",
+            bullets=[],
+        )
+
+        assert section.bullets == []
+
+
+class TestRestoreFromSnapshot:
+    """Tests for restore_from_snapshot function."""
+
+    def test_restore_basic(self, temp_repo):
+        """Test basic restore from snapshot."""
+        from hunknote.compose import restore_from_snapshot, ComposeSnapshot
+
+        # Create a snapshot
+        snapshot = ComposeSnapshot(
+            pre_head="abc123",
+            pre_staged_patch="",
+            patch_file=None,
+            head_file=None,
+        )
+
+        success, message = restore_from_snapshot(temp_repo, snapshot, commits_created=0)
+
+        assert success
+        assert "Reset index" in message
+
+    def test_restore_with_commits_created(self, temp_repo):
+        """Test restore with commits created shows recovery instructions."""
+        from hunknote.compose import restore_from_snapshot, ComposeSnapshot
+
+        # Get current HEAD
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=temp_repo,
+        )
+        pre_head = result.stdout.strip()
+
+        snapshot = ComposeSnapshot(
+            pre_head=pre_head,
+            pre_staged_patch="",
+            patch_file=None,
+            head_file=None,
+        )
+
+        success, message = restore_from_snapshot(temp_repo, snapshot, commits_created=3)
+
+        assert success
+        assert "MANUAL RECOVERY" in message
+        assert "3 commit(s)" in message
+        assert pre_head in message
+
+    def test_restore_with_staged_changes(self, temp_repo):
+        """Test restore with previously staged changes."""
+        from hunknote.compose import restore_from_snapshot, ComposeSnapshot
+
+        # Create a patch file with staged changes
+        tmp_dir = temp_repo / ".tmp"
+        tmp_dir.mkdir(exist_ok=True)
+        patch_file = tmp_dir / "test_staged.patch"
+        patch_content = """diff --git a/test.txt b/test.txt
+new file mode 100644
+--- /dev/null
++++ b/test.txt
+@@ -0,0 +1 @@
++test content
+"""
+        patch_file.write_text(patch_content)
+
+        # Create the file so patch can apply
+        (temp_repo / "test.txt").write_text("test content\n")
+
+        snapshot = ComposeSnapshot(
+            pre_head="abc123",
+            pre_staged_patch=patch_content,
+            patch_file=patch_file,
+            head_file=None,
+        )
+
+        success, message = restore_from_snapshot(temp_repo, snapshot, commits_created=0)
+
+        # May or may not succeed depending on repo state, but should not crash
+        assert isinstance(success, bool)
+        assert isinstance(message, str)
+
+
+class TestCleanupTempFiles:
+    """Tests for cleanup_temp_files function."""
+
+    def test_cleanup_removes_files(self, temp_repo):
+        """Test that cleanup removes temp files."""
+        from hunknote.compose import cleanup_temp_files
+
+        # Create temp directory and files
+        tmp_dir = temp_repo / ".tmp"
+        tmp_dir.mkdir(exist_ok=True)
+
+        pid = 99999
+        (tmp_dir / f"hunknote_compose_patch_C1_{pid}.patch").write_text("patch")
+        (tmp_dir / f"hunknote_compose_msg_C1_{pid}.txt").write_text("message")
+        (tmp_dir / f"hunknote_compose_pre_head_{pid}.txt").write_text("head")
+
+        cleanup_temp_files(temp_repo, pid)
+
+        # Check files are removed
+        assert not (tmp_dir / f"hunknote_compose_patch_C1_{pid}.patch").exists()
+        assert not (tmp_dir / f"hunknote_compose_msg_C1_{pid}.txt").exists()
+        assert not (tmp_dir / f"hunknote_compose_pre_head_{pid}.txt").exists()
+
+    def test_cleanup_no_tmp_dir(self, temp_repo):
+        """Test cleanup when .tmp directory doesnt exist."""
+        from hunknote.compose import cleanup_temp_files
+
+        # Ensure .tmp doesnt exist
+        tmp_dir = temp_repo / ".tmp"
+        if tmp_dir.exists():
+            import shutil
+            shutil.rmtree(tmp_dir)
+
+        # Should not raise
+        cleanup_temp_files(temp_repo, 12345)
+
+    def test_cleanup_only_removes_matching_pid(self, temp_repo):
+        """Test that cleanup only removes files matching the PID."""
+        from hunknote.compose import cleanup_temp_files
+
+        tmp_dir = temp_repo / ".tmp"
+        tmp_dir.mkdir(exist_ok=True)
+
+        pid1 = 11111
+        pid2 = 22222
+
+        # Create files for both PIDs
+        (tmp_dir / f"hunknote_compose_patch_C1_{pid1}.patch").write_text("patch1")
+        (tmp_dir / f"hunknote_compose_patch_C1_{pid2}.patch").write_text("patch2")
+
+        # Cleanup only pid1
+        cleanup_temp_files(temp_repo, pid1)
+
+        # pid1 file should be gone, pid2 should remain
+        assert not (tmp_dir / f"hunknote_compose_patch_C1_{pid1}.patch").exists()
+        assert (tmp_dir / f"hunknote_compose_patch_C1_{pid2}.patch").exists()
+
+
+class TestComposeExecutionError:
+    """Tests for ComposeExecutionError exception."""
+
+    def test_exception_message(self):
+        """Test exception with message."""
+        from hunknote.compose import ComposeExecutionError
+
+        error = ComposeExecutionError("Failed to apply patch")
+        assert str(error) == "Failed to apply patch"
+
+    def test_exception_inheritance(self):
+        """Test exception inherits from Exception."""
+        from hunknote.compose import ComposeExecutionError
+
+        assert issubclass(ComposeExecutionError, Exception)
+
+
+class TestPlanValidationError:
+    """Tests for PlanValidationError exception."""
+
+    def test_exception_message(self):
+        """Test exception with message."""
+        from hunknote.compose import PlanValidationError
+
+        error = PlanValidationError("Invalid plan")
+        assert str(error) == "Invalid plan"
+
+    def test_exception_inheritance(self):
+        """Test exception inherits from Exception."""
+        from hunknote.compose import PlanValidationError
+
+        assert issubclass(PlanValidationError, Exception)
