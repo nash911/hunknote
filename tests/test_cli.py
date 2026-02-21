@@ -16,9 +16,9 @@ class TestIgnoreListCommand:
 
     def test_lists_patterns(self, mocker, temp_dir):
         """Test listing ignore patterns."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "hunknote.cli.get_ignore_patterns",
+            "hunknote.cli.ignore.get_ignore_patterns",
             return_value=["poetry.lock", "*.log", "build/*"]
         )
 
@@ -32,8 +32,8 @@ class TestIgnoreListCommand:
 
     def test_shows_empty_message(self, mocker, temp_dir):
         """Test message when no patterns configured."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=[])
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.get_ignore_patterns", return_value=[])
 
         result = runner.invoke(app, ["ignore", "list"])
 
@@ -44,7 +44,7 @@ class TestIgnoreListCommand:
         """Test handling of git error."""
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.ignore.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "list"])
 
@@ -57,9 +57,9 @@ class TestIgnoreAddCommand:
 
     def test_adds_pattern(self, mocker, temp_dir):
         """Test adding a pattern."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=[])
-        mock_add = mocker.patch("hunknote.cli.add_ignore_pattern")
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.get_ignore_patterns", return_value=[])
+        mock_add = mocker.patch("hunknote.cli.ignore.add_ignore_pattern")
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -70,8 +70,8 @@ class TestIgnoreAddCommand:
 
     def test_existing_pattern_message(self, mocker, temp_dir):
         """Test message when pattern already exists."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.get_ignore_patterns", return_value=["*.log"])
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.get_ignore_patterns", return_value=["*.log"])
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -82,7 +82,7 @@ class TestIgnoreAddCommand:
         """Test handling of git error."""
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.ignore.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "add", "*.log"])
 
@@ -94,8 +94,8 @@ class TestIgnoreRemoveCommand:
 
     def test_removes_pattern(self, mocker, temp_dir):
         """Test removing a pattern."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.remove_ignore_pattern", return_value=True)
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.remove_ignore_pattern", return_value=True)
 
         result = runner.invoke(app, ["ignore", "remove", "*.log"])
 
@@ -105,8 +105,8 @@ class TestIgnoreRemoveCommand:
 
     def test_pattern_not_found(self, mocker, temp_dir):
         """Test message when pattern not found."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.remove_ignore_pattern", return_value=False)
+        mocker.patch("hunknote.cli.ignore.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.ignore.remove_ignore_pattern", return_value=False)
 
         result = runner.invoke(app, ["ignore", "remove", "nonexistent"])
 
@@ -117,7 +117,7 @@ class TestIgnoreRemoveCommand:
         """Test handling of git error."""
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.ignore.get_repo_root", side_effect=GitError("not a repo"))
 
         result = runner.invoke(app, ["ignore", "remove", "*.log"])
 
@@ -140,9 +140,9 @@ class TestMainCommand:
         """Test error when no staged changes."""
         from hunknote.git_ctx import NoStagedChangesError
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
         mocker.patch(
-            "hunknote.cli.build_context_bundle",
+            "hunknote.cli.main.build_context_bundle",
             side_effect=NoStagedChangesError("No staged changes")
         )
 
@@ -156,16 +156,16 @@ class TestMainCommand:
         """Test error when API key is missing."""
         from hunknote.llm.base import MissingAPIKeyError
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=False)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=False)
         mocker.patch(
-            "hunknote.cli.generate_commit_json",
+            "hunknote.cli.main.generate_commit_json",
             side_effect=MissingAPIKeyError("ANTHROPIC_API_KEY not set")
         )
 
@@ -176,17 +176,17 @@ class TestMainCommand:
 
     def test_uses_cached_message(self, mocker, temp_dir):
         """Test that cached message is used when valid."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
-        mocker.patch("hunknote.cli.load_cached_message", return_value="Cached message\n\n- Bullet")
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=MagicMock())
-        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.main.load_cached_message", return_value="Cached message\n\n- Bullet")
+        mocker.patch("hunknote.cli.main.load_cache_metadata", return_value=MagicMock())
+        mocker.patch("hunknote.cli.main.get_message_file", return_value=temp_dir / "msg.txt")
 
         result = runner.invoke(app, [])
 
@@ -195,14 +195,14 @@ class TestMainCommand:
 
     def test_regenerate_flag_bypasses_cache(self, mocker, temp_dir):
         """Test that --regenerate flag bypasses cache."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=True)
 
         from hunknote.styles import ExtendedCommitJSON
         from hunknote.llm.base import LLMResult
@@ -213,10 +213,10 @@ class TestMainCommand:
             input_tokens=100,
             output_tokens=50,
         )
-        mocker.patch("hunknote.cli.generate_commit_json", return_value=mock_result)
-        mocker.patch("hunknote.cli.save_cache")
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=MagicMock())
-        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.main.generate_commit_json", return_value=mock_result)
+        mocker.patch("hunknote.cli.main.save_cache")
+        mocker.patch("hunknote.cli.main.load_cache_metadata", return_value=MagicMock())
+        mocker.patch("hunknote.cli.main.get_message_file", return_value=temp_dir / "msg.txt")
 
         result = runner.invoke(app, ["--regenerate"])
 
@@ -230,24 +230,24 @@ class TestHelperFunctions:
 
     def test_generate_message_diff_same(self):
         """Test diff of identical messages."""
-        from hunknote.cli import _generate_message_diff
+        from hunknote.cli.utils import generate_message_diff
 
         original = "Same message"
         current = "Same message"
 
-        diff = _generate_message_diff(original, current)
+        diff = generate_message_diff(original, current)
 
         # Should have no diff lines (or empty)
         assert "+" not in diff or "-" not in diff
 
     def test_generate_message_diff_different(self):
         """Test diff of different messages."""
-        from hunknote.cli import _generate_message_diff
+        from hunknote.cli.utils import generate_message_diff
 
         original = "Original message"
         current = "Modified message"
 
-        diff = _generate_message_diff(original, current)
+        diff = generate_message_diff(original, current)
 
         assert len(diff) > 0
         # Should show changes
@@ -255,11 +255,11 @@ class TestHelperFunctions:
 
     def test_find_editor_returns_list(self, mocker):
         """Test that _find_editor returns a list."""
-        from hunknote.cli import _find_editor
+        from hunknote.cli.utils import find_editor
 
         mocker.patch("shutil.which", return_value="/usr/bin/nano")
 
-        editor = _find_editor()
+        editor = find_editor()
 
         assert isinstance(editor, list)
         assert len(editor) > 0
@@ -270,9 +270,9 @@ class TestConfigShowCommand:
 
     def test_shows_configuration(self, mocker):
         """Test showing current configuration."""
-        mocker.patch("hunknote.cli.global_config.is_configured", return_value=True)
+        mocker.patch("hunknote.cli.config.global_config.is_configured", return_value=True)
         mocker.patch(
-            "hunknote.cli.global_config.load_global_config",
+            "hunknote.cli.config.global_config.load_global_config",
             return_value={
                 "provider": "google",
                 "model": "gemini-2.0-flash",
@@ -280,7 +280,7 @@ class TestConfigShowCommand:
                 "temperature": 0.3,
             }
         )
-        mocker.patch("hunknote.cli.global_config.get_credential", return_value="test-api-key-12345")
+        mocker.patch("hunknote.cli.config.global_config.get_credential", return_value="test-api-key-12345")
 
         result = runner.invoke(app, ["config", "show"])
 
@@ -290,7 +290,7 @@ class TestConfigShowCommand:
 
     def test_shows_not_configured_message(self, mocker):
         """Test message when not configured."""
-        mocker.patch("hunknote.cli.global_config.is_configured", return_value=False)
+        mocker.patch("hunknote.cli.config.global_config.is_configured", return_value=False)
 
         result = runner.invoke(app, ["config", "show"])
 
@@ -347,8 +347,8 @@ class TestConfigSetKeyCommand:
 
     def test_sets_api_key(self, mocker):
         """Test setting an API key."""
-        mocker.patch("hunknote.cli.global_config.ensure_global_config_dir")
-        mock_save = mocker.patch("hunknote.cli.global_config.save_credential")
+        mocker.patch("hunknote.cli.config.global_config.ensure_global_config_dir")
+        mock_save = mocker.patch("hunknote.cli.config.global_config.save_credential")
 
         result = runner.invoke(app, ["config", "set-key", "google"], input="test-api-key\n")
 
@@ -369,7 +369,7 @@ class TestConfigSetProviderCommand:
 
     def test_sets_provider_with_model_option(self, mocker):
         """Test setting provider with model specified."""
-        mock_set = mocker.patch("hunknote.cli.global_config.set_provider_and_model")
+        mock_set = mocker.patch("hunknote.cli.config.global_config.set_provider_and_model")
 
         result = runner.invoke(app, ["config", "set-provider", "anthropic", "--model", "claude-sonnet-4-20250514"])
 
@@ -390,9 +390,9 @@ class TestInitCommand:
 
     def test_init_shows_welcome(self, mocker):
         """Test that init shows welcome message."""
-        mocker.patch("hunknote.cli.global_config.is_configured", return_value=False)
-        mocker.patch("hunknote.cli.global_config.set_provider_and_model")
-        mocker.patch("hunknote.cli.global_config.save_credential")
+        mocker.patch("hunknote.cli.init.global_config.is_configured", return_value=False)
+        mocker.patch("hunknote.cli.init.global_config.set_provider_and_model")
+        mocker.patch("hunknote.cli.init.global_config.save_credential")
 
         # Simulate user input: provider 3 (Google), model 1, API key
         result = runner.invoke(app, ["init"], input="3\n1\ntest-api-key\n")
@@ -401,7 +401,7 @@ class TestInitCommand:
 
     def test_init_aborts_if_configured_and_user_declines(self, mocker):
         """Test init aborts when config exists and user declines overwrite."""
-        mocker.patch("hunknote.cli.global_config.is_configured", return_value=True)
+        mocker.patch("hunknote.cli.init.global_config.is_configured", return_value=True)
 
         # User says "n" to overwrite
         result = runner.invoke(app, ["init"], input="n\n")
@@ -428,17 +428,17 @@ class TestDebugFlag:
             diff_preview="diff preview here",
         )
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=True)
-        mocker.patch("hunknote.cli.load_cached_message", return_value="Cached message")
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=mock_metadata)
-        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=True)
+        mocker.patch("hunknote.cli.main.load_cached_message", return_value="Cached message")
+        mocker.patch("hunknote.cli.main.load_cache_metadata", return_value=mock_metadata)
+        mocker.patch("hunknote.cli.main.get_message_file", return_value=temp_dir / "msg.txt")
 
         result = runner.invoke(app, ["--debug"])
 
@@ -452,8 +452,8 @@ class TestStyleListCommand:
     def test_lists_all_profiles(self, mocker):
         """Test listing all style profiles."""
         from hunknote.git_ctx import GitError
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
-        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={})
+        mocker.patch("hunknote.cli.style.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.style.global_config.get_style_config", return_value={})
 
         result = runner.invoke(app, ["style", "list"])
 
@@ -466,8 +466,8 @@ class TestStyleListCommand:
     def test_shows_active_profile(self, mocker):
         """Test that active profile is marked."""
         from hunknote.git_ctx import GitError
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
-        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={"profile": "conventional"})
+        mocker.patch("hunknote.cli.style.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.style.global_config.get_style_config", return_value={"profile": "conventional"})
 
         result = runner.invoke(app, ["style", "list"])
 
@@ -482,8 +482,8 @@ class TestStyleShowCommand:
     def test_shows_profile_details(self, mocker):
         """Test showing profile details."""
         from hunknote.git_ctx import GitError
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a repo"))
-        mocker.patch("hunknote.cli.global_config.get_style_profile", return_value="default")
+        mocker.patch("hunknote.cli.style.get_repo_root", side_effect=GitError("not a repo"))
+        mocker.patch("hunknote.cli.style.global_config.get_style_profile", return_value="default")
 
         result = runner.invoke(app, ["style", "show", "conventional"])
 
@@ -505,7 +505,7 @@ class TestStyleSetCommand:
 
     def test_sets_global_profile(self, mocker):
         """Test setting global style profile."""
-        mock_set = mocker.patch("hunknote.cli.global_config.set_style_profile")
+        mock_set = mocker.patch("hunknote.cli.style.global_config.set_style_profile")
 
         result = runner.invoke(app, ["style", "set", "conventional"])
 
@@ -515,8 +515,8 @@ class TestStyleSetCommand:
 
     def test_sets_repo_profile(self, mocker, temp_dir):
         """Test setting repo style profile."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mock_set = mocker.patch("hunknote.cli.set_repo_style_profile")
+        mocker.patch("hunknote.cli.style.get_repo_root", return_value=temp_dir)
+        mock_set = mocker.patch("hunknote.cli.style.set_repo_style_profile")
 
         result = runner.invoke(app, ["style", "set", "ticket", "--repo"])
 
@@ -565,7 +565,7 @@ class TestStyleFlags:
 
     def test_invalid_style_flag_error(self, mocker, temp_dir):
         """Test error for invalid --style flag value."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
 
         result = runner.invoke(app, ["--style", "invalid-style"])
 
@@ -600,9 +600,9 @@ class TestCommitSubcommand:
 
     def test_commit_requires_cached_message(self, mocker, temp_dir):
         """Test that commit requires a cached message."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=None)
-        mocker.patch("hunknote.cli.load_cached_message", return_value=None)
+        mocker.patch("hunknote.cli.commit.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.commit.load_cache_metadata", return_value=None)
+        mocker.patch("hunknote.cli.commit.load_cached_message", return_value=None)
 
         result = runner.invoke(app, ["commit"])
 
@@ -629,7 +629,7 @@ class TestIntentOptions:
 
     def test_intent_file_not_found_error(self, mocker, temp_dir):
         """Test error when intent file does not exist."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
 
         result = runner.invoke(app, ["--intent-file", "/nonexistent/file.txt"])
 
@@ -642,71 +642,71 @@ class TestIntentProcessing:
 
     def test_process_intent_options_with_intent_only(self):
         """Test processing --intent option only."""
-        from hunknote.cli import _process_intent_options
+        from hunknote.cli.utils import process_intent_options
 
-        result = _process_intent_options("Fix the bug in login", None)
+        result = process_intent_options("Fix the bug in login", None)
         assert result == "Fix the bug in login"
 
     def test_process_intent_options_with_intent_file_only(self, temp_dir):
         """Test processing --intent-file option only."""
-        from hunknote.cli import _process_intent_options
+        from hunknote.cli.utils import process_intent_options
 
         intent_file = temp_dir / "intent.txt"
         intent_file.write_text("This change improves performance")
 
-        result = _process_intent_options(None, intent_file)
+        result = process_intent_options(None, intent_file)
         assert result == "This change improves performance"
 
     def test_process_intent_options_both_combined(self, temp_dir):
         """Test combining --intent and --intent-file with blank line."""
-        from hunknote.cli import _process_intent_options
+        from hunknote.cli.utils import process_intent_options
 
         intent_file = temp_dir / "intent.txt"
         intent_file.write_text("Additional context from file")
 
-        result = _process_intent_options("Primary intent", intent_file)
+        result = process_intent_options("Primary intent", intent_file)
         assert result == "Primary intent\n\nAdditional context from file"
 
     def test_process_intent_options_empty_intent_ignored(self):
         """Test that whitespace-only intent is treated as not provided."""
-        from hunknote.cli import _process_intent_options
+        from hunknote.cli.utils import process_intent_options
 
-        result = _process_intent_options("   ", None)
+        result = process_intent_options("   ", None)
         assert result is None
 
     def test_process_intent_options_none_when_nothing_provided(self):
         """Test that None is returned when no intent is provided."""
-        from hunknote.cli import _process_intent_options
+        from hunknote.cli.utils import process_intent_options
 
-        result = _process_intent_options(None, None)
+        result = process_intent_options(None, None)
         assert result is None
 
     def test_compute_intent_fingerprint_returns_12_chars(self):
         """Test that fingerprint is 12 characters."""
-        from hunknote.cli import _compute_intent_fingerprint
+        from hunknote.cli.utils import compute_intent_fingerprint
 
-        fingerprint = _compute_intent_fingerprint("Some intent text")
+        fingerprint = compute_intent_fingerprint("Some intent text")
         assert fingerprint is not None
         assert len(fingerprint) == 12
 
     def test_compute_intent_fingerprint_none_for_no_content(self):
         """Test that fingerprint is None when no content."""
-        from hunknote.cli import _compute_intent_fingerprint
+        from hunknote.cli.utils import compute_intent_fingerprint
 
-        assert _compute_intent_fingerprint(None) is None
-        assert _compute_intent_fingerprint("") is None
+        assert compute_intent_fingerprint(None) is None
+        assert compute_intent_fingerprint("") is None
 
     def test_compute_intent_fingerprint_different_for_different_content(self):
         """Test that different intents produce different fingerprints."""
-        from hunknote.cli import _compute_intent_fingerprint
+        from hunknote.cli.utils import compute_intent_fingerprint
 
-        fp1 = _compute_intent_fingerprint("Intent A")
-        fp2 = _compute_intent_fingerprint("Intent B")
+        fp1 = compute_intent_fingerprint("Intent A")
+        fp2 = compute_intent_fingerprint("Intent B")
         assert fp1 != fp2
 
     def test_inject_intent_into_context(self):
         """Test that intent is injected into context bundle."""
-        from hunknote.cli import _inject_intent_into_context
+        from hunknote.cli.utils import inject_intent_into_context
 
         context = """[BRANCH]
 main
@@ -721,7 +721,7 @@ Modified files:
 [STAGED_DIFF]
 diff content"""
 
-        result = _inject_intent_into_context(context, "This is the intent")
+        result = inject_intent_into_context(context, "This is the intent")
 
         assert "[INTENT]" in result
         assert "This is the intent" in result
@@ -732,7 +732,7 @@ diff content"""
 
     def test_inject_intent_preserves_original_sections(self):
         """Test that all original sections are preserved."""
-        from hunknote.cli import _inject_intent_into_context
+        from hunknote.cli.utils import inject_intent_into_context
 
         context = """[BRANCH]
 main
@@ -746,7 +746,7 @@ Modified files
 [STAGED_DIFF]
 diff"""
 
-        result = _inject_intent_into_context(context, "Intent text")
+        result = inject_intent_into_context(context, "Intent text")
 
         assert "[BRANCH]" in result
         assert "[FILE_CHANGES]" in result
@@ -789,7 +789,7 @@ class TestComposeCommand:
 
     def test_compose_no_staged_changes(self, mocker, temp_dir):
         """Test compose error when no staged changes."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.compose.get_repo_root", return_value=temp_dir)
         mocker.patch(
             "subprocess.run",
             return_value=MagicMock(returncode=0, stdout="", stderr="")
@@ -802,7 +802,7 @@ class TestComposeCommand:
 
     def test_compose_json_no_cache(self, mocker, temp_dir):
         """Test compose --json when no cache exists."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.compose.get_repo_root", return_value=temp_dir)
         mocker.patch("hunknote.cache.load_compose_plan", return_value=None)
 
         result = runner.invoke(app, ["compose", "--json"])
@@ -812,7 +812,7 @@ class TestComposeCommand:
 
     def test_compose_show_no_cache(self, mocker, temp_dir):
         """Test compose --show when no cache exists."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.compose.get_repo_root", return_value=temp_dir)
         mocker.patch("hunknote.cache.load_compose_plan", return_value=None)
 
         result = runner.invoke(app, ["compose", "--show", "C1"])
@@ -822,7 +822,7 @@ class TestComposeCommand:
 
     def test_compose_invalid_style(self, mocker, temp_dir):
         """Test compose error for invalid style."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.compose.get_repo_root", return_value=temp_dir)
 
         result = runner.invoke(app, ["compose", "--style", "invalid-style"])
 
@@ -835,7 +835,7 @@ class TestComposeShowDiff:
 
     def test_compose_show_diff_invalid_id(self, mocker, temp_dir):
         """Test showing diff for non-existent compose ID."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.compose.get_repo_root", return_value=temp_dir)
 
         cached_plan = json.dumps({
             "version": "1",
@@ -857,50 +857,50 @@ class TestColorizeDiff:
 
     def test_colorize_diff_added_lines(self):
         """Test that added lines get green color."""
-        from hunknote.cli import _colorize_diff
+        from hunknote.cli.utils import colorize_diff
 
         diff_text = "+added line"
-        colorized = _colorize_diff(diff_text)
+        colorized = colorize_diff(diff_text)
 
         # Check for green ANSI code
         assert "\033[32m" in colorized
 
     def test_colorize_diff_removed_lines(self):
         """Test that removed lines get red color."""
-        from hunknote.cli import _colorize_diff
+        from hunknote.cli.utils import colorize_diff
 
         diff_text = "-removed line"
-        colorized = _colorize_diff(diff_text)
+        colorized = colorize_diff(diff_text)
 
         # Check for red ANSI code
         assert "\033[31m" in colorized
 
     def test_colorize_diff_hunk_header(self):
         """Test that hunk headers get cyan color."""
-        from hunknote.cli import _colorize_diff
+        from hunknote.cli.utils import colorize_diff
 
         diff_text = "@@ -1,3 +1,4 @@"
-        colorized = _colorize_diff(diff_text)
+        colorized = colorize_diff(diff_text)
 
         # Check for cyan ANSI code
         assert "\033[36m" in colorized
 
     def test_colorize_diff_file_header(self):
         """Test that file headers get bold."""
-        from hunknote.cli import _colorize_diff
+        from hunknote.cli.utils import colorize_diff
 
         diff_text = "diff --git a/file.py b/file.py"
-        colorized = _colorize_diff(diff_text)
+        colorized = colorize_diff(diff_text)
 
         # Check for bold ANSI code
         assert "\033[1m" in colorized
 
     def test_colorize_diff_unchanged_lines(self):
         """Test that unchanged lines have no color."""
-        from hunknote.cli import _colorize_diff
+        from hunknote.cli.utils import colorize_diff
 
         diff_text = " context line"
-        colorized = _colorize_diff(diff_text)
+        colorized = colorize_diff(diff_text)
 
         # Should not have color codes (other than on colored lines)
         assert colorized == " context line"
@@ -911,37 +911,37 @@ class TestGetCurrentBranchSafe:
 
     def test_returns_branch_name(self, mocker):
         """Test that branch name is returned."""
-        from hunknote.cli import _get_current_branch_safe
+        from hunknote.cli.utils import get_current_branch_safe
 
         mocker.patch(
             "subprocess.run",
             return_value=MagicMock(returncode=0, stdout="feature-branch\n")
         )
 
-        result = _get_current_branch_safe()
+        result = get_current_branch_safe()
 
         assert result == "feature-branch"
 
     def test_returns_unknown_on_error(self, mocker):
         """Test that 'unknown' is returned on error."""
-        from hunknote.cli import _get_current_branch_safe
+        from hunknote.cli.utils import get_current_branch_safe
 
         mocker.patch(
             "subprocess.run",
             return_value=MagicMock(returncode=1, stdout="")
         )
 
-        result = _get_current_branch_safe()
+        result = get_current_branch_safe()
 
         assert result == "unknown"
 
     def test_returns_unknown_on_os_error(self, mocker):
         """Test that 'unknown' is returned on OSError."""
-        from hunknote.cli import _get_current_branch_safe
+        from hunknote.cli.utils import get_current_branch_safe
 
         mocker.patch("subprocess.run", side_effect=OSError("Command not found"))
 
-        result = _get_current_branch_safe()
+        result = get_current_branch_safe()
 
         assert result == "unknown"
 
@@ -951,28 +951,28 @@ class TestFindEditor:
 
     def test_prefers_gedit(self, mocker):
         """Test that gedit is preferred if available."""
-        from hunknote.cli import _find_editor
+        from hunknote.cli.utils import find_editor
 
         mocker.patch("shutil.which", return_value="/usr/bin/gedit")
 
-        editor = _find_editor()
+        editor = find_editor()
 
         assert editor == ["gedit", "--wait"]
 
     def test_uses_editor_env_var(self, mocker):
         """Test that $EDITOR is used if gedit not available."""
-        from hunknote.cli import _find_editor
+        from hunknote.cli.utils import find_editor
 
         mocker.patch("shutil.which", return_value=None)
         mocker.patch.dict("os.environ", {"EDITOR": "vim"})
 
-        editor = _find_editor()
+        editor = find_editor()
 
         assert editor == ["vim"]
 
     def test_fallback_to_nano(self, mocker):
         """Test fallback to nano."""
-        from hunknote.cli import _find_editor
+        from hunknote.cli.utils import find_editor
 
         def which_side_effect(cmd):
             if cmd == "gedit":
@@ -984,18 +984,18 @@ class TestFindEditor:
         mocker.patch("shutil.which", side_effect=which_side_effect)
         mocker.patch.dict("os.environ", {}, clear=True)
 
-        editor = _find_editor()
+        editor = find_editor()
 
         assert editor == ["nano"]
 
     def test_final_fallback_vi(self, mocker):
         """Test final fallback to vi."""
-        from hunknote.cli import _find_editor
+        from hunknote.cli.utils import find_editor
 
         mocker.patch("shutil.which", return_value=None)
         mocker.patch.dict("os.environ", {}, clear=True)
 
-        editor = _find_editor()
+        editor = find_editor()
 
         assert editor == ["vi"]
 
@@ -1005,27 +1005,27 @@ class TestGetEffectiveStyleConfig:
 
     def test_returns_style_config(self, mocker):
         """Test that style config is returned."""
-        from hunknote.cli import _get_effective_style_config
+        from hunknote.cli.utils import get_effective_style_config
         from hunknote.styles import StyleProfile
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={"profile": "conventional"})
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("Not in repo"))
+        mocker.patch("hunknote.cli.utils.global_config.get_style_config", return_value={"profile": "conventional"})
+        mocker.patch("hunknote.cli.utils.get_repo_root", side_effect=GitError("Not in repo"))
 
-        config = _get_effective_style_config()
+        config = get_effective_style_config()
 
         assert config.profile == StyleProfile.CONVENTIONAL
 
     def test_repo_overrides_global(self, mocker, temp_dir):
         """Test that repo config overrides global config."""
-        from hunknote.cli import _get_effective_style_config
+        from hunknote.cli.utils import get_effective_style_config
         from hunknote.styles import StyleProfile
 
-        mocker.patch("hunknote.cli.global_config.get_style_config", return_value={"profile": "conventional"})
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.get_repo_style_config", return_value={"profile": "ticket"})
+        mocker.patch("hunknote.cli.utils.global_config.get_style_config", return_value={"profile": "conventional"})
+        mocker.patch("hunknote.cli.utils.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.utils.get_repo_style_config", return_value={"profile": "ticket"})
 
-        config = _get_effective_style_config()
+        config = get_effective_style_config()
 
         assert config.profile == StyleProfile.TICKET
 
@@ -1035,26 +1035,26 @@ class TestGetEffectiveScopeConfig:
 
     def test_returns_scope_config(self, mocker):
         """Test that scope config is returned."""
-        from hunknote.cli import _get_effective_scope_config
+        from hunknote.cli.utils import get_effective_scope_config
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.global_config.get_scope_config", return_value={"enabled": True})
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("Not in repo"))
+        mocker.patch("hunknote.cli.utils.global_config.get_scope_config", return_value={"enabled": True})
+        mocker.patch("hunknote.cli.utils.get_repo_root", side_effect=GitError("Not in repo"))
 
-        config = _get_effective_scope_config()
+        config = get_effective_scope_config()
 
         assert config.enabled is True
 
     def test_repo_overrides_global_scope(self, mocker, temp_dir):
         """Test that repo scope config overrides global."""
-        from hunknote.cli import _get_effective_scope_config
+        from hunknote.cli.utils import get_effective_scope_config
         from hunknote.scope import ScopeStrategy
 
-        mocker.patch("hunknote.cli.global_config.get_scope_config", return_value={"strategy": "none"})
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.utils.global_config.get_scope_config", return_value={"strategy": "none"})
+        mocker.patch("hunknote.cli.utils.get_repo_root", return_value=temp_dir)
         mocker.patch("hunknote.user_config.get_repo_scope_config", return_value={"strategy": "monorepo"})
 
-        config = _get_effective_scope_config()
+        config = get_effective_scope_config()
 
         assert config.strategy == ScopeStrategy.MONOREPO
 
@@ -1064,7 +1064,7 @@ class TestBuildHunkIdsData:
 
     def test_builds_hunk_ids_data(self, mocker):
         """Test building hunk IDs data structure."""
-        from hunknote.cli import _build_hunk_ids_data
+        from hunknote.cli.compose import _build_hunk_ids_data
         from hunknote.compose import HunkRef, ComposePlan, PlannedCommit
 
         # Create mock inventory
@@ -1110,7 +1110,7 @@ class TestBuildHunkIdsData:
 
     def test_hunk_ids_data_sorted_by_id(self, mocker):
         """Test that hunk IDs data is sorted by hunk ID number."""
-        from hunknote.cli import _build_hunk_ids_data
+        from hunknote.cli.compose import _build_hunk_ids_data
         from hunknote.compose import HunkRef, ComposePlan, PlannedCommit
 
         # Create mock inventory with IDs out of order
@@ -1151,10 +1151,10 @@ class TestCommitSubcommandExecution:
             diff_preview="diff preview",
         )
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=mock_metadata)
-        mocker.patch("hunknote.cli.load_cached_message", return_value="Test commit message\n\n- Change 1")
-        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.commit.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.commit.load_cache_metadata", return_value=mock_metadata)
+        mocker.patch("hunknote.cli.commit.load_cached_message", return_value="Test commit message\n\n- Change 1")
+        mocker.patch("hunknote.cli.commit.get_message_file", return_value=temp_dir / "msg.txt")
 
         # User cancels the commit
         result = runner.invoke(app, ["commit"], input="n\n")
@@ -1181,10 +1181,10 @@ class TestCommitSubcommandExecution:
         msg_file = temp_dir / "msg.txt"
         msg_file.write_text("Test commit message\n\n- Change 1")
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=mock_metadata)
-        mocker.patch("hunknote.cli.load_cached_message", return_value="Test commit message\n\n- Change 1")
-        mocker.patch("hunknote.cli.get_message_file", return_value=msg_file)
+        mocker.patch("hunknote.cli.commit.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.commit.load_cache_metadata", return_value=mock_metadata)
+        mocker.patch("hunknote.cli.commit.load_cached_message", return_value="Test commit message\n\n- Change 1")
+        mocker.patch("hunknote.cli.commit.get_message_file", return_value=msg_file)
 
         # Mock subprocess.run for git commit
         mock_run = mocker.patch(
@@ -1201,7 +1201,7 @@ class TestCommitSubcommandExecution:
         """Test commit handles git error."""
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("not a git repo"))
+        mocker.patch("hunknote.cli.commit.get_repo_root", side_effect=GitError("not a git repo"))
 
         result = runner.invoke(app, ["commit"])
 
@@ -1216,16 +1216,16 @@ class TestMainCommandErrorHandling:
         """Test error handling for LLM errors."""
         from hunknote.llm.base import LLMError
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=False)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=False)
         mocker.patch(
-            "hunknote.cli.generate_commit_json",
+            "hunknote.cli.main.generate_commit_json",
             side_effect=LLMError("Model overloaded")
         )
 
@@ -1238,7 +1238,7 @@ class TestMainCommandErrorHandling:
         """Test error handling for git errors in main command."""
         from hunknote.git_ctx import GitError
 
-        mocker.patch("hunknote.cli.get_repo_root", side_effect=GitError("fatal: not a git repository"))
+        mocker.patch("hunknote.cli.main.get_repo_root", side_effect=GitError("fatal: not a git repository"))
 
         result = runner.invoke(app, [])
 
@@ -1247,7 +1247,7 @@ class TestMainCommandErrorHandling:
 
     def test_invalid_scope_strategy_error(self, mocker, temp_dir):
         """Test error for invalid scope strategy."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
 
         result = runner.invoke(app, ["--scope-strategy", "invalid-strategy"])
 
@@ -1275,18 +1275,18 @@ class TestMainCommandScopeOverrides:
             raw_response='{"title": "Test message"}',
         )
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.build_context_bundle", return_value="context")
-        mocker.patch("hunknote.cli.compute_context_hash", return_value="hash")
-        mocker.patch("hunknote.cli.get_status", return_value="## main")
-        mocker.patch("hunknote.cli.extract_staged_files", return_value=["file.py"])
-        mocker.patch("hunknote.cli.get_staged_diff", return_value="diff")
-        mocker.patch("hunknote.cli.get_diff_preview", return_value="preview")
-        mocker.patch("hunknote.cli.is_cache_valid", return_value=False)
-        mocker.patch("hunknote.cli.generate_commit_json", return_value=mock_result)
-        mocker.patch("hunknote.cli.save_cache")
-        mocker.patch("hunknote.cli.get_message_file", return_value=temp_dir / "msg.txt")
-        mocker.patch("hunknote.cli.update_metadata_overrides")
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.build_context_bundle", return_value="context")
+        mocker.patch("hunknote.cli.main.compute_context_hash", return_value="hash")
+        mocker.patch("hunknote.cli.main.get_status", return_value="## main")
+        mocker.patch("hunknote.cli.main.extract_staged_files", return_value=["file.py"])
+        mocker.patch("hunknote.cli.main.get_staged_diff", return_value="diff")
+        mocker.patch("hunknote.cli.main.get_diff_preview", return_value="preview")
+        mocker.patch("hunknote.cli.main.is_cache_valid", return_value=False)
+        mocker.patch("hunknote.cli.main.generate_commit_json", return_value=mock_result)
+        mocker.patch("hunknote.cli.main.save_cache")
+        mocker.patch("hunknote.cli.main.get_message_file", return_value=temp_dir / "msg.txt")
+        mocker.patch("hunknote.cli.main.update_metadata_overrides")
 
         result = runner.invoke(app, ["--scope", "api"])
 
@@ -1299,7 +1299,7 @@ class TestDisplayDebugInfo:
 
     def test_displays_basic_info(self, mocker, temp_dir, capsys):
         """Test that debug info displays basic metadata."""
-        from hunknote.cli import _display_debug_info
+        from hunknote.cli.utils import display_debug_info
         from hunknote.cache import CacheMetadata
 
         metadata = CacheMetadata(
@@ -1314,14 +1314,14 @@ class TestDisplayDebugInfo:
         )
 
         # Capture output using typer.echo (goes to stdout)
-        _display_debug_info(temp_dir, metadata, "Test message", True, None)
+        display_debug_info(temp_dir, metadata, "Test message", True, None)
 
         # Check that info was echoed (captured in result)
         # Note: Since we're testing the function directly, output goes to stdout
 
     def test_displays_intent_info(self, mocker, temp_dir):
         """Test that intent info is displayed when provided."""
-        from hunknote.cli import _display_debug_info
+        from hunknote.cli.utils import display_debug_info
         from hunknote.cache import CacheMetadata
 
         metadata = CacheMetadata(
@@ -1336,7 +1336,7 @@ class TestDisplayDebugInfo:
         )
 
         # Call with intent - function should not raise
-        _display_debug_info(temp_dir, metadata, "Test message", True, "Fix the login bug")
+        display_debug_info(temp_dir, metadata, "Test message", True, "Fix the login bug")
 
 
 class TestJsonFlag:
@@ -1344,8 +1344,8 @@ class TestJsonFlag:
 
     def test_json_requires_cache(self, mocker, temp_dir):
         """Test that --json requires existing cache."""
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=None)
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.load_cache_metadata", return_value=None)
 
         result = runner.invoke(app, ["--json"])
 
@@ -1367,10 +1367,10 @@ class TestJsonFlag:
             diff_preview="diff preview",
         )
 
-        mocker.patch("hunknote.cli.get_repo_root", return_value=temp_dir)
-        mocker.patch("hunknote.cli.load_cache_metadata", return_value=mock_metadata)
-        mocker.patch("hunknote.cli.load_cached_message", return_value="Test message")
-        mocker.patch("hunknote.cli.load_raw_json_response", return_value='{"title": "Test"}')
+        mocker.patch("hunknote.cli.main.get_repo_root", return_value=temp_dir)
+        mocker.patch("hunknote.cli.main.load_cache_metadata", return_value=mock_metadata)
+        mocker.patch("hunknote.cli.main.load_cached_message", return_value="Test message")
+        mocker.patch("hunknote.cli.main.load_raw_json_response", return_value='{"title": "Test"}')
 
         result = runner.invoke(app, ["--json"])
 
@@ -1395,24 +1395,24 @@ class TestShowInPager:
 
     def test_falls_back_to_echo(self, mocker):
         """Test that output falls back to typer.echo when no pager available."""
-        from hunknote.cli import _show_in_pager
+        from hunknote.cli.utils import show_in_pager
 
         mocker.patch("shutil.which", return_value=None)
         mock_echo = mocker.patch("typer.echo")
 
-        _show_in_pager("Test content")
+        show_in_pager("Test content")
 
         mock_echo.assert_called_once_with("Test content")
 
     def test_uses_less_when_available(self, mocker):
         """Test that less pager is used when available."""
-        from hunknote.cli import _show_in_pager
+        from hunknote.cli.utils import show_in_pager
 
         mocker.patch("shutil.which", return_value="/usr/bin/less")
         mock_popen = mocker.patch("subprocess.Popen")
         mock_popen.return_value.communicate = MagicMock()
 
-        _show_in_pager("Test content")
+        show_in_pager("Test content")
 
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args[0][0]
