@@ -137,6 +137,97 @@ class TestExtendedCommitJSON:
         assert len(data.get_bullets(3)) == 3
         assert len(data.get_bullets()) == 5
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestExtendedCommitJSONEdgeCases:
+        """Additional edge case tests for ExtendedCommitJSON."""
+
+        def test_get_subject_raises_when_neither_provided(self):
+            """Test get_subject raises ValueError when neither subject nor title provided."""
+            data = ExtendedCommitJSON(body_bullets=["Change"])
+            try:
+                data.get_subject()
+                assert False, "Should have raised ValueError"
+            except ValueError as e:
+                assert "subject" in str(e).lower() or "title" in str(e).lower()
+
+        def test_get_subject_with_whitespace_only_title(self):
+            """Test get_subject raises when title is whitespace only."""
+            data = ExtendedCommitJSON(title="   ", body_bullets=["Change"])
+            try:
+                data.get_subject()
+                assert False, "Should have raised ValueError"
+            except ValueError:
+                pass
+
+        def test_get_subject_with_whitespace_only_subject(self):
+            """Test get_subject falls back to title when subject is whitespace only."""
+            data = ExtendedCommitJSON(title="Valid title", subject="   ")
+            assert data.get_subject() == "Valid title"
+
+        def test_get_scope_returns_none_for_whitespace(self):
+            """Test get_scope returns None when scope is whitespace only."""
+            data = ExtendedCommitJSON(title="Test", scope="   ")
+            assert data.get_scope() is None
+
+        def test_get_scope_strips_whitespace(self):
+            """Test get_scope strips whitespace from scope."""
+            data = ExtendedCommitJSON(title="Test", scope="  api  ")
+            assert data.get_scope() == "api"
+
+        def test_get_type_strips_whitespace(self):
+            """Test get_type strips whitespace from type."""
+            data = ExtendedCommitJSON(title="Test", type="  feat  ")
+            assert data.get_type() == "feat"
+
+        def test_ensure_footers_list_with_none(self):
+            """Test footers validator converts None to empty list."""
+            data = ExtendedCommitJSON(title="Test", footers=None)
+            assert data.footers == []
+
+        def test_ensure_sections_list_with_blueprint_section_objects(self):
+            """Test sections validator handles BlueprintSection objects."""
+            section = BlueprintSection(title="Changes", bullets=["Change 1"])
+            data = ExtendedCommitJSON(
+                title="Test",
+                sections=[section],
+            )
+            assert len(data.sections) == 1
+            assert data.sections[0].title == "Changes"
+
+        def test_get_bullets_strips_whitespace(self):
+            """Test get_bullets strips whitespace from bullets."""
+            data = ExtendedCommitJSON(
+                title="Test",
+                body_bullets=["  First  ", "Second", "  "],
+            )
+            bullets = data.get_bullets()
+            assert bullets == ["First", "Second"]
+
+        def test_get_bullets_filters_empty_strings(self):
+            """Test get_bullets filters out empty strings."""
+            data = ExtendedCommitJSON(
+                title="Test",
+                body_bullets=["First", "", "Second", "   "],
+            )
+            bullets = data.get_bullets()
+            assert bullets == ["First", "Second"]
+
+        def test_get_summary_strips_whitespace(self):
+            """Test get_summary strips whitespace."""
+            data = ExtendedCommitJSON(
+                title="Test",
+                summary="  Summary text  ",
+            )
+            assert data.get_summary() == "Summary text"
+
+        def test_get_summary_returns_none_for_whitespace(self):
+            """Test get_summary returns None for whitespace only."""
+            data = ExtendedCommitJSON(title="Test", summary="   ")
+            assert data.get_summary() is None
+
 
 class TestSanitizeSubject:
     """Tests for sanitize_subject function."""
@@ -157,6 +248,32 @@ class TestSanitizeSubject:
         result = sanitize_subject(long_subject, max_length=72)
         assert len(result) == 72
         assert result.endswith("...")
+
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestSanitizeSubjectEdgeCases:
+        """Additional edge case tests for sanitize_subject."""
+
+        def test_multiline_subject(self):
+            """Test multiline subject takes only first line."""
+            result = sanitize_subject("First line\nSecond line\nThird line")
+            assert result == "First line"
+
+        def test_exact_max_length(self):
+            """Test subject at exact max length is unchanged."""
+            subject = "A" * 72
+            result = sanitize_subject(subject, max_length=72)
+            assert result == subject
+            assert len(result) == 72
+
+        def test_one_over_max_length(self):
+            """Test subject one char over max gets truncated."""
+            subject = "A" * 73
+            result = sanitize_subject(subject, max_length=72)
+            assert len(result) == 72
+            assert result.endswith("...")
 
 
 class TestStripTypePrefix:
@@ -265,6 +382,50 @@ class TestRenderDefault:
         assert result == "Add feature"
         assert "First change" not in result
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestRenderDefaultEdgeCases:
+        """Additional edge case tests for render_default."""
+
+        def test_empty_bullets_list(self):
+            """Test render_default with empty bullets list."""
+            data = ExtendedCommitJSON(
+                title="Add feature",
+                body_bullets=[],
+            )
+            config = StyleConfig()
+            result = render_default(data, config)
+            assert result == "Add feature"
+
+        def test_max_bullets_limits_output(self):
+            """Test max_bullets config limits bullet output."""
+            data = ExtendedCommitJSON(
+                title="Add feature",
+                body_bullets=["One", "Two", "Three", "Four", "Five"],
+            )
+            config = StyleConfig(max_bullets=3)
+            result = render_default(data, config)
+            assert "- One" in result
+            assert "- Two" in result
+            assert "- Three" in result
+            assert "- Four" not in result
+            assert "- Five" not in result
+
+        def test_long_bullet_wrapping(self):
+            """Test long bullets are wrapped correctly."""
+            long_bullet = "This is a very long bullet point that should be wrapped to fit within the configured wrap width limit"
+            data = ExtendedCommitJSON(
+                title="Add feature",
+                body_bullets=[long_bullet],
+            )
+            config = StyleConfig(wrap_width=50)
+            result = render_default(data, config)
+            lines = result.split("\n")
+            for line in lines:
+                assert len(line) <= 50
+
 
 class TestRenderConventional:
     """Tests for render_conventional function."""
@@ -348,6 +509,87 @@ class TestRenderConventional:
 
         assert "Refs: PROJ-6767" in result
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestRenderConventionalEdgeCases:
+        """Additional edge case tests for render_conventional."""
+
+        def test_invalid_type_fallback_to_chore(self):
+            """Test invalid type falls back to chore."""
+            data = ExtendedCommitJSON(
+                type="invalid_type",
+                subject="Add feature",
+                body_bullets=["Change"],
+            )
+            config = StyleConfig()
+            result = render_conventional(data, config)
+            assert result.startswith("chore:")
+
+        def test_existing_footers_preserved(self):
+            """Test existing footers are preserved."""
+            data = ExtendedCommitJSON(
+                type="feat",
+                subject="Add feature",
+                body_bullets=["Change"],
+                footers=["Co-authored-by: Someone <email@example.com>"],
+            )
+            config = StyleConfig()
+            result = render_conventional(data, config)
+            assert "Co-authored-by: Someone" in result
+
+        def test_duplicate_ticket_footer_prevention(self):
+            """Test duplicate Refs footer is not added."""
+            data = ExtendedCommitJSON(
+                type="fix",
+                subject="Fix bug",
+                body_bullets=["Fix it"],
+                ticket="PROJ-123",
+                footers=["Refs: PROJ-123"],  # Already has Refs footer
+            )
+            config = StyleConfig()
+            result = render_conventional(data, config)
+            # Should only appear once
+            assert result.count("Refs: PROJ-123") == 1
+
+        def test_strips_double_type_prefix(self):
+            """Test conventional strips type prefix from subject to avoid double prefix."""
+            data = ExtendedCommitJSON(
+                type="feat",
+                subject="feat: Add feature",  # Subject already has type prefix
+                body_bullets=["Change"],
+            )
+            config = StyleConfig()
+            result = render_conventional(data, config)
+            assert result.startswith("feat: Add feature")
+            assert "feat: feat:" not in result
+
+        def test_strips_type_with_scope_prefix(self):
+            """Test conventional strips type(scope): prefix from subject."""
+            data = ExtendedCommitJSON(
+                type="fix",
+                scope="api",
+                subject="fix(api): Fix the bug",
+                body_bullets=["Fix it"],
+            )
+            config = StyleConfig()
+            result = render_conventional(data, config)
+            assert "fix(api): Fix the bug" in result
+            assert "fix(api): fix(api):" not in result
+
+        def test_breaking_footer_disabled(self):
+            """Test breaking footer can be disabled."""
+            data = ExtendedCommitJSON(
+                type="feat",
+                subject="Breaking feature",
+                body_bullets=["Major change"],
+                breaking_change=True,
+            )
+            config = StyleConfig(breaking_footer=False)
+            result = render_conventional(data, config)
+            assert "BREAKING CHANGE:" not in result
+
 
 class TestRenderTicket:
     """Tests for render_ticket function."""
@@ -402,6 +644,51 @@ class TestRenderTicket:
 
         assert "NEW-222" in result
         assert "OLD-111" not in result
+
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestRenderTicketEdgeCases:
+        """Additional edge case tests for render_ticket."""
+
+        def test_no_ticket_fallback(self):
+            """Test render_ticket without ticket falls back to default-like format."""
+            data = ExtendedCommitJSON(
+                subject="Fix bug",
+                body_bullets=["Fix the issue"],
+                ticket=None,
+            )
+            config = StyleConfig()
+            result = render_ticket(data, config)
+            # Should just be the subject without any ticket
+            assert result.startswith("Fix bug")
+            assert "None" not in result
+
+        def test_body_disabled(self):
+            """Test render_ticket with body disabled."""
+            data = ExtendedCommitJSON(
+                subject="Fix bug",
+                body_bullets=["Fix the issue"],
+                ticket="PROJ-123",
+            )
+            config = StyleConfig(include_body=False)
+            result = render_ticket(data, config)
+            assert "PROJ-123" in result
+            assert "Fix the issue" not in result
+
+        def test_override_scope(self):
+            """Test render_ticket with scope override."""
+            data = ExtendedCommitJSON(
+                subject="Fix bug",
+                scope="old",
+                body_bullets=["Fix it"],
+                ticket="PROJ-123",
+            )
+            config = StyleConfig(ticket_placement="prefix")
+            result = render_ticket(data, config, override_scope="new")
+            assert "PROJ-123 (new)" in result
+            assert "(old)" not in result
 
 
 class TestRenderKernel:
@@ -471,6 +758,38 @@ class TestRenderKernel:
         assert result.startswith("net: handle packet loss")
         assert "fix(tcp):" not in result
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestRenderKernelEdgeCases:
+        """Additional edge case tests for render_kernel."""
+
+        def test_subsystem_from_scope_disabled(self):
+            """Test kernel style with subsystem_from_scope disabled."""
+            data = ExtendedCommitJSON(
+                scope="auth",
+                subject="Add login support",
+                body_bullets=["Implement login"],
+            )
+            config = StyleConfig(subsystem_from_scope=False)
+            result = render_kernel(data, config)
+            # Should not have scope prefix
+            assert not result.startswith("auth:")
+            assert result.startswith("Add login support")
+
+        def test_body_disabled(self):
+            """Test kernel style with body disabled."""
+            data = ExtendedCommitJSON(
+                scope="auth",
+                subject="Add login support",
+                body_bullets=["Implement login"],
+            )
+            config = StyleConfig(include_body=False)
+            result = render_kernel(data, config)
+            assert "auth: Add login support" in result
+            assert "Implement login" not in result
+
 
 class TestRenderCommitMessageStyled:
     """Tests for render_commit_message_styled function."""
@@ -513,6 +832,55 @@ class TestRenderCommitMessageStyled:
 
         assert "fix:" in result
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestRenderCommitMessageStyledAllProfiles:
+        """Tests for render_commit_message_styled with all profiles."""
+
+        def test_ticket_profile(self):
+            """Test rendering with ticket profile."""
+            data = ExtendedCommitJSON(
+                subject="Fix bug",
+                body_bullets=["Fix it"],
+                ticket="PROJ-123",
+            )
+            config = StyleConfig(profile=StyleProfile.TICKET)
+            result = render_commit_message_styled(data, config)
+            assert "PROJ-123" in result
+
+        def test_kernel_profile(self):
+            """Test rendering with kernel profile."""
+            data = ExtendedCommitJSON(
+                scope="net",
+                subject="Add TCP support",
+                body_bullets=["Add support"],
+            )
+            config = StyleConfig(profile=StyleProfile.KERNEL)
+            result = render_commit_message_styled(data, config)
+            assert result.startswith("net:")
+
+        def test_all_overrides_together(self):
+            """Test all overrides work together."""
+            data = ExtendedCommitJSON(
+                type="feat",
+                scope="old",
+                subject="Add feature",
+                body_bullets=["Change"],
+                ticket="OLD-111",
+            )
+            config = StyleConfig(profile=StyleProfile.DEFAULT)
+            result = render_commit_message_styled(
+                data,
+                config,
+                override_style=StyleProfile.TICKET,
+                override_scope="new",
+                override_ticket="NEW-222",
+            )
+            assert "NEW-222" in result
+            assert "(new)" in result
+
 
 class TestExtractTicketFromBranch:
     """Tests for extract_ticket_from_branch function."""
@@ -540,6 +908,39 @@ class TestExtractTicketFromBranch:
         branch = "feature/CUSTOM123-add-login"
         ticket = extract_ticket_from_branch(branch, r"(CUSTOM\d+)")
         assert ticket == "CUSTOM123"
+
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestExtractTicketFromBranchEdgeCases:
+        """Additional edge case tests for extract_ticket_from_branch."""
+
+        def test_multiple_tickets_returns_first(self):
+            """Test extraction returns first ticket when multiple present."""
+            branch = "feature/PROJ-123-and-PROJ-456"
+            ticket = extract_ticket_from_branch(branch)
+            assert ticket == "PROJ-123"
+
+        def test_lowercase_branch_with_uppercase_ticket(self):
+            """Test extraction from lowercase branch with uppercase ticket."""
+            branch = "feature/proj-123-add-login"
+            ticket = extract_ticket_from_branch(branch)
+            # Default pattern requires uppercase
+            assert ticket is None
+
+        def test_numeric_only_project(self):
+            """Test ticket with numeric project key."""
+            branch = "feature/A2-123-add-login"
+            ticket = extract_ticket_from_branch(branch)
+            # Pattern allows letters and numbers after first letter
+            assert ticket == "A2-123"
+
+        def test_long_project_key(self):
+            """Test ticket with long project key."""
+            branch = "feature/LONGPROJECT-9999-add-feature"
+            ticket = extract_ticket_from_branch(branch)
+            assert ticket == "LONGPROJECT-9999"
 
 
 class TestInferCommitType:
@@ -573,6 +974,68 @@ class TestInferCommitType:
     def test_empty_list_returns_none(self):
         """Test returns None for empty list."""
         assert infer_commit_type([]) is None
+
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestInferCommitTypeEdgeCases:
+        """Additional edge case tests for infer_commit_type."""
+
+        def test_gitlab_ci_files(self):
+            """Test inference for GitLab CI files."""
+            files = [".gitlab-ci.yml"]
+            assert infer_commit_type(files) == "ci"
+
+        def test_jenkinsfile(self):
+            """Test inference for Jenkinsfile."""
+            files = ["Jenkinsfile"]
+            assert infer_commit_type(files) == "ci"
+
+        def test_circleci_files(self):
+            """Test inference for CircleCI files."""
+            files = [".circleci/config.yml"]
+            assert infer_commit_type(files) == "ci"
+
+        def test_travis_files(self):
+            """Test inference for Travis CI files."""
+            files = [".travis.yml"]
+            assert infer_commit_type(files) == "ci"
+
+        def test_multiple_ci_files(self):
+            """Test inference for multiple CI files."""
+            files = [".github/workflows/ci.yml", ".github/workflows/release.yml"]
+            assert infer_commit_type(files) == "ci"
+
+        def test_doc_dir_files(self):
+            """Test inference for files in doc directory."""
+            files = ["doc/guide.txt", "doc/api.txt"]
+            assert infer_commit_type(files) == "docs"
+
+        def test_documentation_dir_files(self):
+            """Test inference for files in documentation directory."""
+            files = ["documentation/setup.md"]
+            assert infer_commit_type(files) == "docs"
+
+        def test_adoc_files(self):
+            """Test inference for asciidoc files."""
+            files = ["README.adoc", "docs/guide.adoc"]
+            assert infer_commit_type(files) == "docs"
+
+        def test_rst_files(self):
+            """Test inference for RST files."""
+            files = ["docs/index.rst", "docs/api.rst"]
+            assert infer_commit_type(files) == "docs"
+
+        def test_spec_directory(self):
+            """Test inference for spec directory (test files)."""
+            files = ["spec/feature_spec.rb", "spec/helper_spec.rb"]
+            assert infer_commit_type(files) == "test"
+
+        def test_jest_test_files(self):
+            """Test inference for Jest test files."""
+            files = ["__tests__/component.test.js", "__tests__/utils.test.js"]
+            assert infer_commit_type(files) == "test"
 
 
 class TestLoadStyleConfigFromDict:
@@ -610,6 +1073,66 @@ class TestLoadStyleConfigFromDict:
         assert config.wrap_width == 80
         assert config.ticket_placement == "suffix"
 
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestLoadStyleConfigEdgeCases:
+        """Additional edge case tests for load_style_config_from_dict."""
+
+        def test_invalid_profile_fallback_to_default(self):
+            """Test invalid profile falls back to DEFAULT."""
+            config = load_style_config_from_dict({
+                "style": {"profile": "nonexistent_profile"}
+            })
+            assert config.profile == StyleProfile.DEFAULT
+
+        def test_loads_kernel_config(self):
+            """Test loading kernel configuration."""
+            config = load_style_config_from_dict({
+                "style": {
+                    "profile": "kernel",
+                    "kernel": {
+                        "subsystem_from_scope": False,
+                    }
+                }
+            })
+            assert config.profile == StyleProfile.KERNEL
+            assert config.subsystem_from_scope is False
+
+        def test_loads_conventional_breaking_footer(self):
+            """Test loading conventional breaking_footer config."""
+            config = load_style_config_from_dict({
+                "style": {
+                    "conventional": {
+                        "breaking_footer": False,
+                    }
+                }
+            })
+            assert config.breaking_footer is False
+
+        def test_loads_ticket_key_regex(self):
+            """Test loading ticket key_regex config."""
+            config = load_style_config_from_dict({
+                "style": {
+                    "ticket": {
+                        "key_regex": r"(CUSTOM-\d+)",
+                    }
+                }
+            })
+            assert config.ticket_key_regex == r"(CUSTOM-\d+)"
+
+        def test_loads_conventional_types(self):
+            """Test loading custom conventional types."""
+            config = load_style_config_from_dict({
+                "style": {
+                    "conventional": {
+                        "types": ["feat", "fix", "custom"],
+                    }
+                }
+            })
+            assert config.conventional_types == ["feat", "fix", "custom"]
+
 
 class TestStyleConfigToDict:
     """Tests for style_config_to_dict function."""
@@ -624,6 +1147,40 @@ class TestStyleConfigToDict:
 
         assert result["style"]["profile"] == "conventional"
         assert result["style"]["max_bullets"] == 5
+
+    # ============================================================================
+    # Additional Test Cases for Complete Coverage
+    # ============================================================================
+
+    class TestStyleConfigToDictComplete:
+        """Complete tests for style_config_to_dict."""
+
+        def test_includes_all_config_sections(self):
+            """Test all config sections are included."""
+            config = StyleConfig(
+                profile=StyleProfile.TICKET,
+                include_body=False,
+                max_bullets=4,
+                wrap_width=80,
+                conventional_types=["feat", "fix"],
+                breaking_footer=False,
+                ticket_key_regex=r"(TEST-\d+)",
+                ticket_placement="suffix",
+                subsystem_from_scope=False,
+                blueprint_section_titles=["Changes"],
+            )
+            result = style_config_to_dict(config)
+
+            assert result["style"]["profile"] == "ticket"
+            assert result["style"]["include_body"] is False
+            assert result["style"]["max_bullets"] == 4
+            assert result["style"]["wrap_width"] == 80
+            assert result["style"]["conventional"]["types"] == ["feat", "fix"]
+            assert result["style"]["conventional"]["breaking_footer"] is False
+            assert result["style"]["ticket"]["key_regex"] == r"(TEST-\d+)"
+            assert result["style"]["ticket"]["placement"] == "suffix"
+            assert result["style"]["kernel"]["subsystem_from_scope"] is False
+            assert result["style"]["blueprint"]["section_titles"] == ["Changes"]
 
 
 class TestProfileDescriptions:
@@ -1127,4 +1684,186 @@ class TestExtendedCommitJSONMergeType:
         )
         assert data.get_type("feat") == "merge"
 
+
+# ============================================================================
+# Additional Top-Level Test Classes for Complete Coverage
+# ============================================================================
+
+
+class TestStyleConfigDefaults:
+    """Tests for StyleConfig default values."""
+
+    def test_ticket_key_regex_default(self):
+        """Test ticket_key_regex has correct default."""
+        config = StyleConfig()
+        assert config.ticket_key_regex == r"([A-Z][A-Z0-9]+-\d+)"
+
+    def test_ticket_placement_default(self):
+        """Test ticket_placement has correct default."""
+        config = StyleConfig()
+        assert config.ticket_placement == "prefix"
+
+    def test_blueprint_section_titles_default(self):
+        """Test blueprint_section_titles has correct default."""
+        config = StyleConfig()
+        assert config.blueprint_section_titles == BLUEPRINT_SECTION_TITLES
+
+    def test_breaking_footer_default(self):
+        """Test breaking_footer has correct default."""
+        config = StyleConfig()
+        assert config.breaking_footer is True
+
+    def test_subsystem_from_scope_default(self):
+        """Test subsystem_from_scope has correct default."""
+        config = StyleConfig()
+        assert config.subsystem_from_scope is True
+
+    def test_conventional_types_default(self):
+        """Test conventional_types has correct default."""
+        config = StyleConfig()
+        assert config.conventional_types == CONVENTIONAL_TYPES
+
+
+class TestWrapTextEdgeCases:
+    """Additional edge case tests for wrap_text."""
+
+    def test_empty_string(self):
+        """Test wrapping empty string."""
+        result = wrap_text("")
+        assert result == ""
+
+    def test_single_long_word(self):
+        """Test wrapping single long word that cannot be broken."""
+        long_word = "A" * 100
+        result = wrap_text(long_word, width=50)
+        # Since break_long_words=False, word should not be broken
+        assert long_word in result
+
+    def test_subsequent_indent(self):
+        """Test subsequent indent is applied correctly."""
+        text = "First part Second part Third part Fourth part"
+        result = wrap_text(text, width=20, initial_indent="", subsequent_indent="    ")
+        lines = result.split("\n")
+        if len(lines) > 1:
+            assert lines[1].startswith("    ")
+
+
+class TestProfileDescriptionsInvalidValues:
+    """Tests for StyleProfile error handling."""
+
+    def test_invalid_profile_raises_value_error(self):
+        """Test that invalid profile string raises ValueError."""
+        try:
+            StyleProfile("invalid")
+            assert False, "Should have raised ValueError"
+        except ValueError:
+            pass
+
+
+class TestBlueprintSectionValidation:
+    """Tests for BlueprintSection edge cases."""
+
+    def test_empty_title(self):
+        """Test section with empty title is allowed."""
+        section = BlueprintSection(title="", bullets=["Change"])
+        assert section.title == ""
+
+    def test_whitespace_title(self):
+        """Test section with whitespace title."""
+        section = BlueprintSection(title="  Changes  ", bullets=["Change"])
+        assert section.title == "  Changes  "  # Not stripped by model
+
+
+class TestRenderDefaultWithMaxBulletsZero:
+    """Test render_default edge case with max_bullets=0."""
+
+    def test_max_bullets_zero_does_not_limit(self):
+        """Test max_bullets=0 does not limit bullets (0 is falsy)."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            body_bullets=["One", "Two", "Three"],
+        )
+        config = StyleConfig(max_bullets=0)
+        result = render_default(data, config)
+        # With max_bullets=0 (falsy), get_bullets returns all bullets
+        assert "- One" in result
+        assert "- Two" in result
+        assert "- Three" in result
+
+
+class TestRenderConventionalNoBodyBullets:
+    """Test render_conventional with no body bullets."""
+
+    def test_no_body_bullets(self):
+        """Test conventional with no body bullets."""
+        data = ExtendedCommitJSON(
+            type="feat",
+            subject="Add feature",
+            body_bullets=[],
+        )
+        config = StyleConfig()
+        result = render_conventional(data, config)
+        assert result == "feat: Add feature"
+
+    def test_with_footers_but_no_body(self):
+        """Test conventional with footers but no body bullets."""
+        data = ExtendedCommitJSON(
+            type="feat",
+            subject="Add feature",
+            body_bullets=[],
+            ticket="PROJ-123",
+        )
+        config = StyleConfig()
+        result = render_conventional(data, config)
+        assert "feat: Add feature" in result
+        assert "Refs: PROJ-123" in result
+
+
+class TestRenderBlueprintNoSummary:
+    """Test render_blueprint without summary."""
+
+    def test_no_summary_sections_only(self):
+        """Test blueprint with sections but no summary."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            sections=[
+                BlueprintSection(title="Changes", bullets=["Change 1"]),
+            ],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+        assert "feat: Add feature" in result
+        assert "Changes:" in result
+
+    def test_empty_sections(self):
+        """Test blueprint with empty sections list."""
+        data = ExtendedCommitJSON(
+            title="Add feature",
+            type="feat",
+            summary="Just a summary.",
+            sections=[],
+        )
+        config = StyleConfig(profile=StyleProfile.BLUEPRINT)
+        result = render_blueprint(data, config)
+        assert "feat: Add feature" in result
+        assert "Just a summary." in result
+
+
+class TestRenderTicketSuffixWithBody:
+    """Test render_ticket suffix placement with body."""
+
+    def test_suffix_with_body(self):
+        """Test ticket suffix with body bullets."""
+        data = ExtendedCommitJSON(
+            subject="Fix bug",
+            body_bullets=["Fix 1", "Fix 2"],
+            ticket="PROJ-123",
+        )
+        config = StyleConfig(ticket_placement="suffix")
+        result = render_ticket(data, config)
+        # First line should end with ticket
+        first_line = result.split("\n")[0]
+        assert first_line.endswith("(PROJ-123)")
+        assert "- Fix 1" in result
 
