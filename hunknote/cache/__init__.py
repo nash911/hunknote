@@ -1,22 +1,21 @@
-"""Backward compatibility shim for hunknote.cache.
+"""Cache module for hunknote.
 
-This module re-exports all symbols from the new hunknote.cache package
-to maintain backward compatibility with existing imports.
-
-The cache module has been refactored into a package with the following structure:
-- hunknote/cache/models.py: CacheMetadata, ComposeCacheMetadata
-- hunknote/cache/paths.py: get_cache_dir, get_message_file, get_hash_file, etc.
-- hunknote/cache/utils.py: compute_context_hash, extract_staged_files, get_diff_preview
-- hunknote/cache/message.py: save_cache, load_cached_message, load_cache_metadata, etc.
-- hunknote/cache/compose.py: save_compose_cache, load_compose_plan, load_compose_metadata, etc.
+This package provides caching utilities to prevent redundant LLM API calls:
+- models: CacheMetadata, ComposeCacheMetadata data models
+- paths: Functions for getting cache file paths
+- utils: Utility functions (hash computation, file extraction, diff preview)
+- message: Commit message cache operations
+- compose: Compose plan cache operations
 """
 
-# Re-export everything from the new package
-from hunknote.cache import (
-    # Models
+# Models
+from hunknote.cache.models import (
     CacheMetadata,
     ComposeCacheMetadata,
-    # Path utilities
+)
+
+# Path utilities
+from hunknote.cache.paths import (
     get_cache_dir,
     get_compose_hash_file,
     get_compose_hunk_ids_file,
@@ -26,11 +25,17 @@ from hunknote.cache import (
     get_message_file,
     get_metadata_file,
     get_raw_json_file,
-    # General utilities
+)
+
+# General utilities
+from hunknote.cache.utils import (
     compute_context_hash,
     extract_staged_files,
     get_diff_preview,
-    # Message cache operations
+)
+
+# Message cache operations
+from hunknote.cache.message import (
     invalidate_cache,
     is_cache_valid,
     load_cache_metadata,
@@ -39,7 +44,10 @@ from hunknote.cache import (
     save_cache,
     update_message_cache,
     update_metadata_overrides,
-    # Compose cache operations
+)
+
+# Compose cache operations
+from hunknote.cache.compose import (
     invalidate_compose_cache,
     is_compose_cache_valid,
     load_compose_hunk_ids,
@@ -48,6 +56,7 @@ from hunknote.cache import (
     save_compose_cache,
     save_compose_hunk_ids,
 )
+
 
 __all__ = [
     # Models
@@ -85,3 +94,4 @@ __all__ = [
     "save_compose_cache",
     "save_compose_hunk_ids",
 ]
+
