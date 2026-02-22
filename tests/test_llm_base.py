@@ -1,5 +1,7 @@
 """Tests for hunknote.llm.base module."""
 
+import os
+
 import pytest
 
 from hunknote.formatters import CommitMessageJSON
@@ -653,4 +655,557 @@ class TestMergeStateInPrompts:
         """Test that prompts mention extracting branch name from merge state."""
         from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
         assert "Merging branch" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+
+# ============================================================================
+# Additional Test Cases for Complete Coverage
+# ============================================================================
+
+
+class TestRawLLMResult:
+    """Tests for RawLLMResult dataclass."""
+
+    def test_create_raw_result(self):
+        """Test creating RawLLMResult."""
+        from hunknote.llm.base import RawLLMResult
+
+        result = RawLLMResult(
+            raw_response='{"key": "value"}',
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        assert result.raw_response == '{"key": "value"}'
+        assert result.model == "gpt-4"
+        assert result.input_tokens == 100
+        assert result.output_tokens == 50
+
+    def test_raw_result_with_long_response(self):
+        """Test RawLLMResult with long response."""
+        from hunknote.llm.base import RawLLMResult
+
+        long_response = "x" * 10000
+        result = RawLLMResult(
+            raw_response=long_response,
+            model="claude-3",
+            input_tokens=5000,
+            output_tokens=2000,
+        )
+
+        assert len(result.raw_response) == 10000
+        assert result.model == "claude-3"
+
+    def test_raw_result_with_empty_response(self):
+        """Test RawLLMResult with empty response."""
+        from hunknote.llm.base import RawLLMResult
+
+        result = RawLLMResult(
+            raw_response="",
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=0,
+        )
+
+        assert result.raw_response == ""
+        assert result.output_tokens == 0
+
+
+class TestNormalizeCommitJson:
+    """Tests for _normalize_commit_json function edge cases."""
+
+    def test_normalize_title_only(self):
+        """Test normalization when only title is provided."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "title": "Add feature",
+            "body_bullets": ["Change 1"],
+        }
+        result = _normalize_commit_json(parsed)
+
+        assert result["title"] == "Add feature"
+        assert result["subject"] == "Add feature"
+
+    def test_normalize_subject_only(self):
+        """Test normalization when only subject is provided."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "subject": "Fix bug",
+            "body_bullets": ["Fix issue"],
+        }
+        result = _normalize_commit_json(parsed)
+
+        assert result["subject"] == "Fix bug"
+        assert result["title"] == "Fix bug"
+
+    def test_normalize_both_title_and_subject(self):
+        """Test normalization when both title and subject are provided."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "title": "Title text",
+            "subject": "Subject text",
+            "body_bullets": ["Change"],
+        }
+        result = _normalize_commit_json(parsed)
+
+        # Both should be preserved as-is
+        assert result["title"] == "Title text"
+        assert result["subject"] == "Subject text"
+
+    def test_normalize_subsystem_to_scope(self):
+        """Test that subsystem is converted to scope."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "subsystem": "net",
+            "subject": "fix packet handling",
+            "body_bullets": ["Fix bug"],
+        }
+        result = _normalize_commit_json(parsed)
+
+        assert "scope" in result
+        assert result["scope"] == "net"
+        assert "subsystem" not in result
+
+    def test_normalize_subsystem_does_not_override_scope(self):
+        """Test that subsystem does not override existing scope."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "subsystem": "net",
+            "scope": "api",
+            "subject": "fix endpoint",
+            "body_bullets": ["Fix"],
+        }
+        result = _normalize_commit_json(parsed)
+
+        # scope should remain unchanged, subsystem should still be there
+        assert result["scope"] == "api"
+        # subsystem stays in parsed dict since scope already exists
+        assert "subsystem" in result
+
+    def test_normalize_empty_sections_list(self):
+        """Test normalization with empty sections list."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "type": "feat",
+            "title": "Add feature",
+            "sections": [],
+        }
+        result = _normalize_commit_json(parsed)
+
+        assert result["sections"] == []
+        assert result["body_bullets"] == []
+
+    def test_normalize_preserves_extra_fields(self):
+        """Test that extra fields are preserved."""
+        from hunknote.llm.base import _normalize_commit_json
+
+        parsed = {
+            "title": "Test",
+            "body_bullets": ["Change"],
+            "extra_field": "extra_value",
+            "custom": {"nested": True},
+        }
+        result = _normalize_commit_json(parsed)
+
+        assert result["extra_field"] == "extra_value"
+        assert result["custom"]["nested"] is True
+
+
+class TestBaseLLMProviderMethods:
+    """Tests for BaseLLMProvider methods."""
+
+    def test_build_user_prompt(self):
+        """Test build_user_prompt method."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_DEFAULT
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt("test context")
+        expected = USER_PROMPT_TEMPLATE_DEFAULT.format(context_bundle="test context")
+
+        assert result == expected
+
+    def test_build_user_prompt_styled(self):
+        """Test build_user_prompt_styled method (uses conventional)."""
+        from hunknote.llm.base import BaseLLMProvider, USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+        result = provider.build_user_prompt_styled("test context")
+        expected = USER_PROMPT_TEMPLATE_CONVENTIONAL.format(context_bundle="test context")
+
+        assert result == expected
+
+    def test_generate_raw_raises_not_implemented(self):
+        """Test that generate_raw raises NotImplementedError by default."""
+        from hunknote.llm.base import BaseLLMProvider
+
+        class TestProvider(BaseLLMProvider):
+            def generate(self, context_bundle): pass
+            def get_api_key(self): pass
+
+        provider = TestProvider()
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            provider.generate_raw("system", "user")
+
+        assert "does not support generate_raw" in str(exc_info.value)
+        assert "TestProvider" in str(exc_info.value)
+
+
+class TestParseJsonResponseEdgeCases:
+    """Additional edge case tests for parse_json_response."""
+
+    def test_handles_json_with_trailing_newlines(self):
+        """Test handling JSON with trailing newlines."""
+        response = '{"title": "Test", "body_bullets": ["Change"]}\n\n\n'
+        result = parse_json_response(response)
+
+        assert result["title"] == "Test"
+
+    def test_handles_json_with_leading_newlines(self):
+        """Test handling JSON with leading newlines."""
+        response = '\n\n\n{"title": "Test", "body_bullets": ["Change"]}'
+        result = parse_json_response(response)
+
+        assert result["title"] == "Test"
+
+    def test_handles_json_with_unicode(self):
+        """Test handling JSON with unicode characters."""
+        response = '{"title": "Add émojis 🎉", "body_bullets": ["Support für Unicode"]}'
+        result = parse_json_response(response)
+
+        assert result["title"] == "Add émojis 🎉"
+        assert "für" in result["body_bullets"][0]
+
+    def test_extracts_first_json_object(self):
+        """Test that JSON is extracted from surrounding text but multiple objects fail."""
+        # With multiple JSON objects, the parser extracts from first { to last }
+        # which creates invalid JSON (two objects concatenated)
+        response = '''Some text before
+{"title": "First", "body_bullets": ["One"]}
+Some text between
+{"title": "Second", "body_bullets": ["Two"]}
+Some text after'''
+
+        # This should fail because it extracts content between first { and last }
+        # which results in two JSON objects concatenated
+        with pytest.raises(JSONParseError):
+            parse_json_response(response)
+
+    def test_extracts_single_json_from_text(self):
+        """Test that single JSON object is extracted from surrounding text."""
+        response = '''Here is my response:
+{"title": "Test", "body_bullets": ["Change"]}
+Hope this helps!'''
+        result = parse_json_response(response)
+
+        assert result["title"] == "Test"
+
+    def test_handles_json_with_special_characters_in_strings(self):
+        """Test handling JSON with special characters in strings."""
+        response = '{"title": "Fix \\"quoted\\" text", "body_bullets": ["Handle\\nNewlines"]}'
+        result = parse_json_response(response)
+
+        assert 'quoted' in result["title"]
+
+    def test_handles_json_arrays_in_objects(self):
+        """Test handling complex nested structures."""
+        response = '''{"title": "Test", "body_bullets": ["Change"], "sections": [{"title": "Changes", "bullets": ["Item 1", "Item 2"]}]}'''
+        result = parse_json_response(response)
+
+        assert result["title"] == "Test"
+        assert len(result["sections"]) == 1
+        assert result["sections"][0]["title"] == "Changes"
+
+
+class TestGenerateCommitJson:
+    """Tests for generate_commit_json function."""
+
+    def test_generate_commit_json_calls_provider(self, mocker):
+        """Test that generate_commit_json uses the correct provider."""
+        from hunknote.llm import generate_commit_json
+        from hunknote.styles import ExtendedCommitJSON
+
+        mock_result = LLMResult(
+            commit_json=ExtendedCommitJSON(title="Test", body_bullets=["Change"]),
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        mock_provider = mocker.MagicMock()
+        mock_provider.generate.return_value = mock_result
+
+        mocker.patch("hunknote.llm.get_provider", return_value=mock_provider)
+
+        result = generate_commit_json("test context")
+
+        assert result.commit_json.title == "Test"
+        mock_provider.generate.assert_called_once_with("test context")
+
+    def test_generate_commit_json_with_style(self, mocker):
+        """Test that generate_commit_json passes style to get_provider."""
+        from hunknote.llm import generate_commit_json
+        from hunknote.styles import ExtendedCommitJSON
+
+        mock_result = LLMResult(
+            commit_json=ExtendedCommitJSON(title="Test", body_bullets=["Change"]),
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+        )
+
+        mock_provider = mocker.MagicMock()
+        mock_provider.generate.return_value = mock_result
+
+        mock_get_provider = mocker.patch("hunknote.llm.get_provider", return_value=mock_provider)
+
+        generate_commit_json("test context", style="blueprint")
+
+        mock_get_provider.assert_called_once_with(style="blueprint")
+
+
+class TestProviderStyleAttribute:
+    """Tests for style attribute on all providers."""
+
+    def test_anthropic_provider_style(self):
+        """Test Anthropic provider stores style."""
+        from hunknote.llm.anthropic_provider import AnthropicProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = AnthropicProvider(style=style)
+            assert provider.style == style
+
+    def test_openai_provider_style(self):
+        """Test OpenAI provider stores style."""
+        from hunknote.llm.openai_provider import OpenAIProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = OpenAIProvider(style=style)
+            assert provider.style == style
+
+    def test_google_provider_style(self):
+        """Test Google provider stores style."""
+        from hunknote.llm.google_provider import GoogleProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = GoogleProvider(style=style)
+            assert provider.style == style
+
+    def test_mistral_provider_style(self):
+        """Test Mistral provider stores style."""
+        from hunknote.llm.mistral_provider import MistralProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = MistralProvider(style=style)
+            assert provider.style == style
+
+    def test_cohere_provider_style(self):
+        """Test Cohere provider stores style."""
+        from hunknote.llm.cohere_provider import CohereProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = CohereProvider(style=style)
+            assert provider.style == style
+
+    def test_groq_provider_style(self):
+        """Test Groq provider stores style."""
+        from hunknote.llm.groq_provider import GroqProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = GroqProvider(style=style)
+            assert provider.style == style
+
+    def test_openrouter_provider_style(self):
+        """Test OpenRouter provider stores style."""
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            provider = OpenRouterProvider(style=style)
+            assert provider.style == style
+
+
+class TestProviderCustomModel:
+    """Tests for custom model on all providers."""
+
+    def test_anthropic_provider_custom_model(self):
+        """Test Anthropic provider with custom model."""
+        from hunknote.llm.anthropic_provider import AnthropicProvider
+
+        provider = AnthropicProvider(model="claude-3-opus-20240229")
+        assert provider.model == "claude-3-opus-20240229"
+
+    def test_openai_provider_custom_model(self):
+        """Test OpenAI provider with custom model."""
+        from hunknote.llm.openai_provider import OpenAIProvider
+
+        provider = OpenAIProvider(model="gpt-4-turbo-preview")
+        assert provider.model == "gpt-4-turbo-preview"
+
+    def test_google_provider_custom_model(self):
+        """Test Google provider with custom model."""
+        from hunknote.llm.google_provider import GoogleProvider
+
+        provider = GoogleProvider(model="gemini-1.5-pro")
+        assert provider.model == "gemini-1.5-pro"
+
+    def test_mistral_provider_custom_model(self):
+        """Test Mistral provider with custom model."""
+        from hunknote.llm.mistral_provider import MistralProvider
+
+        provider = MistralProvider(model="mistral-large-latest")
+        assert provider.model == "mistral-large-latest"
+
+    def test_cohere_provider_custom_model(self):
+        """Test Cohere provider with custom model."""
+        from hunknote.llm.cohere_provider import CohereProvider
+
+        provider = CohereProvider(model="command-r-plus")
+        assert provider.model == "command-r-plus"
+
+    def test_groq_provider_custom_model(self):
+        """Test Groq provider with custom model."""
+        from hunknote.llm.groq_provider import GroqProvider
+
+        provider = GroqProvider(model="llama3-70b-8192")
+        assert provider.model == "llama3-70b-8192"
+
+    def test_openrouter_provider_custom_model(self):
+        """Test OpenRouter provider with custom model."""
+        from hunknote.llm.openrouter_provider import OpenRouterProvider
+
+        provider = OpenRouterProvider(model="anthropic/claude-3-opus")
+        assert provider.model == "anthropic/claude-3-opus"
+
+
+class TestApiKeyFromCredentials:
+    """Tests for API key retrieval from credentials file."""
+
+    def test_anthropic_key_from_credentials(self):
+        """Test Anthropic API key from credentials file."""
+        from hunknote.llm.anthropic_provider import AnthropicProvider
+        from unittest.mock import patch
+
+        provider = AnthropicProvider()
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("hunknote.global_config.get_credential", return_value="cred-key"):
+                key = provider.get_api_key()
+                assert key == "cred-key"
+
+    def test_openai_key_from_credentials(self):
+        """Test OpenAI API key from credentials file."""
+        from hunknote.llm.openai_provider import OpenAIProvider
+        from unittest.mock import patch
+
+        provider = OpenAIProvider()
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("hunknote.global_config.get_credential", return_value="openai-cred"):
+                key = provider.get_api_key()
+                assert key == "openai-cred"
+
+    def test_google_key_from_credentials(self):
+        """Test Google API key from credentials file."""
+        from hunknote.llm.google_provider import GoogleProvider
+        from unittest.mock import patch
+
+        provider = GoogleProvider()
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("hunknote.global_config.get_credential", return_value="google-cred"):
+                key = provider.get_api_key()
+                assert key == "google-cred"
+
+
+class TestExceptionMessages:
+    """Tests for exception message content."""
+
+    def test_missing_api_key_error_includes_env_var(self):
+        """Test that MissingAPIKeyError includes environment variable name."""
+        error = MissingAPIKeyError("TEST_API_KEY not found. Set TEST_API_KEY.")
+        assert "TEST_API_KEY" in str(error)
+
+    def test_json_parse_error_includes_details(self):
+        """Test that JSONParseError includes parsing details."""
+        error = JSONParseError("Failed to parse: invalid syntax at line 5")
+        assert "Failed to parse" in str(error)
+
+    def test_llm_error_is_catchable(self):
+        """Test that LLMError can be caught as base exception."""
+        try:
+            raise JSONParseError("test")
+        except LLMError as e:
+            assert "test" in str(e)
+
+
+class TestTypeSelectionRulesInPrompts:
+    """Tests for type selection rules in prompts."""
+
+    def test_conventional_prompt_has_absolute_rules(self):
+        """Test that conventional prompt has absolute type selection rules."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        assert "ABSOLUTE RULES" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert "FILE EXTENSION DETERMINES TYPE" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_blueprint_prompt_has_absolute_rules(self):
+        """Test that blueprint prompt has absolute type selection rules."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+
+        assert "ABSOLUTE RULES" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
+    def test_conventional_prompt_docs_rule(self):
+        """Test conventional prompt has rule for docs type."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        assert ".md" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+        assert ".rst" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_conventional_prompt_test_rule(self):
+        """Test conventional prompt has rule for test type."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        assert "test files" in USER_PROMPT_TEMPLATE_CONVENTIONAL.lower()
+
+    def test_conventional_prompt_ci_rule(self):
+        """Test conventional prompt has rule for CI type."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        assert "CI files" in USER_PROMPT_TEMPLATE_CONVENTIONAL or "ci" in USER_PROMPT_TEMPLATE_CONVENTIONAL.lower()
+
+
+class TestScopeRulesInPrompts:
+    """Tests for scope rules in prompts."""
+
+    def test_conventional_prompt_avoid_redundant_scope(self):
+        """Test conventional prompt mentions avoiding redundant scope."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+        assert "REDUNDANT SCOPE" in USER_PROMPT_TEMPLATE_CONVENTIONAL
+
+    def test_blueprint_prompt_avoid_redundant_scope(self):
+        """Test blueprint prompt mentions avoiding redundant scope."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_BLUEPRINT
+
+        assert "REDUNDANT SCOPE" in USER_PROMPT_TEMPLATE_BLUEPRINT
+
+    def test_ticket_prompt_avoid_redundant_scope(self):
+        """Test ticket prompt mentions avoiding redundant scope."""
+        from hunknote.llm.base import USER_PROMPT_TEMPLATE_TICKET
+
+        assert "REDUNDANT SCOPE" in USER_PROMPT_TEMPLATE_TICKET
 
