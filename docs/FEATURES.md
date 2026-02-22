@@ -1,71 +1,70 @@
-# Hunknote Features & Configuration Guide
+# Hunknote Documentation
 
-> AI-powered git commit message generator with multi-LLM support
-
-This documentation covers all features and configuration options available in the Hunknote CLI tool. Use this as a reference for setting up and customizing your commit message generation workflow.
+> Transform messy working trees into clean, atomic commit stacks with AI
 
 ---
 
-## Table of Contents
+## Introduction
 
-1. [Overview](#overview)
-2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [Command Reference](#command-reference)
-5. [Compose Mode](#compose-mode)
-6. [Commit Style Profiles](#commit-style-profiles)
-7. [Scope Inference](#scope-inference)
-8. [Intent Channel](#intent-channel)
-9. [Merge Detection](#merge-detection)
-10. [Configuration](#configuration)
-11. [LLM Providers](#llm-providers)
-12. [Caching System](#caching-system)
-13. [Ignore Patterns](#ignore-patterns)
-14. [Editor Integration](#editor-integration)
-15. [Git Integration](#git-integration)
-16. [Troubleshooting](#troubleshooting)
+Hunknote is an AI-powered CLI tool that goes beyond simple commit message generation. Its standout feature, **Compose Mode**, analyzes your working tree changes and intelligently splits them into a clean stack of atomic, well-documented commits — turning hours of manual git work into seconds.
+
+Whether you have a single focused change or a working tree full of mixed modifications, Hunknote handles it:
+
+- **Single change?** Generate a polished commit message instantly
+- **Mixed changes?** Let Compose split them into logical, atomic commits automatically
+
+### Why Hunknote?
+
+**The Problem**: Developers often accumulate multiple unrelated changes before committing. Manually splitting these into atomic commits is tedious — you need to carefully stage hunks, write messages for each, and ensure nothing gets lost.
+
+**The Solution**: Hunknote's Compose Mode analyzes your entire diff, understands which changes belong together, and creates a clean commit stack automatically:
+
+```
+Your messy working tree          What Compose creates
+─────────────────────────        ────────────────────
+ M src/auth.py                   C1: feat(auth): Add login endpoint
+ M src/api.py                    C2: fix(api): Handle null responses  
+ M README.md                     C3: docs: Update API documentation
+ M tests/test_auth.py            C4: test(auth): Add login tests
+```
+
+**Beyond message generation**, Hunknote offers:
+
+- **Compose Mode** — Split changes into atomic commits with one command
+- **Smart caching** — No redundant API calls, instant results for unchanged code
+- **Multiple styles** — Conventional Commits, Blueprint, Ticket-prefixed, and more
+- **Scope inference** — Automatic scope detection from file paths
+- **7 LLM providers** — Choose Anthropic, OpenAI, Google, Mistral, Cohere, Groq, or OpenRouter
+
+### Key Capabilities
+
+| Capability | Description |
+|------------|-------------|
+| **Compose Mode** | Split working tree changes into atomic commits automatically — the killer feature |
+| **Smart Caching** | No redundant API calls for unchanged changes |
+| **Multi-LLM Support** | 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
+| **Style Profiles** | Default, Blueprint, Conventional Commits, Ticket-prefixed, Kernel-style |
+| **Smart Scope** | Automatic scope detection from file paths |
+| **Intent Channel** | Guide message framing with explicit context |
+| **Merge Detection** | Automatic merge commit message generation |
 
 ---
 
-## Overview
+## Getting Started
 
-Hunknote is a command-line tool that analyzes your staged git changes and generates meaningful, well-structured commit messages using AI language models. It supports multiple LLM providers and includes smart caching to minimize API calls.
+### Installation
 
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Multi-LLM Support** | Choose from 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
-| **Compose Mode** | Split working tree changes into a clean stack of atomic commits |
-| **Commit Style Profiles** | Support for Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style |
-| **Smart Scope Inference** | Automatically detect scope from file paths (monorepo, path-prefix, mapping) |
-| **Intelligent Type Selection** | Automatically selects correct commit type (feat, fix, docs, test, merge, etc.) based on changed files |
-| **Intent Channel** | Provide explicit motivation with `--intent` to guide commit message framing |
-| **Merge Detection** | Automatically detects merge commits and conflict resolutions |
-| **Smart Caching** | Reuses generated messages when staged changes haven't changed |
-| **Raw JSON Debugging** | Inspect LLM response with `--json` flag |
-| **Structured Output** | Generates title + bullet points following git best practices |
-| **Intelligent Context** | Distinguishes between new, modified, deleted, and renamed files |
-| **Editor Integration** | Review and edit messages before committing |
-| **One-Command Commits** | Generate and commit in a single step with `hunknote commit` |
-| **Configurable Ignores** | Exclude lock files, build artifacts from analysis |
-| **Debug Mode** | Inspect cache metadata, tokens, scope inference, and file changes |
-
----
-
-## Installation
-
-### From PyPI (Recommended)
+**Recommended: Install from PyPI**
 
 ```bash
 # Using pipx (isolated environment)
 pipx install hunknote
 
-# Using pip
+# Or using pip
 pip install hunknote
 ```
 
-### From Source
+**Alternative: Install from source**
 
 ```bash
 git clone https://github.com/nash911/hunknote.git
@@ -73,192 +72,155 @@ cd hunknote
 poetry install
 ```
 
-### Verify Installation
+**Verify installation**
 
 ```bash
 hunknote --help
-git hunknote --help  # Git subcommand
+git hunknote --help
 ```
 
----
+### Initial Setup
 
-## Quick Start
-
-### 1. Initialize Configuration
+Run the interactive configuration wizard:
 
 ```bash
 hunknote init
 ```
 
-This interactive wizard will:
-1. Ask you to select an LLM provider
-2. Choose a model
-3. Enter your API key
+This will:
+1. Prompt you to select an LLM provider
+2. Let you choose a model
+3. Securely store your API key
 
 Configuration is saved to `~/.hunknote/`.
 
-### 2. Generate Your First Commit Message
+> **Tip**: You can reconfigure anytime by running `hunknote init` again.
+
+### Your First Commit Message
 
 ```bash
+# 1. Stage your changes
 git add <files>
+
+# 2. Generate a commit message
 hunknote
-```
 
-### 3. Edit and Commit
-
-```bash
-hunknote -e
+# 3. Review and commit
 hunknote commit
 ```
 
-Or commit immediately without confirmation:
-
-```bash
-hunknote commit -y
-```
+That's it! Hunknote analyzes your staged changes and generates an appropriate commit message.
 
 ---
 
-## Command Reference
+## Core Concepts
 
-### Main Command
+### How Hunknote Works
+
+1. **Collect Context**: Gathers branch name, staged files, diff, and recent commits
+2. **Apply Filters**: Excludes lock files and build artifacts from analysis
+3. **Check Cache**: Returns cached message if changes haven't changed
+4. **Call LLM**: Sends context to your configured LLM provider
+5. **Render Message**: Formats the response according to your style profile
+6. **Cache Result**: Stores the message for reuse
+
+### Message Structure
+
+Generated messages follow git best practices:
+
+```
+<Title line - imperative mood, max 72 chars>
+
+- <Bullet point describing a change>
+- <Bullet point describing another change>
+- <Additional details as needed>
+```
+
+**Example output:**
+
+```
+Add user authentication feature
+
+- Implement login and logout endpoints
+- Add session management middleware
+- Create user model with password hashing
+```
+
+### Caching
+
+Hunknote caches messages to avoid redundant API calls:
+
+- **Cache hit**: Same staged changes → uses cached message (no API call)
+- **Cache miss**: Different changes → generates new message
+- **Manual bypass**: Use `--regenerate` to force new generation
+- **Auto-invalidate**: Cache clears after successful commit
+
+Cache files are stored in `<repo>/.hunknote/`.
+
+---
+
+## Commands
+
+### Generate Message
 
 ```bash
 hunknote [OPTIONS]
 ```
 
-Generate an AI-powered commit message from staged changes.
-
-#### Options
-
-| Option | Short | Description | Default |
-|--------|-------|-------------|---------|
-| `--edit` | `-e` | Open message in editor for manual edits | `false` |
-| `--regenerate` | `-r` | Force regenerate, ignoring cached message | `false` |
-| `--debug` | `-d` | Show cache metadata (files, tokens, diff preview, scope inference) | `false` |
-| `--json` | `-j` | Show raw JSON response from LLM for debugging | `false` |
-| `--intent` | `-i` | Provide explicit intent/motivation to guide commit message framing | |
-| `--intent-file` | | Load intent text from a file | |
-| `--style` | | Override commit style profile (default, blueprint, conventional, ticket, kernel) | from config |
-| `--scope` | | Force a scope for the commit message (use 'auto' for inference) | auto |
-| `--no-scope` | | Disable scope even if profile supports it | `false` |
-| `--scope-strategy` | | Scope inference strategy (auto, monorepo, path-prefix, mapping, none) | from config |
-| `--ticket` | | Force a ticket key (e.g., PROJ-123) for ticket-style commits | |
-| `--max-diff-chars` | | Maximum characters for staged diff | `50000` |
-| `--help` | | Show help message | |
-
-#### Examples
-
-```bash
-# Generate and print message
-hunknote
-
-# Edit message in editor
-hunknote -e
-
-# Commit with generated message (prompts for confirmation)
-hunknote commit
-
-# Commit immediately without confirmation
-hunknote commit -y
-
-# Force regeneration (bypass cache)
-hunknote -r
-
-# View debug information (cache, tokens, scope inference)
-hunknote -d
-
-# View raw JSON response from LLM
-hunknote -j
-
-# Force regenerate and view raw JSON
-hunknote -r -j
-
-# Use conventional commits style with auto scope inference
-hunknote --style conventional
-
-# Use conventional commits style with explicit scope
-hunknote --style conventional --scope api
-
-# Use blueprint style for detailed commit messages
-hunknote --style blueprint
-
-# Use monorepo scope inference strategy
-hunknote --style conventional --scope-strategy monorepo
-
-# Disable scope inference
-hunknote --style conventional --no-scope
-
-# Use ticket-prefixed style
-hunknote --style ticket --ticket PROJ-123
-hunknote commit
-
-# Kernel style with subsystem
-hunknote --style kernel --scope auth
-
-# Provide explicit intent to guide commit message
-hunknote --intent "Fix race condition in connection handling"
-
-# Load intent from a file
-hunknote --intent-file ./intent.txt
-
-# Combine intent text and file, then commit
-hunknote --intent "Primary reason" --intent-file ./details.txt
-hunknote commit -y
-```
-
----
-
-### `hunknote init`
-
-Initialize hunknote with interactive configuration wizard.
-
-```bash
-hunknote init
-```
-
-**What it does:**
-- Prompts for LLM provider selection (1-7)
-- Prompts for model selection
-- Prompts for API key (hidden input)
-- Saves configuration to `~/.hunknote/config.yaml`
-- Saves API key to `~/.hunknote/credentials` (secure permissions)
-
-**If already configured:**
-- Asks for confirmation before overwriting
-
----
-
-### `hunknote commit`
-
-Commit staged changes using the generated message.
-
-```bash
-hunknote commit [OPTIONS]
-```
+Generate a commit message from staged changes.
 
 **Options:**
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--yes` | `-y` | Bypass confirmation prompt and commit immediately |
-
-**What it does:**
-- Uses the cached commit message from the last `hunknote` run
-- Prompts for confirmation before committing (unless `-y` is used)
-- If no cached message exists, shows an error asking to run `hunknote` first
-- After successful commit, invalidates the cache
+| `--edit` | `-e` | Open message in editor |
+| `--regenerate` | `-r` | Force regenerate, ignore cache |
+| `--debug` | `-d` | Show debug info (cache, tokens, scope) |
+| `--json` | `-j` | Show raw JSON response from LLM |
+| `--intent TEXT` | `-i` | Provide context to guide message framing |
+| `--intent-file PATH` | | Load intent from file |
+| `--style NAME` | | Override style profile |
+| `--scope TEXT` | | Force a specific scope |
+| `--no-scope` | | Disable scope |
+| `--ticket TEXT` | | Force ticket key (e.g., PROJ-123) |
 
 **Examples:**
 
 ```bash
-# Commit with confirmation prompt
-hunknote commit
+# Basic generation
+hunknote
 
-# Commit immediately without prompt (for CI/scripts)
-hunknote commit -y
-hunknote commit --yes
+# Edit before viewing
+hunknote -e
+
+# Force regeneration
+hunknote -r
+
+# Use conventional commits style
+hunknote --style conventional
+
+# Provide intent context
+hunknote --intent "Fix race condition in session handling"
+
+# Debug mode
+hunknote -d
 ```
+
+---
+
+### Commit
+
+```bash
+hunknote commit [OPTIONS]
+```
+
+Commit staged changes using the generated message.
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--yes` | `-y` | Skip confirmation prompt |
 
 **Workflow:**
 
@@ -269,34 +231,49 @@ hunknote
 # 2. (Optional) Edit message
 hunknote -e
 
-# 3. Commit
+# 3. Commit with confirmation
 hunknote commit
+
+# Or commit immediately (for scripts)
+hunknote commit -y
 ```
+
+> **Note**: If no cached message exists, you'll be prompted to run `hunknote` first.
 
 ---
 
-### `hunknote config` Subcommands
+### Init
 
-Manage global configuration stored in `~/.hunknote/`.
+```bash
+hunknote init
+```
 
-#### `hunknote config show`
+Initialize hunknote with interactive setup.
 
-Display current configuration.
+**What it configures:**
+- LLM provider selection
+- Model selection
+- API key (securely stored)
+
+**Configuration files created:**
+- `~/.hunknote/config.yaml` - Settings
+- `~/.hunknote/credentials` - API keys (secure permissions)
+
+---
+
+### Config
+
+Manage global configuration.
+
+#### Show Configuration
 
 ```bash
 hunknote config show
 ```
 
-**Output includes:**
-- Provider and model
-- Max tokens and temperature
-- Editor preference (if set)
-- Default ignore patterns (if set)
-- API key (masked)
+Displays current provider, model, and settings.
 
-#### `hunknote config set-provider`
-
-Set the active LLM provider and model.
+#### Set Provider
 
 ```bash
 # Interactive model selection
@@ -304,139 +281,57 @@ hunknote config set-provider google
 
 # Specify model directly
 hunknote config set-provider anthropic --model claude-sonnet-4-20250514
-hunknote config set-provider anthropic -m claude-3-5-haiku-latest
 ```
 
-#### `hunknote config set-key`
-
-Set or update an API key for a provider.
+#### Set API Key
 
 ```bash
 hunknote config set-key google
 hunknote config set-key anthropic
-hunknote config set-key openai
 ```
 
-API keys are stored in `~/.hunknote/credentials` with secure file permissions (owner read/write only).
-
-#### `hunknote config list-providers`
-
-List all available LLM providers.
+#### List Providers
 
 ```bash
 hunknote config list-providers
 ```
 
-**Output:**
-```
-Available LLM providers:
-
-  • anthropic
-  • openai
-  • google
-  • mistral
-  • cohere
-  • groq
-  • openrouter
-```
-
-#### `hunknote config list-models`
-
-List available models for a provider (or all providers).
+#### List Models
 
 ```bash
-# Models for specific provider
-hunknote config list-models google
-
-# All providers and models
+# All providers
 hunknote config list-models
+
+# Specific provider
+hunknote config list-models google
 ```
 
 ---
 
-### `hunknote ignore` Subcommands
-
-Manage ignore patterns in the repository's `.hunknote/config.yaml`.
-
-#### `hunknote ignore list`
-
-Show all ignore patterns.
-
-```bash
-hunknote ignore list
-```
-
-#### `hunknote ignore add`
-
-Add a pattern to the ignore list.
-
-```bash
-hunknote ignore add "*.log"
-hunknote ignore add "build/*"
-hunknote ignore add "dist/*"
-hunknote ignore add "package-lock.json"
-```
-
-#### `hunknote ignore remove`
-
-Remove a pattern from the ignore list.
-
-```bash
-hunknote ignore remove "*.log"
-```
-
----
-
-### `hunknote style` Subcommands
+### Style
 
 Manage commit message style profiles.
 
-#### `hunknote style list`
-
-List all available style profiles and show the current active profile.
+#### List Styles
 
 ```bash
 hunknote style list
 ```
 
-**Output:**
-```
-Available commit style profiles:
+Shows available profiles with descriptions.
 
-  • default ← active
-    Standard Hunknote format with title and bullet points
-
-  • conventional
-    Conventional Commits format (type(scope): subject)
-
-  • ticket
-    Ticket-prefixed format (PROJ-6767 subject)
-
-  • kernel
-    Linux kernel style (subsystem: subject)
-
-Current profile: default (from global config)
-```
-
-#### `hunknote style show`
-
-Show details about a specific style profile.
+#### Show Style Details
 
 ```bash
 hunknote style show conventional
 ```
 
-**Output includes:**
-- Format template
-- Example output
-- Profile-specific configuration options
+Shows format template and example output.
 
-#### `hunknote style set`
-
-Set the active style profile.
+#### Set Style
 
 ```bash
-# Set globally (applies to all repos)
+# Set globally
 hunknote style set conventional
 
 # Set for current repo only
@@ -445,240 +340,217 @@ hunknote style set ticket --repo
 
 ---
 
+### Scope
+
+Manage scope inference settings.
+
+#### Check Scope
+
+```bash
+hunknote scope check
+```
+
+Preview what scope would be inferred for current staged changes.
+
+#### Show Scope Tree
+
+```bash
+hunknote scope tree
+```
+
+Display file structure with detected scopes.
+
+#### JSON Output
+
+```bash
+hunknote scope json
+```
+
+Output scope analysis as JSON.
+
+---
+
+### Ignore
+
+Manage ignore patterns for the current repository.
+
+#### List Patterns
+
+```bash
+hunknote ignore list
+```
+
+#### Add Pattern
+
+```bash
+hunknote ignore add "*.log"
+hunknote ignore add "build/*"
+```
+
+#### Remove Pattern
+
+```bash
+hunknote ignore remove "*.log"
+```
+
+---
+
 ## Compose Mode
 
-Compose mode takes a messy working tree (tracked text changes) and produces a clean **commit stack** — splitting your changes into coherent, atomic commits.
+Compose mode splits your working tree changes into a clean stack of atomic commits.
+
+### Overview
+
+Instead of one large commit, compose analyzes your changes and creates multiple focused commits:
+
+```
+Working tree with mixed changes
+         ↓
+    hunknote compose
+         ↓
+┌─────────────────────┐
+│ C1: feat(auth): ... │
+│ C2: fix(api): ...   │
+│ C3: docs: ...       │
+└─────────────────────┘
+```
 
 ### Basic Usage
 
 ```bash
-# Preview the proposed commit stack (plan-only mode)
+# Preview the proposed commit stack
 hunknote compose
 
-# Execute the plan and create commits
+# Execute and create commits
 hunknote compose --commit
 
-# Skip confirmation prompt
+# Skip confirmation
 hunknote compose --commit --yes
 ```
 
-### What Compose Does
+### How It Works
 
-1. **Collects all tracked changes** (staged + unstaged) from `git diff HEAD`
-2. **Parses the diff** into files and hunks with stable IDs
-3. **Asks the LLM** to split changes into logical, atomic commits
-4. **Validates the plan** (no duplicate hunks, all hunks assigned, etc.)
-5. **Optionally executes** by applying patches and creating commits
+1. **Collects changes**: Gets all tracked changes from `git diff HEAD`
+2. **Parses diff**: Breaks down into files and hunks with stable IDs
+3. **Plans commits**: LLM determines how to split changes logically
+4. **Validates plan**: Ensures all hunks are assigned, no duplicates
+5. **Executes**: Applies patches and creates commits (if `--commit`)
 
-### Compose Options
+### Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--max-commits` | 6 | Maximum number of commits in the plan |
-| `--style` | (from config) | Override commit style profile |
-| `-c, --commit` | false | Execute the plan and create commits |
-| `-y, --yes` | false | Skip confirmation prompt in commit mode |
-| `--dry-run` | false | Force plan-only even if `--commit` present |
-| `-r, --regenerate` | false | Force regenerate the plan, ignoring cache |
-| `-j, --json` | false | Show the cached compose plan JSON for debugging |
-| `--from-plan` | none | Load plan from external JSON file (skip LLM) |
-| `--debug` | false | Print diagnostics (inventory, patch paths) |
+| `--max-commits` | 6 | Maximum commits in the plan |
+| `--style` | config | Style profile for messages |
+| `-c, --commit` | false | Execute and create commits |
+| `-y, --yes` | false | Skip confirmation |
+| `--dry-run` | false | Force preview mode |
+| `-r, --regenerate` | false | Ignore cache, regenerate plan |
+| `-j, --json` | false | Show cached plan JSON |
+| `--from-plan PATH` | | Load plan from file |
+| `--debug` | false | Show diagnostics |
 
 ### Caching
 
-Compose uses smart caching to avoid redundant LLM calls:
-- Cache key is computed from: diff content + style + max_commits
-- Cached files are stored in `.hunknote/`:
-  - `hunknote_compose_hash.txt` - Cache key hash
-  - `hunknote_compose_plan.json` - The full compose plan
-  - `hunknote_compose_metadata.json` - Generation metadata
-  - `hunknote_hunk_ids.json` - All hunks with diffs and commit assignments
-- Use `-r` or `--regenerate` to force regeneration
-- Use `-j` or `--json` to inspect the cached plan
-- Cache is automatically invalidated after successful commit execution
+Compose caches plans to avoid redundant LLM calls:
 
-### Hunk IDs File
+- Cache key: `diff content + style + max_commits`
+- Use `-r` to force regeneration
+- Use `-j` to inspect cached plan
+- Cache invalidates after successful execution
 
-The `hunknote_hunk_ids.json` file contains detailed information about each hunk:
+### Safety
 
-```json
-[
-  {
-    "hunk_id": "H1_abc123",
-    "file": "src/main.py",
-    "commit_id": "C1",
-    "header": "@@ -10,6 +10,8 @@ def main():",
-    "diff": "@@ -10,6 +10,8 @@ def main():\n     print(\"Hello\")\n+    print(\"World\")\n     return 0"
-  },
-  {
-    "hunk_id": "H2_def456",
-    "file": "src/util.py",
-    "commit_id": "unassigned",
-    "header": "@@ -1,3 +1,4 @@",
-    "diff": "..."
-  }
-]
-```
+**Preview mode (default)**: No git modifications
 
-This file is useful for:
-- Debugging unassigned hunk warnings
-- Understanding how changes are grouped
-- Reviewing the actual diff content for each hunk
+**Commit mode**: Includes recovery mechanisms
+- Saves current state before execution
+- Attempts restore on failure
+- Prints recovery instructions
 
-### Safety Features
+### Limitations
 
-**Plan mode (default)** does not modify git state:
-- No `git add`
-- No `git reset`
-- No `git apply`
-- No `git commit`
-
-**Commit mode** includes recovery mechanisms:
-- Saves current staged patch before execution
-- Saves current HEAD reference
-- Attempts best-effort restore on failure
-- Prints manual recovery instructions
-
-### Limitations (v1)
-
-- **Untracked files**: Not included by default. Add them first with `git add -N <file>`
-- **Binary files**: Detected and skipped with warnings
-- **Large diffs**: May hit token limits; use `--max-diff-chars` to control
+- **Untracked files**: Add with `git add -N <file>` first
+- **Binary files**: Detected and skipped
+- **Large diffs**: May hit token limits
 
 ### Examples
 
 ```bash
-# Preview split without executing
+# Preview only
 hunknote compose
 
-# Use conventional commits style
+# Use conventional style
 hunknote compose --style conventional
 
-# Limit to 3 commits max
+# Limit to 3 commits
 hunknote compose --max-commits 3
 
-# Execute without confirmation (for scripts)
+# Execute without confirmation
 hunknote compose -c -y
 
-# Force regenerate (ignore cache)
+# Force regenerate
 hunknote compose -r
 
-# Show cached compose plan JSON
-hunknote compose -j
-
-# Load a previously saved plan
-hunknote compose --from-plan plan.json --commit
-
-# Debug: see inventory and patch details
+# Debug mode
 hunknote compose --debug
 ```
 
 ---
 
-## Commit Style Profiles
+## Style Profiles
 
-Hunknote supports multiple commit message formats to match your team's conventions. The style determines how the generated commit message is formatted.
+Hunknote supports multiple commit message formats.
 
-### Available Profiles
+### Default
 
-#### 1. `default` (Standard Hunknote Format)
+Standard format with title and bullet points.
 
-The original Hunknote format with a title and bullet points.
-
-**Format:**
-```
-<Title>
-
-- <bullet>
-- <bullet>
-```
-
-**Example:**
 ```
 Add user authentication feature
 
 - Implement login and logout endpoints
 - Add session management middleware
-- Create user model with password hashing
 ```
 
-#### 2. `blueprint` (Structured Sections)
+**Usage:** `hunknote` or `hunknote --style default`
 
-A comprehensive format with summary paragraph and structured sections. Ideal for detailed commit messages that document changes, implementation, testing, and more.
+---
 
-**Format:**
-```
-<type>(<scope>): <title>
+### Blueprint
 
-<summary paragraph>
+Comprehensive format with structured sections.
 
-Changes:
-- <bullet>
-- <bullet>
-
-Implementation:
-- <bullet>
-
-Testing:
-- <bullet>
-
-Documentation:
-- <bullet>
-
-Notes:
-- <bullet>
-```
-
-**Example:**
 ```
 feat(auth): Add user authentication
 
-Implement secure user authentication with JWT tokens and session
-management for the API. This enables users to log in and maintain
-persistent sessions.
+Implement secure user authentication with JWT tokens
+and session management for the API.
 
 Changes:
 - Add login and logout endpoints
 - Implement JWT token validation
-- Add session management middleware
 
 Implementation:
 - Create auth middleware in hunknote/auth.py
-- Add user session storage with Redis backend
 
 Testing:
 - Add unit tests for auth flow
-- Add integration tests for login endpoint
 
 Notes:
-- Requires REDIS_URL environment variable for production
+- Requires REDIS_URL for production
 ```
 
-**Allowed section titles:** `Changes`, `Implementation`, `Testing`, `Documentation`, `Notes`, `Performance`, `Security`, `Config`, `API`
+**Allowed sections:** Changes, Implementation, Testing, Documentation, Notes, Performance, Security, Config, API
 
-**Usage:**
-```bash
-hunknote --style blueprint
-hunknote --style blueprint --scope api
-hunknote --style blueprint --no-scope
-```
+**Usage:** `hunknote --style blueprint`
 
-#### 3. `conventional` (Conventional Commits)
+---
 
-Following the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+### Conventional
 
-**Format:**
-```
-<type>(<scope>): <subject>
+[Conventional Commits](https://www.conventionalcommits.org/) specification.
 
-- <bullet>
-- <bullet>
-
-BREAKING CHANGE: <description>
-Refs: <ticket>
-```
-
-**Example:**
 ```
 feat(auth): Add user authentication
 
@@ -688,41 +560,16 @@ feat(auth): Add user authentication
 Refs: PROJ-123
 ```
 
-**Valid types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`
+**Valid types:** feat, fix, docs, refactor, perf, test, build, ci, chore, style, revert
 
-**Usage:**
-```bash
-hunknote --style conventional
-hunknote --style conventional --scope api
-hunknote --style conventional --no-scope  # Disable scope
-```
+**Usage:** `hunknote --style conventional`
 
-#### 4. `ticket` (Ticket-Prefixed)
+---
 
-For teams that require ticket/issue references in commit messages.
+### Ticket
 
-**Format (prefix - default):**
-```
-<KEY-123> <subject>
+Ticket-prefixed format for issue tracking.
 
-- <bullet>
-```
-
-**Format (prefix with scope):**
-```
-<KEY-123> (<scope>) <subject>
-
-- <bullet>
-```
-
-**Format (suffix):**
-```
-<subject> (<KEY-123>)
-
-- <bullet>
-```
-
-**Example:**
 ```
 PROJ-123 Add user authentication
 
@@ -730,162 +577,103 @@ PROJ-123 Add user authentication
 - Add session management
 ```
 
-**Usage:**
-```bash
-hunknote --style ticket --ticket PROJ-123
-hunknote --style ticket --ticket PROJ-123 --scope api
-```
+**Formats:**
+- Prefix (default): `PROJ-123 subject`
+- Prefix with scope: `PROJ-123 (auth) subject`
+- Suffix: `subject (PROJ-123)`
 
-**Automatic ticket extraction:** If `--ticket` is not provided, Hunknote will attempt to extract a ticket from the branch name using the configured regex pattern.
+**Usage:** `hunknote --style ticket --ticket PROJ-123`
 
-#### 5. `kernel` (Linux Kernel Style)
+> **Tip**: Hunknote can extract tickets from branch names automatically.
 
-Following the Linux kernel commit message format.
+---
 
-**Format:**
-```
-<subsystem>: <subject>
+### Kernel
 
-- <bullet> (optional)
-```
+Linux kernel commit style.
 
-**Example:**
 ```
 auth: Add user authentication
 
 - Implement login endpoint
 ```
 
-**Usage:**
-```bash
-hunknote --style kernel --scope auth
-```
+**Usage:** `hunknote --style kernel --scope auth`
+
+---
 
 ### Style Configuration
 
-Style settings can be configured in `~/.hunknote/config.yaml` (global) or `<repo>/.hunknote/config.yaml` (per-repo):
+Configure in `~/.hunknote/config.yaml`:
 
 ```yaml
 style:
-  profile: blueprint       # default | blueprint | conventional | ticket | kernel
-  include_body: true       # Whether to include bullet body
-  max_bullets: 6           # Maximum number of bullets
-  wrap_width: 72           # Line wrap width
+  profile: conventional
+  include_body: true
+  max_bullets: 6
+  wrap_width: 72
 
-  # Blueprint style options
+  # Blueprint options
   blueprint:
-    section_titles: [Changes, Implementation, Testing, Documentation, Notes]
+    section_titles: [Changes, Implementation, Testing]
 
-  # Conventional commits options
+  # Conventional options
   conventional:
-    types: [feat, fix, docs, refactor, perf, test, build, ci, chore]
-    breaking_footer: true
+    types: [feat, fix, docs, refactor, test]
 
-  # Ticket style options
+  # Ticket options
   ticket:
-    key_regex: "([A-Z][A-Z0-9]+-\\d+)"  # Regex for ticket extraction
-    placement: prefix                    # prefix | suffix
-
-  # Kernel style options
-  kernel:
-    subsystem_from_scope: true  # Use --scope as subsystem
+    key_regex: "([A-Z][A-Z0-9]+-\\d+)"
+    placement: prefix
 ```
-
-### Style Precedence
-
-Style settings are applied in this order (later overrides earlier):
-
-1. **Built-in defaults**
-2. **Global config** (`~/.hunknote/config.yaml`)
-3. **Repo config** (`<repo>/.hunknote/config.yaml`)
-4. **CLI flags** (`--style`, `--scope`, `--ticket`, `--no-scope`)
-
-### Automatic Type Inference
-
-When using `conventional` or `blueprint` style, Hunknote can automatically infer the commit type based on the files being changed:
-
-| Changed Files | Inferred Type |
-|---------------|---------------|
-| Only `.md`, `.rst`, docs files | `docs` |
-| Only test files | `test` |
-| Only CI files (`.github/workflows/`, etc.) | `ci` |
-| Only build/config files (`pyproject.toml`, etc.) | `build` |
-| Mixed changes | LLM determines type |
-
-### Intelligent Type Selection
-
-The LLM uses smart rules to select the correct commit type:
-
-**File Extension Priority:**
-- If ANY `.py/.js/.ts/.go/.rs/.java` file is modified → type is `feat`/`fix`/`refactor`/`perf` (never `docs`)
-- `docs` type is ONLY used when ALL changed files are `.md`/`.rst` documentation files
-- `test` type is ONLY used when ALL changed files are test files
-
-**Fix vs Refactor:**
-- `fix` = change improves/corrects behavior, fixes a problem, or makes something work better
-- `refactor` = ONLY when behavior stays exactly the same, just internal code structure changes
-- If changing prompts/templates to improve output quality → `fix` (behavior is improved)
-
-**Avoiding Redundant Scopes:**
-- `type="test"` with `scope="tests"` → scope is set to null (redundant)
-- `type="docs"` with `scope="docs"` → scope is set to null (redundant)
 
 ---
 
 ## Scope Inference
 
-Hunknote can automatically infer the scope from your staged files, ensuring consistent and accurate commit headers like `feat(api): ...` or `fix(ui): ...`.
+Hunknote automatically detects scope from your staged files.
 
-### How It Works
+### Strategies
 
-Scope inference analyzes your staged file paths to determine the most appropriate scope. It runs **before** the LLM call and provides deterministic, consistent results.
+#### Auto (Default)
 
-### Inference Strategies
-
-#### 1. **auto** (Default)
-
-Tries all strategies in order and uses the best match:
-1. Mapping (if configured)
-2. Monorepo
-3. Path-prefix
+Tries all strategies and uses the best match.
 
 ```bash
-hunknote --scope-strategy auto --style conventional
+hunknote --scope-strategy auto
 ```
 
-#### 2. **monorepo**
+#### Monorepo
 
-Detects scope from monorepo directory structures:
+Detects scope from monorepo directory structures.
 
 ```
-packages/auth/src/login.py    → scope: auth
+packages/auth/src/login.py → scope: auth
 apps/web/components/Button.js → scope: web
-libs/shared-ui/src/Input.tsx  → scope: shared-ui
 ```
 
-**Recognized roots:** `packages/`, `apps/`, `libs/`, `modules/`, `services/`, `plugins/`, `workspaces/`
+**Recognized roots:** packages/, apps/, libs/, modules/, services/
 
 ```bash
-hunknote --scope-strategy monorepo --style conventional
+hunknote --scope-strategy monorepo
 ```
 
-#### 3. **path-prefix**
+#### Path-Prefix
 
-Uses the most common path segment (excluding stop words like `src`, `lib`, `tests`):
+Uses the most common path segment.
 
 ```
-api/routes.py      → scope: api
-api/models.py      → scope: api
-api/utils.py       → scope: api
+api/routes.py → scope: api
+api/models.py → scope: api
 ```
 
 ```bash
-hunknote --scope-strategy path-prefix --style conventional
+hunknote --scope-strategy path-prefix
 ```
 
-#### 4. **mapping**
+#### Mapping
 
-Uses explicit path-to-scope mapping defined in config:
+Uses explicit path-to-scope configuration.
 
 ```yaml
 scope:
@@ -893,305 +681,101 @@ scope:
   mapping:
     "src/api/": api
     "src/web/": ui
-    "infra/": infra
 ```
 
 ```bash
-hunknote --scope-strategy mapping --style conventional
+hunknote --scope-strategy mapping
 ```
 
-#### 5. **none**
+#### None
 
-Disables scope inference entirely:
+Disables scope inference.
 
 ```bash
-hunknote --scope-strategy none --style conventional
-```
-
-### Special Cases
-
-| Scenario | Default Behavior |
-|----------|------------------|
-| All documentation files | Scope: `docs` |
-| All test files | Infer from test path or configured scope |
-| Mixed changes (low confidence) | No scope (avoids wrong scope) |
-
-### Configuration
-
-Scope settings can be configured in `~/.hunknote/config.yaml` or `<repo>/.hunknote/config.yaml`:
-
-```yaml
-scope:
-  enabled: true               # Enable/disable scope inference
-  strategy: auto              # auto | monorepo | path-prefix | mapping | none
-  min_files: 1                # Minimum files to consider a cluster
-  max_depth: 2                # How deep into paths to look
-  dominant_threshold: 0.6     # Required confidence for dominant scope
-
-  # Explicit path-to-scope mapping
-  mapping:
-    "src/api/": api
-    "src/web/": ui
-    "infra/": infra
-
-  # Monorepo root directories
-  monorepo_roots:
-    - "packages/"
-    - "apps/"
-    - "libs/"
-
-  # Scope for docs-only changes
-  docs_scope: docs
-
-  # Scope for tests-only changes (null to infer from path)
-  tests_scope: null
+hunknote --scope-strategy none
+# or
+hunknote --no-scope
 ```
 
 ### Precedence
 
-Scope is determined in this order (first non-null wins):
+Scope is determined in order (first wins):
 
-1. `--scope <value>` CLI flag (explicit scope)
-2. `--no-scope` CLI flag (disables scope)
-3. LLM suggested scope (from the AI's analysis of the changes)
-4. Heuristics-based scope inference (if enabled)
+1. `--scope <value>` CLI flag
+2. `--no-scope` CLI flag
+3. LLM suggested scope
+4. Heuristics-based inference
 5. No scope
 
-### Debug Output
-
-Use `--debug` to see scope inference details:
+### Debug
 
 ```bash
-hunknote --debug --style conventional
+hunknote --debug
 ```
 
-Output includes:
-- Strategy used
-- Inferred scope (from heuristics)
-- Confidence level
-- Reason for decision
-- LLM suggested scope
-- CLI override (if any)
-- Final scope used
+Shows: strategy used, inferred scope, confidence, final scope.
 
 ---
 
 ## Intent Channel
 
-The intent channel allows you to provide explicit motivation or context that guides how the LLM frames your commit message. This is useful when the diff alone doesn't convey the "why" behind your changes.
+Provide explicit context to guide commit message framing.
 
 ### Usage
 
 ```bash
-# Provide intent directly via CLI
+# Direct text
 hunknote --intent "Fix race condition in session handling"
 
-# Load intent from a file
-hunknote --intent-file ./commit-intent.txt
+# From file
+hunknote --intent-file ./context.txt
 
-# Combine both (concatenated with blank line)
-hunknote --intent "Primary motivation" --intent-file ./additional-context.txt
+# Both combined
+hunknote --intent "Primary reason" --intent-file ./details.txt
 ```
 
 ### How It Works
 
-1. **Intent is injected into the LLM prompt** as a dedicated `[INTENT]` section
-2. **The intent guides framing**, not technical facts - the LLM still constrains claims to what's in the diff
-3. **If intent contradicts the diff**, the diff takes precedence
-4. **Intent is included in the cache key** - different intents generate different messages
+- Intent is injected into the LLM prompt
+- Guides framing, not technical facts
+- Diff content takes precedence over intent
+- Different intents generate different messages (cached separately)
 
-### When to Use Intent
+### When to Use
 
-| Scenario | Example Intent |
-|----------|----------------|
-| Non-obvious fix | "Fix memory leak that only occurs under high load" |
-| Business context | "Requested by security team for compliance" |
-| Refactor motivation | "Prepare for upcoming API v2 migration" |
-| Bug reference | "Fixes issue reported in support ticket #1234" |
-| Performance reason | "Optimize for 10x increase in concurrent users" |
-
-### Debug Output
-
-In debug mode (`-d`), the intent is displayed:
-
-```
-Intent: Fix race condition in session han... (48 chars)
-```
-
-Only the first 80 characters are shown, along with the total length.
-
-### Validation
-
-- Whitespace-only intent is treated as "not provided"
-- If `--intent-file` points to a non-existent file, hunknote exits with an error
-- Empty intent content is ignored
+| Scenario | Example |
+|----------|---------|
+| Non-obvious fix | "Fix memory leak under high load" |
+| Business context | "Requested by security team" |
+| Refactor motivation | "Prepare for API v2 migration" |
+| Bug reference | "Fixes support ticket #1234" |
 
 ---
 
 ## Merge Detection
 
-Hunknote automatically detects when you're in a merge state (during `git merge`) and generates appropriate commit messages.
+Hunknote automatically detects merge states.
 
 ### Detected States
 
-| State | Detection | Commit Type |
-|-------|-----------|-------------|
-| **Merge in progress** | `.git/MERGE_HEAD` exists | `merge` |
-| **Merge conflict resolution** | `.git/MERGE_HEAD` + resolved conflicts staged | `merge` |
-| **Normal commit** | No `.git/MERGE_HEAD` | feat/fix/docs/etc. |
+| State | Detection | Behavior |
+|-------|-----------|----------|
+| Merge in progress | `.git/MERGE_HEAD` exists | Type: `merge` |
+| Conflict resolution | MERGE_HEAD + resolved conflicts | Type: `merge` |
+| Normal commit | No MERGE_HEAD | Normal type selection |
 
 ### Merge Message Format
-
-When a merge is detected, the commit message follows this format:
-
-```
-merge: Merge branch feature-auth
-
-- Integrate user authentication module
-- Add login and logout endpoints
-- Include session management
-```
-
-For conventional/blueprint styles:
 
 ```
 merge(auth): Merge branch feature-auth into main
 
-Integrate the feature-auth branch which adds user authentication
-with JWT tokens and session management.
+Integrate the feature-auth branch which adds user
+authentication with JWT tokens.
 
 Changes:
 - Add login and logout endpoints
 - Implement JWT token validation
-- Add session management middleware
 ```
-
-### Source Branch Detection
-
-Hunknote extracts the source branch name from:
-1. `.git/MERGE_MSG` (e.g., "Merge branch 'feature-auth'")
-2. `git name-rev` of the merge head commit
-
-This ensures the commit message accurately reflects what's being merged.
-
-### Context Bundle
-
-The merge state is included in the `[MERGE_STATE]` section of the context sent to the LLM:
-
-```
-[MERGE_STATE]
-MERGE IN PROGRESS
-Merging branch: feature-auth
-Merging commit: abc123def456
-```
-
-Or for conflict resolution:
-
-```
-[MERGE_STATE]
-MERGE CONFLICT - Resolving conflicts
-Merging branch: feature-auth
-Merging commit: abc123def456
-Files with resolved conflicts:
-  ! src/auth.py
-  ! tests/test_auth.py
-```
-
----
-
-## Configuration
-
-Hunknote uses two configuration locations:
-
-### Global Configuration (`~/.hunknote/`)
-
-User-level settings that apply to all repositories.
-
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Provider, model, and preference settings |
-| `credentials` | API keys (secure permissions) |
-
-#### `config.yaml` Options
-
-```yaml
-# LLM Provider (required)
-provider: google  # anthropic, openai, google, mistral, cohere, groq, openrouter
-
-# Model name (required)
-model: gemini-2.0-flash
-
-# Maximum tokens for LLM response
-max_tokens: 1500
-
-# Temperature for response generation (0.0-1.0)
-temperature: 0.3
-
-# Preferred editor for -e flag (optional)
-editor: gedit  # or vim, nano, code, etc.
-
-# Default ignore patterns applied to all repos (optional)
-default_ignore:
-  - poetry.lock
-  - package-lock.json
-  - "*.min.js"
-```
-
-#### `credentials` File Format
-
-```
-# hunknote API credentials
-GOOGLE_API_KEY=your-google-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
-OPENAI_API_KEY=your-openai-api-key
-```
-
-### Repository Configuration (`<repo>/.hunknote/`)
-
-Repository-specific settings that override or extend global settings.
-
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Repository-specific ignore patterns |
-| `hunknote_message.txt` | Cached commit message |
-| `hunknote_context_hash.txt` | Cache validity hash |
-| `hunknote_metadata.json` | Cache metadata (tokens, model, etc.) |
-
-#### Repository `config.yaml`
-
-```yaml
-ignore:
-  # Lock files
-  - poetry.lock
-  - package-lock.json
-  - yarn.lock
-  - pnpm-lock.yaml
-  - Cargo.lock
-  - Gemfile.lock
-  - composer.lock
-  - go.sum
-  # Build artifacts
-  - "*.min.js"
-  - "*.min.css"
-  - "*.map"
-  # Binary files
-  - "*.pyc"
-  - "*.so"
-  - "*.dll"
-  # IDE files
-  - ".idea/*"
-  - ".vscode/*"
-```
-
-### API Key Resolution Order
-
-API keys are resolved in this order (first found wins):
-
-1. **Environment variables** (highest priority)
-2. **`~/.hunknote/credentials` file**
-3. **Project `.env` file** (lowest priority)
-
-This allows CI/CD systems to use environment variables while developers use the credentials file.
 
 ---
 
@@ -1199,133 +783,128 @@ This allows CI/CD systems to use environment variables while developers use the 
 
 ### Supported Providers
 
-| Provider | API Key Variable | Best For |
-|----------|------------------|----------|
-| **Anthropic** | `ANTHROPIC_API_KEY` | High-quality, nuanced messages |
-| **OpenAI** | `OPENAI_API_KEY` | Versatile, widely used |
-| **Google** | `GOOGLE_API_KEY` | Fast, cost-effective |
-| **Mistral** | `MISTRAL_API_KEY` | European provider, good performance |
-| **Cohere** | `COHERE_API_KEY` | Enterprise-focused |
+| Provider | API Key Variable | Description |
+|----------|------------------|-------------|
+| **Anthropic** | `ANTHROPIC_API_KEY` | Claude models, high quality |
+| **OpenAI** | `OPENAI_API_KEY` | GPT models, versatile |
+| **Google** | `GOOGLE_API_KEY` | Gemini models, fast |
+| **Mistral** | `MISTRAL_API_KEY` | European provider |
+| **Cohere** | `COHERE_API_KEY` | Enterprise focused |
 | **Groq** | `GROQ_API_KEY` | Ultra-fast inference |
-| **OpenRouter** | `OPENROUTER_API_KEY` | Access 200+ models via single API |
+| **OpenRouter** | `OPENROUTER_API_KEY` | 200+ models via single API |
 
-### Available Models
+### Popular Models
 
-#### Anthropic
-- `claude-sonnet-4-20250514`
-- `claude-3-5-sonnet-latest`
-- `claude-3-5-haiku-latest`
-- `claude-3-opus-latest`
+**Anthropic**
+- claude-sonnet-4-20250514
+- claude-3-5-sonnet-latest
+- claude-3-5-haiku-latest
 
-#### OpenAI
-- `gpt-4.1`
-- `gpt-4.1-mini`
-- `gpt-4.1-nano`
-- `gpt-4o`
-- `gpt-4o-mini`
-- `gpt-4-turbo`
+**OpenAI**
+- gpt-4.1
+- gpt-4.1-mini
+- gpt-4o
 
-#### Google
-- `gemini-3-pro-preview`
-- `gemini-2.5-pro`
-- `gemini-3-flash-preview`
-- `gemini-2.5-flash`
-- `gemini-2.5-flash-lite`
-- `gemini-2.0-flash`
-- `gemini-2.0-flash-lite`
+**Google**
+- gemini-2.5-pro
+- gemini-2.5-flash
+- gemini-2.0-flash
 
-#### Mistral
-- `mistral-large-latest`
-- `mistral-medium-latest`
-- `mistral-small-latest`
-- `codestral-latest`
+**Mistral**
+- mistral-large-latest
+- codestral-latest
 
-#### Cohere
-- `command-r-plus`
-- `command-r`
-- `command`
+**Groq**
+- llama-3.3-70b-versatile
+- llama-3.1-8b-instant
 
-#### Groq
-- `llama-3.3-70b-versatile`
-- `llama-3.1-8b-instant`
-- `mixtral-8x7b-32768`
+### API Key Resolution
 
-#### OpenRouter
-Access 200+ models through a single API:
-- `anthropic/claude-sonnet-4`
-- `anthropic/claude-3.5-sonnet`
-- `openai/gpt-4o`
-- `google/gemini-2.0-flash-exp`
-- `meta-llama/llama-3.3-70b-instruct`
-- `deepseek/deepseek-chat`
-- `qwen/qwen-2.5-72b-instruct`
-- And many more...
+Keys are resolved in order:
+
+1. Environment variables (highest priority)
+2. `~/.hunknote/credentials` file
+3. Project `.env` file
 
 ---
 
-## Caching System
+## Configuration
 
-Hunknote caches generated messages to avoid redundant API calls and costs.
+### Global Configuration
 
-### How It Works
+Location: `~/.hunknote/`
 
-1. **Context Hash**: A SHA256 hash is computed from the git context (branch, staged files, diff)
-2. **Cache Check**: If the hash matches the stored hash, the cached message is used
-3. **Automatic Invalidation**: Cache is invalidated after a successful commit
+**config.yaml**
 
-### Cache Behavior
+```yaml
+# Required
+provider: google
+model: gemini-2.0-flash
 
-| Scenario | Action |
-|----------|--------|
-| Same staged changes | Uses cached message (no API call) |
-| Different staged changes | Regenerates automatically |
-| After successful commit | Cache invalidated |
-| `--regenerate` flag | Bypasses cache, forces new generation |
+# Optional
+max_tokens: 1500
+temperature: 0.3
+editor: code --wait
 
-### Cache Files
-
-Located in `<repo>/.hunknote/`:
-
-| File | Content |
-|------|---------|
-| `hunknote_message.txt` | The cached commit message |
-| `hunknote_context_hash.txt` | SHA256 hash of the git context |
-| `hunknote_metadata.json` | Metadata (tokens, model, timestamp, files) |
-| `hunknote_llm_response.json` | Raw JSON response from LLM (for `-j` debugging) |
-
-### Gitignore Recommendation
-
-Add to your `.gitignore`:
-
-```gitignore
-# Hunknote cache (keep config.yaml for shared settings)
-.hunknote/hunknote_*.txt
-.hunknote/hunknote_*.json
+# Default ignores for all repos
+default_ignore:
+  - poetry.lock
+  - package-lock.json
 ```
+
+**credentials**
+
+```
+GOOGLE_API_KEY=your-api-key
+ANTHROPIC_API_KEY=your-api-key
+```
+
+### Repository Configuration
+
+Location: `<repo>/.hunknote/`
+
+**config.yaml**
+
+```yaml
+# Style settings
+style:
+  profile: conventional
+
+# Scope settings
+scope:
+  strategy: monorepo
+
+# Ignore patterns
+ignore:
+  - poetry.lock
+  - "*.min.js"
+  - ".idea/*"
+```
+
+### Precedence
+
+Settings apply in order (later overrides earlier):
+
+1. Built-in defaults
+2. Global config
+3. Repository config
+4. CLI flags
 
 ---
 
 ## Ignore Patterns
 
-Ignore patterns exclude files from the diff sent to the LLM. This:
-- Reduces token usage
-- Focuses messages on actual code changes
-- Avoids noise from auto-generated files
+Exclude files from LLM analysis to reduce tokens and focus on code.
 
 ### Pattern Syntax
 
-Uses glob pattern matching:
-
 | Pattern | Matches |
 |---------|---------|
-| `poetry.lock` | Exact file name |
-| `*.log` | Any file ending in .log |
-| `build/*` | Any file in build directory |
-| `.idea/*` | Any file in .idea directory |
+| `poetry.lock` | Exact filename |
+| `*.log` | Files ending in .log |
+| `build/*` | Files in build directory |
 
 ### Default Patterns
-
-New repositories get these defaults:
 
 ```yaml
 ignore:
@@ -1333,26 +912,35 @@ ignore:
   - poetry.lock
   - package-lock.json
   - yarn.lock
-  - pnpm-lock.yaml
   - Cargo.lock
-  - Gemfile.lock
-  - composer.lock
   - go.sum
+
   # Build artifacts
   - "*.min.js"
   - "*.min.css"
   - "*.map"
-  # Binary files
+
+  # Binary/compiled
   - "*.pyc"
-  - "*.pyo"
   - "*.so"
   - "*.dll"
-  - "*.exe"
-  # IDE files
+
+  # IDE
   - ".idea/*"
   - ".vscode/*"
-  - "*.swp"
-  - "*.swo"
+```
+
+### Managing Patterns
+
+```bash
+# List current patterns
+hunknote ignore list
+
+# Add pattern
+hunknote ignore add "*.log"
+
+# Remove pattern
+hunknote ignore remove "*.log"
 ```
 
 ---
@@ -1361,32 +949,26 @@ ignore:
 
 ### Default Editor Selection
 
-Hunknote looks for editors in this order:
+Hunknote looks for editors in order:
 
-1. **gedit** (with `--wait` flag)
-2. **`$EDITOR`** environment variable
-3. **nano**
-4. **vi** (fallback)
+1. `editor` setting in config
+2. gedit (with --wait)
+3. `$EDITOR` environment variable
+4. nano
+5. vi
 
-### Setting a Preferred Editor
-
-In `~/.hunknote/config.yaml`:
+### Configuration
 
 ```yaml
-editor: code --wait  # VS Code
-# editor: gedit --wait
-# editor: vim
-# editor: nano
+# In ~/.hunknote/config.yaml
+editor: code --wait
 ```
 
-### Using the Editor
+### Usage
 
 ```bash
-# Open generated message in editor
+# Edit generated message
 hunknote -e
-
-# Edit then commit
-hunknote -e -c
 ```
 
 ---
@@ -1395,137 +977,78 @@ hunknote -e -c
 
 ### Git Subcommand
 
-Hunknote registers as a git subcommand:
+Hunknote works as a git subcommand:
 
 ```bash
 git hunknote
-git hunknote -e -c
-git hunknote -r
+git hunknote -e
+git hunknote commit -y
 ```
 
 ### Context Collected
 
 Hunknote analyzes:
 
-1. **Branch name** - Current branch
-2. **Staged status** - Files staged for commit
-3. **File change types** - New, modified, deleted, renamed
-4. **Last 5 commits** - Recent commit history for context
-5. **Staged diff** - Actual code changes
-
-### Intelligent File Detection
-
-The tool distinguishes:
-- **New files** - Files that didn't exist before
-- **Modified files** - Existing files with changes
-- **Deleted files** - Files being removed
-- **Renamed files** - Files moved or renamed
-
-This helps the LLM generate accurate descriptions.
+- **Branch name** - Current branch
+- **Staged files** - Files staged for commit
+- **Change types** - New, modified, deleted, renamed
+- **Recent commits** - Last 5 commits for context
+- **Staged diff** - Actual code changes
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
+### No Staged Changes
 
-#### "No staged changes"
-
-**Problem:** Running `hunknote` with no staged files.
-
-**Solution:**
 ```bash
+# Error: No staged changes
 git add <files>
 hunknote
 ```
 
-#### "API key not found"
+### API Key Not Found
 
-**Problem:** Missing API key for the configured provider.
-
-**Solutions:**
-1. Run `hunknote config set-key <provider>`
-2. Set environment variable: `export GOOGLE_API_KEY=your-key`
-3. Add to `~/.hunknote/credentials`
-
-#### "Invalid provider"
-
-**Problem:** Typo in provider name.
-
-**Solution:** Check valid providers with `hunknote config list-providers`
-
-#### Cache not updating
-
-**Problem:** Getting old cached message despite changes.
-
-**Solution:**
 ```bash
-hunknote -r  # Force regeneration
+# Option 1: Set via CLI
+hunknote config set-key google
+
+# Option 2: Environment variable
+export GOOGLE_API_KEY=your-key
+
+# Option 3: Credentials file
+echo "GOOGLE_API_KEY=your-key" >> ~/.hunknote/credentials
+```
+
+### Cache Not Updating
+
+```bash
+# Force regeneration
+hunknote -r
 ```
 
 ### Debug Mode
-
-Use `-d` flag to inspect:
 
 ```bash
 hunknote -d
 ```
 
-**Shows:**
-- Cache status (valid/invalid)
-- Context hash
-- Generated timestamp
-- Model used
-- Token usage (input/output)
-- Staged files list
-- Diff preview
-- Message edit status
-- Scope inference details (strategy, inferred scope, confidence, LLM suggested scope)
+Shows: cache status, tokens, staged files, scope inference.
 
-### Raw JSON Mode
-
-Use `-j` flag to inspect the raw LLM response:
+### Raw JSON
 
 ```bash
 hunknote -j
 ```
 
-**Shows:**
-- Raw JSON response from the LLM
-- Useful for debugging type/scope selection issues
-- Helps understand what the LLM returned before rendering
+Shows the raw LLM response for debugging.
 
-### Getting Help
+### Help
 
 ```bash
 hunknote --help
 hunknote config --help
-hunknote ignore --help
-```
-
----
-
-## Output Format
-
-Generated messages follow git best practices:
-
-```
-<Title line - imperative mood, max 72 chars>
-
-- <Bullet point 1>
-- <Bullet point 2>
-- <Bullet point 3>
-```
-
-**Example:**
-
-```
-Add user authentication feature
-
-- Implement login and logout endpoints
-- Add session management middleware
-- Create user model with password hashing
-- Add JWT token generation and validation
+hunknote compose --help
 ```
 
 ---
@@ -1536,11 +1059,14 @@ Add user authentication feature
 - **Git**: Any recent version
 - **API Key**: At least one LLM provider
 
+---
+
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/nash911/hunknote/blob/main/LICENSE) for details.
 
 ---
 
-*Documentation generated for Hunknote v1.4.0*
-
+<p align="center">
+  <strong>Hunknote</strong> — AI-powered commit messages
+</p>

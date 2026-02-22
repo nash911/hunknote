@@ -1,11 +1,12 @@
 # Hunknote
 
-A fast, reliable CLI tool that generates high-quality git commit messages from your staged changes using AI.
+Transform messy working trees into clean, atomic commit stacks with AI.
 
 ## Features
 
+- **Compose mode**: Split working tree changes into a clean stack of atomic commits automatically — the killer feature
 - **Automatic commit message generation** from staged git changes
-- **Compose mode**: Split working tree changes into a clean commit stack automatically
+- **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Multi-LLM support**: Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, and OpenRouter
 - **Commit style profiles**: Default, Blueprint (structured sections), Conventional Commits, Ticket-prefixed, and Kernel-style
 - **Smart scope inference**: Automatically detect scope from file paths (monorepo, path-prefix, mapping)
@@ -13,7 +14,6 @@ A fast, reliable CLI tool that generates high-quality git commit messages from y
 - **Intent channel**: Provide explicit motivation/context with `--intent` to guide commit message framing
 - **Merge state detection**: Automatically detects merge commits and conflict resolutions
 - **Structured output**: Title line + bullet-point body following git best practices
-- **Smart caching**: Reuses generated messages for the same staged changes (no redundant API calls)
 - **Raw JSON debugging**: Inspect the raw LLM response with `--json` flag
 - **Intelligent context**: Distinguishes between new files and modified files for accurate descriptions
 - **Editor integration**: Review and edit generated messages before committing
