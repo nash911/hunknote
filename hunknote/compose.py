@@ -36,7 +36,9 @@ from hunknote.compose import (
     build_commit_patch,
     # Prompt
     COMPOSE_SYSTEM_PROMPT,
+    COMPOSE_RETRY_SYSTEM_PROMPT,
     build_compose_prompt,
+    build_compose_retry_prompt,
     # Executor
     ComposeExecutionError,
     ComposeSnapshot,
@@ -67,7 +69,9 @@ __all__ = [
     "build_commit_patch",
     # Prompt
     "COMPOSE_SYSTEM_PROMPT",
+    "COMPOSE_RETRY_SYSTEM_PROMPT",
     "build_compose_prompt",
+    "build_compose_retry_prompt",
     # Executor
     "ComposeSnapshot",
     "ComposeExecutionError",
