@@ -31,6 +31,7 @@ from hunknote.compose import (
     # Validation
     PlanValidationError,
     validate_plan,
+    try_correct_hunk_ids,
     # Patch
     build_commit_patch,
     # Prompt
@@ -61,6 +62,7 @@ __all__ = [
     # Validation
     "PlanValidationError",
     "validate_plan",
+    "try_correct_hunk_ids",
     # Patch
     "build_commit_patch",
     # Prompt
