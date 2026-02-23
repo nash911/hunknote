@@ -43,6 +43,9 @@ groq = "^1.0.0"
 pytest = "^9.0.2"
 pytest-mock = "^3.15.1"
 
+[tool.poetry.group.build.dependencies]
+pyinstaller = "^6.19.0"
+
 [tool.poetry.scripts]
 hunknote = "hunknote.cli:app"
 git-hunknote = "hunknote.cli:app"
