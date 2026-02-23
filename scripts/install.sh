@@ -4,7 +4,12 @@
 # https://hunknote.com
 #
 # Usage:
-#   curl -fsSL https://hunknote.com/install.sh | bash
+#   Install:    curl -fsSL https://hunknote.com/install.sh | bash
+#   Uninstall:  curl -fsSL https://hunknote.com/install.sh | bash -s -- --uninstall
+#
+# Options:
+#   --uninstall    Remove hunknote from the system
+#   --help         Show this help message
 #
 # This script downloads and installs a pre-built hunknote binary.
 # No Python installation required.
@@ -14,6 +19,7 @@ set -euo pipefail
 
 GITHUB_REPO="nash911/hunknote"
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
+HUNKNOTE_CONFIG_DIR="$HOME/.config/hunknote"
 
 # Colors (disabled in non-interactive mode)
 if [[ -t 1 ]]; then
@@ -377,10 +383,161 @@ fallback_to_pip() {
 }
 
 # -----------------------------------------------------------------------------
+# Uninstall
+# -----------------------------------------------------------------------------
+
+uninstall_hunknote() {
+    print_banner
+    info "Uninstalling Hunknote..."
+    echo ""
+
+    local found_any=false
+    local install_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+
+    # Find hunknote binary locations
+    local binary_locations=()
+
+    # Check common locations
+    for location in \
+        "${install_dir}/hunknote" \
+        "$HOME/.local/bin/hunknote" \
+        "/usr/local/bin/hunknote" \
+        "/usr/bin/hunknote"; do
+        if [[ -f "$location" ]]; then
+            binary_locations+=("$location")
+        fi
+    done
+
+    # Check PATH
+    local path_binary
+    path_binary=$(command -v hunknote 2>/dev/null || true)
+    if [[ -n "$path_binary" && ! " ${binary_locations[*]} " =~ " ${path_binary} " ]]; then
+        binary_locations+=("$path_binary")
+    fi
+
+    # Remove binaries
+    if [[ ${#binary_locations[@]} -gt 0 ]]; then
+        for binary in "${binary_locations[@]}"; do
+            if [[ -f "$binary" ]]; then
+                info "Removing binary: $binary"
+                if rm "$binary" 2>/dev/null; then
+                    success "Removed: $binary"
+                    found_any=true
+                else
+                    warn "Could not remove $binary (permission denied). Try: sudo rm $binary"
+                fi
+            fi
+        done
+    fi
+
+    # Check for pipx installation
+    if command -v pipx &> /dev/null; then
+        if pipx list 2>/dev/null | grep -q "hunknote"; then
+            info "Removing pipx installation..."
+            if pipx uninstall hunknote 2>/dev/null; then
+                success "Removed pipx installation"
+                found_any=true
+            fi
+        fi
+    fi
+
+    # Check for pip installation
+    for python_cmd in python3 python; do
+        if command -v "$python_cmd" &> /dev/null; then
+            if $python_cmd -m pip show hunknote &>/dev/null; then
+                info "Removing pip installation..."
+                if $python_cmd -m pip uninstall -y hunknote 2>/dev/null; then
+                    success "Removed pip installation"
+                    found_any=true
+                fi
+                break
+            fi
+        fi
+    done
+
+    # Ask about config directory
+    if [[ -d "$HUNKNOTE_CONFIG_DIR" ]]; then
+        echo ""
+        echo -e "${YELLOW}Found configuration directory: $HUNKNOTE_CONFIG_DIR${NC}"
+
+        if [[ -t 0 ]]; then
+            # Interactive mode - ask user
+            read -p "Do you want to remove configuration files? [y/N] " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rm -rf "$HUNKNOTE_CONFIG_DIR"
+                success "Removed configuration directory"
+            else
+                info "Keeping configuration files"
+            fi
+        else
+            # Non-interactive mode - keep configs
+            info "Keeping configuration files (run interactively to remove)"
+        fi
+    fi
+
+    # Check for .hunknote directories in git repos (just inform, don't remove)
+    echo ""
+    if [[ "$found_any" == true ]]; then
+        success "Hunknote has been uninstalled!"
+        echo ""
+        echo "Note: Per-repository .hunknote/ directories (if any) were not removed."
+        echo "You can manually remove them from your git repositories if needed."
+    else
+        warn "No hunknote installation found."
+        echo ""
+        echo "Hunknote may have been installed via a different method, or already uninstalled."
+    fi
+    echo ""
+}
+
+# -----------------------------------------------------------------------------
+# Help
+# -----------------------------------------------------------------------------
+
+show_help() {
+    echo "Hunknote Installer"
+    echo ""
+    echo "Usage:"
+    echo "  Install:    curl -fsSL https://hunknote.com/install.sh | bash"
+    echo "  Uninstall:  curl -fsSL https://hunknote.com/install.sh | bash -s -- --uninstall"
+    echo ""
+    echo "Options:"
+    echo "  --uninstall    Remove hunknote from the system"
+    echo "  --help, -h     Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  INSTALL_DIR    Custom installation directory (default: ~/.local/bin)"
+    echo "  GITHUB_TOKEN   GitHub token for API requests (avoids rate limiting)"
+    echo ""
+    echo "Documentation: https://docs.hunknote.com"
+    echo "GitHub:        https://github.com/${GITHUB_REPO}"
+    echo ""
+}
+
+# -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
 
 main() {
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --uninstall)
+                uninstall_hunknote
+                exit 0
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1. Use --help for usage information."
+                ;;
+        esac
+        shift
+    done
+
     # Check for curl
     if ! command -v curl &> /dev/null; then
         error "curl is required but not installed. Please install curl and try again."
