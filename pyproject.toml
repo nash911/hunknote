@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hunknote"
-version = "1.3.0"
+version = "1.4.0"
 description = "AI-powered git commit message generator with multi-LLM support"
 authors = ["Avinash Ranganath <nash911@gmail.com>"]
 license = "MIT"
