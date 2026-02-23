@@ -10,7 +10,7 @@ Hunknote is an AI-powered CLI tool that goes beyond simple commit message genera
 
 Whether you have a single focused change or a working tree full of mixed modifications, Hunknote handles it:
 
-- **Single change?** Generate a polished commit message instantly
+- **Single change?** Generate a polished commit message instantly in the style of your choice
 - **Mixed changes?** Let Compose split them into logical, atomic commits automatically
 
 ### Why Hunknote?
@@ -28,25 +28,17 @@ Your messy working tree          What Compose creates
  M tests/test_auth.py            C4: test(auth): Add login tests
 ```
 
-**Beyond message generation**, Hunknote offers:
-
-- **Compose Mode** — Split changes into atomic commits with one command
-- **Smart caching** — No redundant API calls, instant results for unchanged code
-- **Multiple styles** — Conventional Commits, Blueprint, Ticket-prefixed, and more
-- **Scope inference** — Automatic scope detection from file paths
-- **7 LLM providers** — Choose Anthropic, OpenAI, Google, Mistral, Cohere, Groq, or OpenRouter
-
 ### Key Capabilities
 
-| Capability | Description |
-|------------|-------------|
+| Capability | Description                                                                       |
+|------------|-----------------------------------------------------------------------------------|
 | **Compose Mode** | Split working tree changes into atomic commits automatically — the killer feature |
-| **Smart Caching** | No redundant API calls for unchanged changes |
-| **Multi-LLM Support** | 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter |
-| **Style Profiles** | Default, Blueprint, Conventional Commits, Ticket-prefixed, Kernel-style |
-| **Smart Scope** | Automatic scope detection from file paths |
-| **Intent Channel** | Guide message framing with explicit context |
-| **Merge Detection** | Automatic merge commit message generation |
+| **Smart Caching** | No redundant API calls for unchanged staged changes |
+| **Multi-LLM Support** | 7 providers: Anthropic, OpenAI, Google, Mistral, Cohere, Groq, OpenRouter         |
+| **Style Profiles** | Default, Blueprint, Conventional Commits, Ticket-prefixed, Kernel-style           |
+| **Smart Scope** | Automatic scope detection from file paths                                         |
+| **Intent Channel** | Guide message framing with explicit context                                       |
+| **Merge Detection** | Automatic merge commit message generation                                         |
 
 ---
 
@@ -1068,5 +1060,5 @@ MIT License - see [LICENSE](https://github.com/nash911/hunknote/blob/main/LICENS
 ---
 
 <p align="center">
-  <strong>Hunknote</strong> — AI-powered commit messages
+  <strong>Hunknote</strong> — Transform messy working trees into clean, atomic commit stacks with AI
 </p>
