@@ -56,6 +56,8 @@ def save_compose_cache(
     num_commits: int,
     style: str,
     max_commits: int,
+    retry_count: int = 0,
+    retry_stats: list[dict] | None = None,
 ) -> None:
     """Save the generated compose plan and its metadata to cache.
 
@@ -71,6 +73,8 @@ def save_compose_cache(
         num_commits: Number of commits in the plan.
         style: The style profile used.
         max_commits: Maximum commits setting.
+        retry_count: Number of LLM retries performed (0 if none).
+        retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].
     """
     # Save hash
     get_compose_hash_file(repo_root).write_text(context_hash)
@@ -90,6 +94,8 @@ def save_compose_cache(
         num_commits=num_commits,
         style=style,
         max_commits=max_commits,
+        retry_count=retry_count,
+        retry_stats=retry_stats,
     )
     get_compose_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
 
