@@ -87,6 +87,9 @@ def compose_command(
 
     Use --commit to execute the plan and create the commits.
     """
+    # Fixed retry count - not exposed to user
+    max_retries = 2
+
     from hunknote.config import load_config
     from hunknote.cache import (
         is_compose_cache_valid,
@@ -103,6 +106,7 @@ def compose_command(
         try_correct_hunk_ids,
         build_commit_patch,
         build_compose_prompt,
+        build_compose_retry_prompt,
         create_snapshot,
         restore_from_snapshot,
         execute_commit,
@@ -110,6 +114,7 @@ def compose_command(
         ComposePlan,
         ComposeExecutionError,
         COMPOSE_SYSTEM_PROMPT,
+        COMPOSE_RETRY_SYSTEM_PROMPT,
     )
     from hunknote.styles import (
         ExtendedCommitJSON,
@@ -437,18 +442,118 @@ def compose_command(
 
         # Try to auto-correct hallucinated hunk IDs before validation
         corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
-        if corrections_made:
-            typer.echo("Auto-corrected LLM hunk ID errors:", err=True)
-            for correction in corrections_log:
-                typer.echo(f"  - {correction}", err=True)
-            typer.echo("", err=True)
 
-        # Validate plan
+        # Validate plan with silent retry logic
         validation_errors = validate_plan(plan, inventory, max_commits)
+        retry_count = 0
+        retry_stats: list[dict] = []
+
+        # Silent retry loop: if validation fails and we haven't exhausted retries
+        while validation_errors and retry_count < max_retries and not plan_from_cache and not from_plan:
+            retry_count += 1
+
+            try:
+                from hunknote.llm import get_provider
+                provider = get_provider()
+
+                # Build retry prompt with validation errors
+                valid_hunk_ids = sorted(inventory.keys())
+                retry_prompt = build_compose_retry_prompt(
+                    file_diffs=file_diffs,
+                    previous_plan=plan,
+                    validation_errors=validation_errors,
+                    valid_hunk_ids=valid_hunk_ids,
+                    max_commits=max_commits,
+                )
+
+                # Call LLM with retry prompt
+                result = provider.generate_raw(
+                    system_prompt=COMPOSE_RETRY_SYSTEM_PROMPT,
+                    user_prompt=retry_prompt,
+                )
+
+                # Record retry stats silently
+                retry_stat = {
+                    "retry_number": retry_count,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
+                    "errors_before": validation_errors.copy(),
+                    "success": False,  # Will be updated if successful
+                }
+
+                llm_input_tokens += result.input_tokens
+                llm_output_tokens += result.output_tokens
+
+                # Parse the new plan
+                plan_data = parse_json_response(result.raw_response)
+                plan = ComposePlan(**plan_data)
+
+                # Try fuzzy correction on the new plan
+                corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+                # Re-validate
+                validation_errors = validate_plan(plan, inventory, max_commits)
+
+                if not validation_errors:
+                    retry_stat["success"] = True
+                    retry_stats.append(retry_stat)
+
+                    # Update cache with the corrected plan (including retry stats)
+                    changed_files = [f.file_path for f in file_diffs if not f.is_binary]
+                    save_compose_cache(
+                        repo_root=repo_root,
+                        context_hash=current_hash,
+                        plan_json=json.dumps(plan.model_dump(), indent=2),
+                        model=llm_model,
+                        input_tokens=llm_input_tokens,
+                        output_tokens=llm_output_tokens,
+                        changed_files=changed_files,
+                        total_hunks=len(inventory),
+                        num_commits=len(plan.commits),
+                        style=effective_profile.value,
+                        max_commits=max_commits,
+                        retry_count=retry_count,
+                        retry_stats=retry_stats,
+                    )
+
+                    # Update hunk IDs cache
+                    hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
+                    save_compose_hunk_ids(repo_root, hunk_ids_data)
+                else:
+                    retry_stats.append(retry_stat)
+
+            except JSONParseError:
+                # Silently record failed retry
+                retry_stats.append({
+                    "retry_number": retry_count,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "errors_before": validation_errors.copy(),
+                    "success": False,
+                    "error": "JSON parse error",
+                })
+            except Exception:
+                # Silently record failed retry
+                retry_stats.append({
+                    "retry_number": retry_count,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "errors_before": validation_errors.copy(),
+                    "success": False,
+                    "error": "Unknown error",
+                })
+
+        # Final validation check after all retries
         if validation_errors:
             typer.echo("Plan validation failed:", err=True)
             for error in validation_errors:
                 typer.echo(f"  - {error}", err=True)
+            if plan_from_cache:
+                typer.echo("", err=True)
+                typer.echo("Note: Using cached plan. Try --regenerate to generate a new plan.", err=True)
+            elif from_plan:
+                typer.echo("", err=True)
+                typer.echo("Note: Using plan from file. The provided plan has invalid hunk IDs.", err=True)
             raise typer.Exit(1)
 
         # Print plan
