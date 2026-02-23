@@ -762,6 +762,100 @@ class TestComposeCacheMetadata:
                 # Missing required fields
             )
 
+    def test_compose_metadata_retry_stats_defaults(self):
+        """Test that retry stats have sensible defaults."""
+        from hunknote.cache import ComposeCacheMetadata
+
+        metadata = ComposeCacheMetadata(
+            context_hash="abc123",
+            generated_at="2024-01-01T00:00:00+00:00",
+            model="gpt-4",
+            input_tokens=500,
+            output_tokens=200,
+            changed_files=["file1.py"],
+            total_hunks=5,
+            num_commits=3,
+            style="conventional",
+            max_commits=6,
+        )
+        # Defaults should be 0 retries and None stats
+        assert metadata.retry_count == 0
+        assert metadata.retry_stats is None
+
+    def test_compose_metadata_with_retry_stats(self):
+        """Test creating compose metadata with retry statistics."""
+        from hunknote.cache import ComposeCacheMetadata
+
+        retry_stats = [
+            {
+                "retry_number": 1,
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "errors_before": ["Commit C1 references unknown hunk: H2_wrong"],
+                "success": True,
+            }
+        ]
+
+        metadata = ComposeCacheMetadata(
+            context_hash="abc123",
+            generated_at="2024-01-01T00:00:00+00:00",
+            model="gpt-4",
+            input_tokens=1500,  # Total including retry
+            output_tokens=700,
+            changed_files=["file1.py"],
+            total_hunks=5,
+            num_commits=3,
+            style="conventional",
+            max_commits=6,
+            retry_count=1,
+            retry_stats=retry_stats,
+        )
+        assert metadata.retry_count == 1
+        assert metadata.retry_stats is not None
+        assert len(metadata.retry_stats) == 1
+        assert metadata.retry_stats[0]["success"] is True
+        assert metadata.retry_stats[0]["input_tokens"] == 1000
+
+    def test_compose_metadata_multiple_retries(self):
+        """Test compose metadata with multiple retry attempts."""
+        from hunknote.cache import ComposeCacheMetadata
+
+        retry_stats = [
+            {
+                "retry_number": 1,
+                "input_tokens": 1000,
+                "output_tokens": 400,
+                "errors_before": ["Error 1"],
+                "success": False,
+            },
+            {
+                "retry_number": 2,
+                "input_tokens": 1200,
+                "output_tokens": 500,
+                "errors_before": ["Error 2"],
+                "success": True,
+            },
+        ]
+
+        metadata = ComposeCacheMetadata(
+            context_hash="abc123",
+            generated_at="2024-01-01T00:00:00+00:00",
+            model="gpt-4",
+            input_tokens=2700,  # Total: 500 + 1000 + 1200
+            output_tokens=1100,  # Total: 200 + 400 + 500
+            changed_files=["file1.py"],
+            total_hunks=5,
+            num_commits=3,
+            style="conventional",
+            max_commits=6,
+            retry_count=2,
+            retry_stats=retry_stats,
+        )
+        assert metadata.retry_count == 2
+        assert len(metadata.retry_stats) == 2
+        assert metadata.retry_stats[0]["success"] is False
+        assert metadata.retry_stats[1]["success"] is True
+
 
 class TestComposeFilePaths:
     """Tests for compose cache file path functions."""
