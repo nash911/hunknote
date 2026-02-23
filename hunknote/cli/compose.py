@@ -100,6 +100,7 @@ def compose_command(
         parse_unified_diff,
         build_hunk_inventory,
         validate_plan,
+        try_correct_hunk_ids,
         build_commit_patch,
         build_compose_prompt,
         create_snapshot,
@@ -432,6 +433,14 @@ def compose_command(
             typer.echo("", err=True)
 
             typer.echo("=" * 60, err=True)
+            typer.echo("", err=True)
+
+        # Try to auto-correct hallucinated hunk IDs before validation
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+        if corrections_made:
+            typer.echo("Auto-corrected LLM hunk ID errors:", err=True)
+            for correction in corrections_log:
+                typer.echo(f"  - {correction}", err=True)
             typer.echo("", err=True)
 
         # Validate plan
