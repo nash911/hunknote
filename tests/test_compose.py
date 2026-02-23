@@ -14,6 +14,7 @@ from hunknote.compose import (
     build_hunk_inventory,
     format_inventory_for_llm,
     validate_plan,
+    try_correct_hunk_ids,
     build_commit_patch,
     build_compose_prompt,
     create_snapshot,
@@ -1366,6 +1367,1901 @@ class TestValidatePlanEdgeCases:
 
         errors = validate_plan(plan, inventory, max_commits=6)
         assert any("no title" in e.lower() for e in errors)
+
+
+class TestTryCorrectHunkIds:
+    """Tests for try_correct_hunk_ids function that auto-corrects LLM hallucinations."""
+
+    def test_corrects_single_invalid_hunk(self):
+        """Test that a single invalid hunk ID with matching prefix is corrected."""
+        # Create inventory with hunk H2_e4f347
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+added"],
+            ),
+            "H2_e4f347": HunkRef(
+                id="H2_e4f347",
+                file_path="README.md",
+                header="@@ -1,2 +1,77 @@",
+                old_start=1, old_len=2, new_start=1, new_len=77,
+                lines=["@@ -1,2 +1,77 @@", "+added"],
+            ),
+        }
+
+        # LLM hallucinated H2_e43c95 instead of H2_e4f347
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Update file1",
+                    hunks=["H1_abc123"],
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Update README",
+                    hunks=["H2_e43c95"],  # Wrong hash!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 1
+        assert "H2_e43c95" in corrections_log[0]
+        assert "H2_e4f347" in corrections_log[0]
+        # Verify plan was corrected
+        assert plan.commits[1].hunks == ["H2_e4f347"]
+
+    def test_no_correction_when_all_valid(self):
+        """Test that valid plans are not modified."""
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+added"],
+            ),
+            "H2_def456": HunkRef(
+                id="H2_def456",
+                file_path="file2.py",
+                header="@@ -1,2 +1,3 @@",
+                old_start=1, old_len=2, new_start=1, new_len=3,
+                lines=["@@ -1,2 +1,3 @@", "+added"],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Update both files",
+                    hunks=["H1_abc123", "H2_def456"],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+        assert plan.commits[0].hunks == ["H1_abc123", "H2_def456"]
+
+    def test_no_correction_when_ambiguous(self):
+        """Test that ambiguous cases (multiple candidates) are not auto-corrected."""
+        # Two hunks with same H2 prefix
+        inventory = {
+            "H2_abc123": HunkRef(
+                id="H2_abc123",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+added"],
+            ),
+            "H2_def456": HunkRef(
+                id="H2_def456",
+                file_path="file2.py",
+                header="@@ -1,2 +1,3 @@",
+                old_start=1, old_len=2, new_start=1, new_len=3,
+                lines=["@@ -1,2 +1,3 @@", "+added"],
+            ),
+        }
+
+        # Invalid ID with H2 prefix - ambiguous which one to correct to
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Test commit",
+                    hunks=["H2_wronghash"],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # Should NOT correct because it's ambiguous
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+        assert plan.commits[0].hunks == ["H2_wronghash"]
+
+    def test_no_correction_for_different_prefix(self):
+        """Test that invalid IDs with no matching prefix are not corrected."""
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+added"],
+            ),
+        }
+
+        # Invalid ID with completely different prefix
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Test commit",
+                    hunks=["H99_xyz"],  # No H99 in inventory
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_skips_already_used_hunks(self):
+        """Test that correction doesn't create duplicates."""
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+added"],
+            ),
+        }
+
+        # Both commits reference the same hunk - one valid, one invalid with same prefix
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="First commit",
+                    hunks=["H1_abc123"],  # Valid
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Second commit",
+                    hunks=["H1_wronghash"],  # Invalid - but H1_abc123 already used
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # Should NOT correct because H1_abc123 is already used
+        assert corrections_made is False
+        assert plan.commits[1].hunks == ["H1_wronghash"]
+
+    def test_multiple_corrections_in_same_plan(self):
+        """Test that multiple invalid hunks can be corrected in one pass."""
+        inventory = {
+            "H1_aaa111": HunkRef(
+                id="H1_aaa111",
+                file_path="file1.py",
+                header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4,
+                lines=["@@ -1,3 +1,4 @@", "+a"],
+            ),
+            "H2_bbb222": HunkRef(
+                id="H2_bbb222",
+                file_path="file2.py",
+                header="@@ -1,2 +1,3 @@",
+                old_start=1, old_len=2, new_start=1, new_len=3,
+                lines=["@@ -1,2 +1,3 @@", "+b"],
+            ),
+            "H3_ccc333": HunkRef(
+                id="H3_ccc333",
+                file_path="file3.py",
+                header="@@ -1,4 +1,5 @@",
+                old_start=1, old_len=4, new_start=1, new_len=5,
+                lines=["@@ -1,4 +1,5 @@", "+c"],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Commit 1",
+                    hunks=["H1_wrong1", "H2_wrong2"],  # Both wrong
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Commit 2",
+                    hunks=["H3_ccc333"],  # Valid
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 2
+        assert plan.commits[0].hunks == ["H1_aaa111", "H2_bbb222"]
+        assert plan.commits[1].hunks == ["H3_ccc333"]
+
+    def test_validation_passes_after_correction(self):
+        """Integration test: validation should pass after correction."""
+        inventory = {
+            "H2_e4f347": HunkRef(
+                id="H2_e4f347",
+                file_path="README.md",
+                header="@@ -1,2 +1,77 @@",
+                old_start=1, old_len=2, new_start=1, new_len=77,
+                lines=["@@ -1,2 +1,77 @@", "+added"],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Update README",
+                    hunks=["H2_e43c95"],  # Wrong hash - like the real bug
+                ),
+            ],
+        )
+
+        # Before correction, validation should fail
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) > 0
+        assert any("unknown hunk" in e.lower() for e in errors)
+
+        # Apply correction
+        corrections_made, _ = try_correct_hunk_ids(plan, inventory)
+        assert corrections_made is True
+
+        # After correction, validation should pass
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) == 0
+
+    # ========================================================================
+    # Multi-Level Cyclic Hash Swap Test Cases
+    # These test cases simulate LLM confusing hashes in cyclic patterns
+    # ========================================================================
+
+    def test_level_1_cyclic_hash_swap_2_hunks(self):
+        """
+        Level 1: Two hunks swap hashes with each other.
+
+        Correct:   H11_e9h3ng, H43_m3j0h4k
+        Incorrect: H11_m3j0h4k, H43_e9h3ng  (hashes swapped)
+        """
+        inventory = {
+            "H11_e9h3ng": HunkRef(
+                id="H11_e9h3ng",
+                file_path="file11.py",
+                header="@@ -11,3 +11,4 @@",
+                old_start=11, old_len=3, new_start=11, new_len=4,
+                lines=["@@ -11,3 +11,4 @@", "+line11"],
+            ),
+            "H43_m3j0h4k": HunkRef(
+                id="H43_m3j0h4k",
+                file_path="file43.py",
+                header="@@ -43,3 +43,4 @@",
+                old_start=43, old_len=3, new_start=43, new_len=4,
+                lines=["@@ -43,3 +43,4 @@", "+line43"],
+            ),
+        }
+
+        # Hashes are swapped: H11 has H43's hash, H43 has H11's hash
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Level 1 swap test",
+                    hunks=["H11_m3j0h4k", "H43_e9h3ng"],  # Both wrong!
+                ),
+            ],
+        )
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 2
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 2
+
+        # Verify corrections
+        assert plan.commits[0].hunks == ["H11_e9h3ng", "H43_m3j0h4k"]
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_level_2_cyclic_hash_swap_3_hunks(self):
+        """
+        Level 2: Three hunks form a cyclic hash swap.
+
+        Correct:   H11_e9h3ng, H43_m3j0h4k, H26_9h2nk4
+        Incorrect: H11_m3j0h4k, H43_9h2nk4, H26_e9h3ng  (A→B→C→A cycle)
+
+        The hashes rotate: H11 gets H43's hash, H43 gets H26's hash, H26 gets H11's hash
+        """
+        inventory = {
+            "H11_e9h3ng": HunkRef(
+                id="H11_e9h3ng",
+                file_path="file11.py",
+                header="@@ -11,3 +11,4 @@",
+                old_start=11, old_len=3, new_start=11, new_len=4,
+                lines=["@@ -11,3 +11,4 @@", "+line11"],
+            ),
+            "H43_m3j0h4k": HunkRef(
+                id="H43_m3j0h4k",
+                file_path="file43.py",
+                header="@@ -43,3 +43,4 @@",
+                old_start=43, old_len=3, new_start=43, new_len=4,
+                lines=["@@ -43,3 +43,4 @@", "+line43"],
+            ),
+            "H26_9h2nk4": HunkRef(
+                id="H26_9h2nk4",
+                file_path="file26.py",
+                header="@@ -26,3 +26,4 @@",
+                old_start=26, old_len=3, new_start=26, new_len=4,
+                lines=["@@ -26,3 +26,4 @@", "+line26"],
+            ),
+        }
+
+        # Cyclic rotation: H11→H43's hash, H43→H26's hash, H26→H11's hash
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Level 2 cyclic swap test",
+                    hunks=["H11_m3j0h4k", "H43_9h2nk4", "H26_e9h3ng"],
+                ),
+            ],
+        )
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 3
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 3
+
+        # Verify corrections
+        assert set(plan.commits[0].hunks) == {"H11_e9h3ng", "H43_m3j0h4k", "H26_9h2nk4"}
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_level_3_cyclic_hash_swap_4_hunks(self):
+        """
+        Level 3: Four hunks form a cyclic hash swap.
+
+        Correct:   H11_e9h3ng, H43_m3j0h4k, H26_9h2nk4, H387_k4m1k0
+        Incorrect: H11_m3j0h4k, H43_k4m1k0, H26_e9h3ng, H387_9h2nk4  (A→B→C→D→A cycle)
+
+        Pattern: H11→H43's hash, H43→H387's hash, H26→H11's hash, H387→H26's hash
+        """
+        inventory = {
+            "H11_e9h3ng": HunkRef(
+                id="H11_e9h3ng",
+                file_path="file11.py",
+                header="@@ -11,3 +11,4 @@",
+                old_start=11, old_len=3, new_start=11, new_len=4,
+                lines=["@@ -11,3 +11,4 @@", "+line11"],
+            ),
+            "H43_m3j0h4k": HunkRef(
+                id="H43_m3j0h4k",
+                file_path="file43.py",
+                header="@@ -43,3 +43,4 @@",
+                old_start=43, old_len=3, new_start=43, new_len=4,
+                lines=["@@ -43,3 +43,4 @@", "+line43"],
+            ),
+            "H26_9h2nk4": HunkRef(
+                id="H26_9h2nk4",
+                file_path="file26.py",
+                header="@@ -26,3 +26,4 @@",
+                old_start=26, old_len=3, new_start=26, new_len=4,
+                lines=["@@ -26,3 +26,4 @@", "+line26"],
+            ),
+            "H387_k4m1k0": HunkRef(
+                id="H387_k4m1k0",
+                file_path="file387.py",
+                header="@@ -387,3 +387,4 @@",
+                old_start=387, old_len=3, new_start=387, new_len=4,
+                lines=["@@ -387,3 +387,4 @@", "+line387"],
+            ),
+        }
+
+        # 4-way cyclic rotation
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Level 3 cyclic swap test",
+                    hunks=["H11_m3j0h4k", "H43_k4m1k0", "H26_e9h3ng", "H387_9h2nk4"],
+                ),
+            ],
+        )
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 4
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 4
+
+        # Verify all hunks corrected
+        assert set(plan.commits[0].hunks) == {"H11_e9h3ng", "H43_m3j0h4k", "H26_9h2nk4", "H387_k4m1k0"}
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_level_4_cyclic_hash_swap_5_hunks(self):
+        """
+        Level 4: Five hunks form a cyclic hash swap.
+
+        Correct:   H5_aaa, H17_bbb, H89_ccc, H204_ddd, H512_eee
+        Incorrect: H5_bbb, H17_ccc, H89_ddd, H204_eee, H512_aaa  (5-way cycle)
+        """
+        inventory = {
+            "H5_aaa111": HunkRef(
+                id="H5_aaa111",
+                file_path="file5.py",
+                header="@@ -5,3 +5,4 @@",
+                old_start=5, old_len=3, new_start=5, new_len=4,
+                lines=["@@ -5,3 +5,4 @@", "+line5"],
+            ),
+            "H17_bbb222": HunkRef(
+                id="H17_bbb222",
+                file_path="file17.py",
+                header="@@ -17,3 +17,4 @@",
+                old_start=17, old_len=3, new_start=17, new_len=4,
+                lines=["@@ -17,3 +17,4 @@", "+line17"],
+            ),
+            "H89_ccc333": HunkRef(
+                id="H89_ccc333",
+                file_path="file89.py",
+                header="@@ -89,3 +89,4 @@",
+                old_start=89, old_len=3, new_start=89, new_len=4,
+                lines=["@@ -89,3 +89,4 @@", "+line89"],
+            ),
+            "H204_ddd444": HunkRef(
+                id="H204_ddd444",
+                file_path="file204.py",
+                header="@@ -204,3 +204,4 @@",
+                old_start=204, old_len=3, new_start=204, new_len=4,
+                lines=["@@ -204,3 +204,4 @@", "+line204"],
+            ),
+            "H512_eee555": HunkRef(
+                id="H512_eee555",
+                file_path="file512.py",
+                header="@@ -512,3 +512,4 @@",
+                old_start=512, old_len=3, new_start=512, new_len=4,
+                lines=["@@ -512,3 +512,4 @@", "+line512"],
+            ),
+        }
+
+        # 5-way cyclic rotation: each hunk has the next hunk's hash
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Level 4 cyclic swap test",
+                    hunks=["H5_bbb222", "H17_ccc333", "H89_ddd444", "H204_eee555", "H512_aaa111"],
+                ),
+            ],
+        )
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 5
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 5
+
+        # Verify all hunks corrected
+        assert set(plan.commits[0].hunks) == {"H5_aaa111", "H17_bbb222", "H89_ccc333", "H204_ddd444", "H512_eee555"}
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_level_5_cyclic_hash_swap_6_hunks(self):
+        """
+        Level 5: Six hunks form a cyclic hash swap.
+
+        This is the deepest cyclic pattern where all 6 hashes are rotated.
+        """
+        inventory = {
+            "H1_hash_a": HunkRef(
+                id="H1_hash_a", file_path="f1.py", header="@@ -1,3 +1,4 @@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=["+a"],
+            ),
+            "H22_hash_b": HunkRef(
+                id="H22_hash_b", file_path="f22.py", header="@@ -22,3 +22,4 @@",
+                old_start=22, old_len=3, new_start=22, new_len=4, lines=["+b"],
+            ),
+            "H333_hash_c": HunkRef(
+                id="H333_hash_c", file_path="f333.py", header="@@ -333,3 +333,4 @@",
+                old_start=333, old_len=3, new_start=333, new_len=4, lines=["+c"],
+            ),
+            "H44_hash_d": HunkRef(
+                id="H44_hash_d", file_path="f44.py", header="@@ -44,3 +44,4 @@",
+                old_start=44, old_len=3, new_start=44, new_len=4, lines=["+d"],
+            ),
+            "H555_hash_e": HunkRef(
+                id="H555_hash_e", file_path="f555.py", header="@@ -555,3 +555,4 @@",
+                old_start=555, old_len=3, new_start=555, new_len=4, lines=["+e"],
+            ),
+            "H6_hash_f": HunkRef(
+                id="H6_hash_f", file_path="f6.py", header="@@ -6,3 +6,4 @@",
+                old_start=6, old_len=3, new_start=6, new_len=4, lines=["+f"],
+            ),
+        }
+
+        # 6-way cyclic rotation: A→B→C→D→E→F→A
+        # H1 gets hash_b, H22 gets hash_c, H333 gets hash_d, H44 gets hash_e, H555 gets hash_f, H6 gets hash_a
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Level 5 cyclic swap test",
+                    hunks=["H1_hash_b", "H22_hash_c", "H333_hash_d", "H44_hash_e", "H555_hash_f", "H6_hash_a"],
+                ),
+            ],
+        )
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 6
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 6
+
+        # Verify all hunks corrected
+        expected = {"H1_hash_a", "H22_hash_b", "H333_hash_c", "H44_hash_d", "H555_hash_e", "H6_hash_f"}
+        assert set(plan.commits[0].hunks) == expected
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_multiple_independent_cyclic_swaps(self):
+        """
+        Test multiple independent cyclic swaps in the same plan.
+
+        - Group 1: Level 2 swap (3 hunks)
+        - Group 2: Level 1 swap (2 hunks)
+        - Group 3: Level 3 swap (4 hunks)
+
+        Total: 9 hunks with cyclic swaps across 3 commits
+        """
+        inventory = {
+            # Group 1: H10, H20, H30 (level 2 - 3-way cycle)
+            "H10_g1a": HunkRef(id="H10_g1a", file_path="g1a.py", header="@@", old_start=10, old_len=3, new_start=10, new_len=4, lines=[]),
+            "H20_g1b": HunkRef(id="H20_g1b", file_path="g1b.py", header="@@", old_start=20, old_len=3, new_start=20, new_len=4, lines=[]),
+            "H30_g1c": HunkRef(id="H30_g1c", file_path="g1c.py", header="@@", old_start=30, old_len=3, new_start=30, new_len=4, lines=[]),
+            # Group 2: H100, H200 (level 1 - 2-way swap)
+            "H100_g2a": HunkRef(id="H100_g2a", file_path="g2a.py", header="@@", old_start=100, old_len=3, new_start=100, new_len=4, lines=[]),
+            "H200_g2b": HunkRef(id="H200_g2b", file_path="g2b.py", header="@@", old_start=200, old_len=3, new_start=200, new_len=4, lines=[]),
+            # Group 3: H1000, H2000, H3000, H4000 (level 3 - 4-way cycle)
+            "H1000_g3a": HunkRef(id="H1000_g3a", file_path="g3a.py", header="@@", old_start=1000, old_len=3, new_start=1000, new_len=4, lines=[]),
+            "H2000_g3b": HunkRef(id="H2000_g3b", file_path="g3b.py", header="@@", old_start=2000, old_len=3, new_start=2000, new_len=4, lines=[]),
+            "H3000_g3c": HunkRef(id="H3000_g3c", file_path="g3c.py", header="@@", old_start=3000, old_len=3, new_start=3000, new_len=4, lines=[]),
+            "H4000_g3d": HunkRef(id="H4000_g3d", file_path="g3d.py", header="@@", old_start=4000, old_len=3, new_start=4000, new_len=4, lines=[]),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Group 1: 3-way cycle",
+                    # H10→g1b, H20→g1c, H30→g1a (rotated)
+                    hunks=["H10_g1b", "H20_g1c", "H30_g1a"],
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Group 2: 2-way swap",
+                    # H100↔H200 swapped
+                    hunks=["H100_g2b", "H200_g2a"],
+                ),
+                PlannedCommit(
+                    id="C3",
+                    title="Group 3: 4-way cycle",
+                    # H1000→g3b, H2000→g3c, H3000→g3d, H4000→g3a
+                    hunks=["H1000_g3b", "H2000_g3c", "H3000_g3d", "H4000_g3a"],
+                ),
+            ],
+        )
+
+        # Before correction: all 9 hunks are wrong
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 9
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 9
+
+        # Verify each commit corrected
+        assert set(plan.commits[0].hunks) == {"H10_g1a", "H20_g1b", "H30_g1c"}
+        assert set(plan.commits[1].hunks) == {"H100_g2a", "H200_g2b"}
+        assert set(plan.commits[2].hunks) == {"H1000_g3a", "H2000_g3b", "H3000_g3c", "H4000_g3d"}
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    def test_mixed_correct_and_cyclic_swaps(self):
+        """
+        Test plan with mix of correct hunks and cyclic swaps.
+
+        - 5 correct hunks (no change needed)
+        - 3 hunks in level-2 cyclic swap
+        - 2 hunks in level-1 swap
+
+        Total: 10 hunks, 5 errors to correct
+        """
+        inventory = {
+            # Correct hunks (will be used as-is)
+            "H1_correct1": HunkRef(id="H1_correct1", file_path="c1.py", header="@@", old_start=1, old_len=3, new_start=1, new_len=4, lines=[]),
+            "H2_correct2": HunkRef(id="H2_correct2", file_path="c2.py", header="@@", old_start=2, old_len=3, new_start=2, new_len=4, lines=[]),
+            "H3_correct3": HunkRef(id="H3_correct3", file_path="c3.py", header="@@", old_start=3, old_len=3, new_start=3, new_len=4, lines=[]),
+            "H4_correct4": HunkRef(id="H4_correct4", file_path="c4.py", header="@@", old_start=4, old_len=3, new_start=4, new_len=4, lines=[]),
+            "H5_correct5": HunkRef(id="H5_correct5", file_path="c5.py", header="@@", old_start=5, old_len=3, new_start=5, new_len=4, lines=[]),
+            # Level-2 cyclic swap hunks
+            "H50_cyc_a": HunkRef(id="H50_cyc_a", file_path="cyc_a.py", header="@@", old_start=50, old_len=3, new_start=50, new_len=4, lines=[]),
+            "H60_cyc_b": HunkRef(id="H60_cyc_b", file_path="cyc_b.py", header="@@", old_start=60, old_len=3, new_start=60, new_len=4, lines=[]),
+            "H70_cyc_c": HunkRef(id="H70_cyc_c", file_path="cyc_c.py", header="@@", old_start=70, old_len=3, new_start=70, new_len=4, lines=[]),
+            # Level-1 swap hunks
+            "H80_swap_x": HunkRef(id="H80_swap_x", file_path="swap_x.py", header="@@", old_start=80, old_len=3, new_start=80, new_len=4, lines=[]),
+            "H90_swap_y": HunkRef(id="H90_swap_y", file_path="swap_y.py", header="@@", old_start=90, old_len=3, new_start=90, new_len=4, lines=[]),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Correct hunks commit",
+                    hunks=["H1_correct1", "H2_correct2", "H3_correct3"],  # All correct
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Mixed correct and cyclic",
+                    hunks=[
+                        "H4_correct4",  # Correct
+                        "H50_cyc_b",    # Wrong (has H60's hash)
+                        "H60_cyc_c",    # Wrong (has H70's hash)
+                        "H70_cyc_a",    # Wrong (has H50's hash)
+                    ],
+                ),
+                PlannedCommit(
+                    id="C3",
+                    title="Swap and correct",
+                    hunks=[
+                        "H5_correct5",  # Correct
+                        "H80_swap_y",   # Wrong (swapped with H90)
+                        "H90_swap_x",   # Wrong (swapped with H80)
+                    ],
+                ),
+            ],
+        )
+
+        # Before correction: 5 errors (3 cyclic + 2 swap)
+        errors_before = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_before) == 5
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 5
+
+        # Verify corrections
+        assert plan.commits[0].hunks == ["H1_correct1", "H2_correct2", "H3_correct3"]
+        assert set(plan.commits[1].hunks) == {"H4_correct4", "H50_cyc_a", "H60_cyc_b", "H70_cyc_c"}
+        assert set(plan.commits[2].hunks) == {"H5_correct5", "H80_swap_x", "H90_swap_y"}
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors_after) == 0
+
+    # ========================================================================
+    # FAILURE CASES: Edge/Corner cases where current fuzzy logic FAILS
+    # These tests document known limitations of try_correct_hunk_ids
+    # ========================================================================
+
+    def test_FAILS_wrong_numeric_prefix(self):
+        """
+        FAILURE CASE: LLM gets the numeric part wrong (not just the hash).
+
+        Inventory has H11, but LLM generates H12 with same hash.
+        Current strategy only matches by H# prefix, so this CANNOT be corrected.
+
+        Example:
+        - Correct:   H11_abc123
+        - Incorrect: H12_abc123  (number wrong, hash is actually correct!)
+        """
+        inventory = {
+            "H11_abc123": HunkRef(
+                id="H11_abc123",
+                file_path="file.py",
+                header="@@ -11,3 +11,4 @@",
+                old_start=11, old_len=3, new_start=11, new_len=4,
+                lines=["@@ -11,3 +11,4 @@", "+line"],
+            ),
+        }
+
+        # LLM got the number wrong (H12 instead of H11), but hash is correct
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Wrong number",
+                    hunks=["H12_abc123"],  # H12 doesn't exist, should be H11
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Current strategy cannot correct this because there's no H12 in inventory
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+        # Validation still fails
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) == 1
+        assert "H12_abc123" in errors[0]
+
+    def test_FAILS_ambiguous_multiple_candidates_same_prefix(self):
+        """
+        FAILURE CASE: Multiple hunks with same H# prefix exist.
+
+        When inventory has H5_aaa and H5_bbb (same file, multiple hunks),
+        and LLM generates H5_wrong, we can't know which one it meant.
+        """
+        inventory = {
+            "H5_aaa111": HunkRef(
+                id="H5_aaa111",
+                file_path="file.py",
+                header="@@ -5,3 +5,4 @@",
+                old_start=5, old_len=3, new_start=5, new_len=4,
+                lines=["@@ -5,3 +5,4 @@", "+first hunk"],
+            ),
+            "H5_bbb222": HunkRef(
+                id="H5_bbb222",
+                file_path="file.py",
+                header="@@ -50,3 +50,4 @@",
+                old_start=50, old_len=3, new_start=50, new_len=4,
+                lines=["@@ -50,3 +50,4 @@", "+second hunk"],
+            ),
+        }
+
+        # LLM generates wrong hash for H5 - but which H5 did it mean?
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Ambiguous H5",
+                    hunks=["H5_wrong99"],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Ambiguous - two candidates (H5_aaa111 and H5_bbb222)
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+        # Validation fails
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) == 1
+
+    def test_FAILS_completely_fabricated_hunk_id(self):
+        """
+        FAILURE CASE: LLM completely fabricates a hunk ID that doesn't
+        match any pattern in the inventory.
+        """
+        inventory = {
+            "H1_real11": HunkRef(
+                id="H1_real11", file_path="a.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+            "H2_real22": HunkRef(
+                id="H2_real22", file_path="b.py", header="@@",
+                old_start=2, old_len=3, new_start=2, new_len=4, lines=[],
+            ),
+        }
+
+        # LLM fabricates H999 which doesn't exist anywhere
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Fabricated hunk",
+                    hunks=["H999_fabricated"],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: No H999 prefix exists in inventory
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_malformed_hunk_id_no_underscore(self):
+        """
+        FAILURE CASE: LLM generates malformed hunk ID without underscore.
+        """
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        # Malformed: missing underscore
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Malformed ID",
+                    hunks=["H1abc123"],  # Missing underscore!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Can't parse "H1abc123" - no underscore separator
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_malformed_hunk_id_no_H_prefix(self):
+        """
+        FAILURE CASE: LLM generates hunk ID without 'H' prefix.
+        """
+        inventory = {
+            "H5_xyz789": HunkRef(
+                id="H5_xyz789", file_path="file.py", header="@@",
+                old_start=5, old_len=3, new_start=5, new_len=4, lines=[],
+            ),
+        }
+
+        # Malformed: missing H prefix
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="No H prefix",
+                    hunks=["5_xyz789"],  # Missing H!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Can't parse "5_xyz789" - regex expects H prefix
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_correct_hunk_already_used_in_earlier_commit(self):
+        """
+        FAILURE CASE: The correct hunk is already used in an earlier commit,
+        so correction would create a duplicate.
+
+        This is actually handled correctly (not corrected), but validation fails.
+        """
+        inventory = {
+            "H1_onlyone": HunkRef(
+                id="H1_onlyone", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        # H1_onlyone used correctly in C1, then incorrectly referenced in C2
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Uses H1 correctly",
+                    hunks=["H1_onlyone"],
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Tries to use H1 again with wrong hash",
+                    hunks=["H1_wronghash"],  # Would correct to H1_onlyone, but it's used
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS to correct: H1_onlyone is already used in C1
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+        # Plan still has the invalid hunk
+        assert plan.commits[1].hunks == ["H1_wronghash"]
+
+    def test_FAILS_hash_correct_but_number_swapped(self):
+        """
+        FAILURE CASE: Two hunks swap their NUMBERS but keep original hashes.
+
+        This is the inverse of the cyclic hash swap - here the hashes are
+        correct but attached to wrong numbers.
+
+        Correct:   H10_aaa, H20_bbb
+        Incorrect: H10_bbb, H20_aaa  (numbers swapped, not hashes)
+
+        Wait - this is actually the same as hash swap from the algorithm's POV.
+        Let me create a different case: hash is correct but number is off-by-one.
+        """
+        inventory = {
+            "H10_hashA": HunkRef(
+                id="H10_hashA", file_path="a.py", header="@@",
+                old_start=10, old_len=3, new_start=10, new_len=4, lines=[],
+            ),
+            "H20_hashB": HunkRef(
+                id="H20_hashB", file_path="b.py", header="@@",
+                old_start=20, old_len=3, new_start=20, new_len=4, lines=[],
+            ),
+        }
+
+        # LLM gets numbers off by one, but uses correct hashes
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Off-by-one numbers",
+                    hunks=["H11_hashA", "H21_hashB"],  # H11/H21 don't exist!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: No H11 or H21 in inventory, even though hashes are valid
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_partial_hash_match(self):
+        """
+        FAILURE CASE: LLM generates partial/truncated hash.
+
+        Correct hash is "abc123", LLM generates "abc" (truncated).
+        """
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Truncated hash",
+                    hunks=["H1_abc"],  # Truncated hash
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # This SUCCEEDS because H1 prefix matches and there's only one H1!
+        # The hash doesn't matter for the current algorithm.
+        assert corrections_made is True
+        assert plan.commits[0].hunks == ["H1_abc123"]
+
+    def test_FAILS_empty_hunk_id(self):
+        """
+        FAILURE CASE: LLM generates empty string as hunk ID.
+        """
+        inventory = {
+            "H1_valid": HunkRef(
+                id="H1_valid", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Empty hunk ID",
+                    hunks=[""],  # Empty!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Empty string can't be parsed
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_numeric_only_hunk_id(self):
+        """
+        FAILURE CASE: LLM generates just a number without H prefix or hash.
+        """
+        inventory = {
+            "H42_hash42": HunkRef(
+                id="H42_hash42", file_path="file.py", header="@@",
+                old_start=42, old_len=3, new_start=42, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Numeric only",
+                    hunks=["42"],  # Just a number!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: "42" doesn't match H(\d+)_ pattern
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_case_sensitivity_lowercase_h(self):
+        """
+        FAILURE CASE: LLM uses lowercase 'h' instead of uppercase 'H'.
+        """
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Lowercase h",
+                    hunks=["h1_abc123"],  # lowercase h!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Regex is case-sensitive, 'h' doesn't match 'H'
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_extra_prefix_before_H(self):
+        """
+        FAILURE CASE: LLM adds extra characters before H.
+        """
+        inventory = {
+            "H5_hash55": HunkRef(
+                id="H5_hash55", file_path="file.py", header="@@",
+                old_start=5, old_len=3, new_start=5, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Extra prefix",
+                    hunks=["XH5_hash55"],  # Extra 'X' prefix!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: "XH5_hash55" doesn't start with H
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_whitespace_in_hunk_id(self):
+        """
+        FAILURE CASE: LLM includes whitespace in hunk ID.
+        """
+        inventory = {
+            "H1_abc123": HunkRef(
+                id="H1_abc123", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Whitespace in ID",
+                    hunks=["H1 _abc123"],  # Space before underscore!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: "H1 _abc123" has space, doesn't match pattern
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_negative_hunk_number(self):
+        """
+        FAILURE CASE: LLM generates negative hunk number.
+        """
+        inventory = {
+            "H1_valid": HunkRef(
+                id="H1_valid", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Negative number",
+                    hunks=["H-1_valid"],  # Negative number!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: Regex expects \d+ (positive digits only)
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_zero_hunk_number(self):
+        """
+        FAILURE CASE: LLM generates H0 (zero) when hunks start at H1.
+        """
+        inventory = {
+            "H1_first": HunkRef(
+                id="H1_first", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+            "H2_second": HunkRef(
+                id="H2_second", file_path="file.py", header="@@",
+                old_start=10, old_len=3, new_start=10, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Zero hunk number",
+                    hunks=["H0_first"],  # H0 doesn't exist!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: No H0 in inventory (hunks are 1-indexed)
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_very_large_hunk_number(self):
+        """
+        FAILURE CASE: LLM generates extremely large hunk number.
+        """
+        inventory = {
+            "H1_only": HunkRef(
+                id="H1_only", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Huge number",
+                    hunks=["H999999999_hash"],  # Way too large!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: No H999999999 in inventory
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+    def test_FAILS_duplicate_hunk_in_same_commit(self):
+        """
+        FAILURE CASE: Same incorrect hunk ID appears twice in one commit.
+
+        First occurrence gets corrected, second cannot (already used).
+        """
+        inventory = {
+            "H1_correct": HunkRef(
+                id="H1_correct", file_path="file.py", header="@@",
+                old_start=1, old_len=3, new_start=1, new_len=4, lines=[],
+            ),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Duplicate wrong hunk",
+                    hunks=["H1_wrong", "H1_wrong"],  # Same wrong ID twice!
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # First H1_wrong corrected to H1_correct
+        # Second H1_wrong CANNOT be corrected (H1_correct already used)
+        assert corrections_made is True
+        assert len(corrections_log) == 1  # Only one correction
+
+        # Plan now has one correct and one still wrong
+        assert plan.commits[0].hunks == ["H1_correct", "H1_wrong"]
+
+        # Validation still fails (duplicate reference attempt)
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) >= 1
+
+    def test_FAILS_all_hunks_have_same_wrong_prefix(self):
+        """
+        FAILURE CASE: Multiple different hunks all get the same wrong prefix.
+
+        Inventory: H1, H2, H3
+        LLM generates: H99_a, H99_b, H99_c (all with H99 prefix that doesn't exist)
+        """
+        inventory = {
+            "H1_aaa": HunkRef(id="H1_aaa", file_path="a.py", header="@@", old_start=1, old_len=3, new_start=1, new_len=4, lines=[]),
+            "H2_bbb": HunkRef(id="H2_bbb", file_path="b.py", header="@@", old_start=2, old_len=3, new_start=2, new_len=4, lines=[]),
+            "H3_ccc": HunkRef(id="H3_ccc", file_path="c.py", header="@@", old_start=3, old_len=3, new_start=3, new_len=4, lines=[]),
+        }
+
+        # All wrong hunks have H99 prefix - none exist
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="All wrong prefix",
+                    hunks=["H99_aaa", "H99_bbb", "H99_ccc"],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # FAILS: No H99 exists in inventory
+        assert corrections_made is False
+        assert len(corrections_log) == 0
+
+        # All three hunks remain uncorrected
+        assert plan.commits[0].hunks == ["H99_aaa", "H99_bbb", "H99_ccc"]
+
+    def test_FAILS_mixed_valid_and_uncorrectable(self):
+        """
+        FAILURE CASE: Mix of valid, correctable, and uncorrectable hunks.
+
+        Some corrections succeed, others fail, leaving plan partially fixed.
+        """
+        inventory = {
+            "H1_valid1": HunkRef(id="H1_valid1", file_path="a.py", header="@@", old_start=1, old_len=3, new_start=1, new_len=4, lines=[]),
+            "H2_valid2": HunkRef(id="H2_valid2", file_path="b.py", header="@@", old_start=2, old_len=3, new_start=2, new_len=4, lines=[]),
+            "H3_valid3": HunkRef(id="H3_valid3", file_path="c.py", header="@@", old_start=3, old_len=3, new_start=3, new_len=4, lines=[]),
+        }
+
+        plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Mixed scenario",
+                    hunks=[
+                        "H1_valid1",    # Valid - no change needed
+                        "H2_wronghash", # Correctable - H2 prefix matches
+                        "H99_invalid",  # UNCORRECTABLE - H99 doesn't exist
+                    ],
+                ),
+            ],
+        )
+
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        # Partial success: H2_wronghash corrected, H99_invalid not
+        assert corrections_made is True
+        assert len(corrections_log) == 1  # Only H2 corrected
+
+        # Plan is partially fixed
+        assert plan.commits[0].hunks == ["H1_valid1", "H2_valid2", "H99_invalid"]
+
+        # Validation still fails due to H99_invalid
+        errors = validate_plan(plan, inventory, max_commits=6)
+        assert len(errors) == 1
+        assert "H99_invalid" in errors[0]
+
+    # ========================================================================
+    # Extreme Test Cases - 1000 hunks with 500 incorrect IDs
+    # ========================================================================
+
+    def test_extreme_1000_hunks_with_500_incorrect_single_candidate(self):
+        """
+        Extreme test: 1000 hunks in inventory, 500 incorrect IDs in plan.
+        Each incorrect hunk has exactly ONE valid candidate (unambiguous correction).
+
+        Structure:
+        - Inventory: H1_hash1 through H1000_hash1000
+        - Plan uses: 500 correct IDs (H1 to H500) + 500 incorrect IDs (H501_wrongX to H1000_wrongX)
+        - All 500 incorrect should be correctable because each H# prefix has only one entry
+        """
+        import hashlib
+
+        # Build inventory with 1000 unique hunks
+        inventory = {}
+        for i in range(1, 1001):
+            # Generate deterministic hash based on index
+            hash_val = hashlib.md5(f"content_{i}".encode(), usedforsecurity=False).hexdigest()[:6]
+            hunk_id = f"H{i}_{hash_val}"
+            inventory[hunk_id] = HunkRef(
+                id=hunk_id,
+                file_path=f"file{i}.py",
+                header=f"@@ -{i},3 +{i},4 @@",
+                old_start=i, old_len=3, new_start=i, new_len=4,
+                lines=[f"@@ -{i},3 +{i},4 @@", f"+line{i}"],
+            )
+
+        # Build plan with 50 commits (20 hunks each)
+        commits = []
+        hunk_index = 1
+        correct_ids = list(inventory.keys())
+
+        for commit_num in range(1, 51):
+            commit_hunks = []
+            for _ in range(20):
+                if hunk_index <= 500:
+                    # First 500: use correct IDs
+                    commit_hunks.append(correct_ids[hunk_index - 1])
+                else:
+                    # Last 500: use incorrect IDs (wrong hash suffix)
+                    # Extract the correct prefix, use wrong hash
+                    correct_id = correct_ids[hunk_index - 1]
+                    prefix = correct_id.split("_")[0]  # e.g., "H501"
+                    wrong_hash = f"wrong{hunk_index}"
+                    commit_hunks.append(f"{prefix}_{wrong_hash}")
+                hunk_index += 1
+
+            commits.append(PlannedCommit(
+                id=f"C{commit_num}",
+                title=f"Commit {commit_num}",
+                hunks=commit_hunks,
+            ))
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Before correction: validation should fail with 500 errors
+        errors_before = validate_plan(plan, inventory, max_commits=100)
+        assert len(errors_before) == 500, f"Expected 500 errors, got {len(errors_before)}"
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500, f"Expected 500 corrections, got {len(corrections_log)}"
+
+        # After correction: validation should pass
+        errors_after = validate_plan(plan, inventory, max_commits=100)
+        assert len(errors_after) == 0, f"Expected 0 errors after correction, got {errors_after}"
+
+        # Verify all hunks are now valid
+        all_plan_hunks = [h for c in plan.commits for h in c.hunks]
+        assert len(all_plan_hunks) == 1000
+        assert all(h in inventory for h in all_plan_hunks)
+
+    def test_extreme_multi_level_correction_depth_5(self):
+        """
+        Extreme test: Multi-level correction scenario simulating 5 levels of LLM confusion.
+
+        This tests a scenario where the LLM makes cascading errors - using hashes
+        from completely different hunks in a pattern that spans multiple "levels"
+        of the hunk numbering scheme.
+
+        Level structure (100 hunks each level, 500 total per level x 2 = 1000):
+        - Level 1: H1-H200 (base hunks, some correct, some with errors)
+        - Level 2: H201-H400 (intermediate hunks)
+        - Level 3: H401-H600 (intermediate hunks)
+        - Level 4: H601-H800 (intermediate hunks)
+        - Level 5: H801-H1000 (final level hunks)
+
+        Error patterns across levels:
+        - Some H1xx hunks have H2xx hashes (cross-level confusion)
+        - Some H3xx hunks have H5xx hashes (skipping levels)
+        - etc.
+        """
+        import hashlib
+        import random
+
+        random.seed(42)  # Deterministic for reproducibility
+
+        # Build inventory with 1000 hunks
+        inventory = {}
+        all_hashes = {}  # Store hashes for cross-referencing
+
+        for i in range(1, 1001):
+            hash_val = hashlib.md5(f"unique_content_{i}".encode(), usedforsecurity=False).hexdigest()[:6]
+            hunk_id = f"H{i}_{hash_val}"
+            inventory[hunk_id] = HunkRef(
+                id=hunk_id,
+                file_path=f"src/level{(i-1)//200 + 1}/file{i}.py",
+                header=f"@@ -{i},5 +{i},6 @@",
+                old_start=i, old_len=5, new_start=i, new_len=6,
+                lines=[f"@@ -{i},5 +{i},6 @@", f"+level{(i-1)//200 + 1}_line{i}"],
+            )
+            all_hashes[i] = hash_val
+
+        # Build plan with mixed correct and incorrect IDs
+        # Pattern: alternating between correct and various error types
+        commits = []
+        correct_ids = list(inventory.keys())
+        hunk_assignments = []
+
+        for i in range(1, 1001):
+            correct_id = correct_ids[i - 1]
+            correct_hash = all_hashes[i]
+
+            # Determine which level this hunk is in (1-5)
+            level = (i - 1) // 200 + 1
+
+            if i % 2 == 0:
+                # Even indices: use correct ID
+                hunk_assignments.append((correct_id, True))
+            else:
+                # Odd indices: create error with hash from different level
+                # Level 1 hunks use Level 2 hashes, Level 2 use Level 3, etc.
+                # Level 5 wraps around to Level 1
+                error_source_level = (level % 5) + 1
+                # Pick a random hunk from the error source level
+                error_source_idx = random.randint(
+                    (error_source_level - 1) * 200 + 1,
+                    error_source_level * 200
+                )
+                wrong_hash = all_hashes[error_source_idx]
+                wrong_id = f"H{i}_{wrong_hash}"
+                hunk_assignments.append((wrong_id, False))
+
+        # Count expected corrections
+        expected_corrections = sum(1 for _, is_correct in hunk_assignments if not is_correct)
+        assert expected_corrections == 500, f"Expected 500 incorrect, got {expected_corrections}"
+
+        # Create commits (100 commits x 10 hunks each)
+        for commit_num in range(100):
+            start_idx = commit_num * 10
+            commit_hunks = [hunk_assignments[start_idx + j][0] for j in range(10)]
+            commits.append(PlannedCommit(
+                id=f"C{commit_num + 1}",
+                title=f"Multi-level commit {commit_num + 1}",
+                hunks=commit_hunks,
+            ))
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_before) == 500
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500
+
+        # Verify correction log mentions level-crossing corrections
+        # (The log should show corrections like H1_abc -> H1_xyz where abc came from H201)
+        assert all("Corrected" in log for log in corrections_log)
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_after) == 0
+
+    def test_extreme_complex_file_groupings_with_errors(self):
+        """
+        Extreme test: Simulate real-world scenario with file groupings.
+
+        - 100 files, each with 10 hunks (1000 total)
+        - 50 files have all correct IDs (500 hunks)
+        - 50 files have all incorrect IDs (500 hunks)
+        - Incorrect IDs use hashes from different files (simulating LLM confusion
+          between similar filenames)
+        """
+        import hashlib
+
+        # Build inventory: 100 files x 10 hunks each
+        inventory = {}
+        hunk_counter = 1
+        file_hunks = {}  # Track hunks per file
+
+        for file_num in range(1, 101):
+            file_path = f"src/module{file_num // 10}/component{file_num}.py"
+            file_hunks[file_num] = []
+
+            for hunk_in_file in range(10):
+                hash_val = hashlib.md5(
+                    f"file{file_num}_hunk{hunk_in_file}".encode(),
+                    usedforsecurity=False
+                ).hexdigest()[:6]
+                hunk_id = f"H{hunk_counter}_{hash_val}"
+
+                inventory[hunk_id] = HunkRef(
+                    id=hunk_id,
+                    file_path=file_path,
+                    header=f"@@ -{hunk_in_file * 10 + 1},5 +{hunk_in_file * 10 + 1},7 @@",
+                    old_start=hunk_in_file * 10 + 1,
+                    old_len=5,
+                    new_start=hunk_in_file * 10 + 1,
+                    new_len=7,
+                    lines=[f"@@ -...,5 +...,7 @@", f"+modified_in_file{file_num}"],
+                )
+                file_hunks[file_num].append(hunk_id)
+                hunk_counter += 1
+
+        # Build plan:
+        # - Files 1-50: correct IDs
+        # - Files 51-100: incorrect IDs (use hashes from file in the 1-50 range)
+        commits = []
+        correct_count = 0
+        incorrect_count = 0
+
+        for file_num in range(1, 101):
+            file_hunk_ids = file_hunks[file_num]
+
+            if file_num <= 50:
+                # Correct: use actual hunk IDs
+                plan_hunks = file_hunk_ids.copy()
+                correct_count += 10
+            else:
+                # Incorrect: use correct prefix but wrong hash from file in 1-50 range
+                # Map file 51->1, 52->2, ..., 100->50
+                source_file = file_num - 50
+                source_hunks = file_hunks[source_file]
+
+                plan_hunks = []
+                for idx, correct_id in enumerate(file_hunk_ids):
+                    prefix = correct_id.split("_")[0]
+                    # Get hash from source file's corresponding hunk
+                    wrong_hash = source_hunks[idx].split("_")[1]
+                    plan_hunks.append(f"{prefix}_{wrong_hash}")
+                incorrect_count += 10
+
+            commits.append(PlannedCommit(
+                id=f"C{file_num}",
+                title=f"Update component{file_num}",
+                hunks=plan_hunks,
+            ))
+
+        assert correct_count == 500
+        assert incorrect_count == 500
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_before) == 500
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_after) == 0
+
+        # Verify the plan now has all valid hunks
+        all_corrected_hunks = {h for c in plan.commits for h in c.hunks}
+        assert all_corrected_hunks == set(inventory.keys())
+
+    def test_extreme_sparse_errors_across_large_plan(self):
+        """
+        Extreme test: Errors sparsely distributed across a large plan.
+
+        - 1000 hunks across 200 commits (5 hunks each)
+        - Every 2nd hunk is incorrect (500 errors)
+        - Tests that correction handles sparse error distribution efficiently
+        """
+        import hashlib
+
+        # Build inventory
+        inventory = {}
+        for i in range(1, 1001):
+            hash_val = hashlib.md5(f"sparse_{i}".encode(), usedforsecurity=False).hexdigest()[:6]
+            hunk_id = f"H{i}_{hash_val}"
+            inventory[hunk_id] = HunkRef(
+                id=hunk_id,
+                file_path=f"sparse/file{i}.py",
+                header=f"@@ -{i},2 +{i},3 @@",
+                old_start=i, old_len=2, new_start=i, new_len=3,
+                lines=[f"@@ -{i},2 +{i},3 @@", "+sparse"],
+            )
+
+        correct_ids = list(inventory.keys())
+
+        # Build plan with sparse errors
+        commits = []
+        for commit_num in range(200):
+            hunks = []
+            for j in range(5):
+                hunk_idx = commit_num * 5 + j
+                if hunk_idx % 2 == 0:
+                    # Even: correct
+                    hunks.append(correct_ids[hunk_idx])
+                else:
+                    # Odd: incorrect (wrong hash)
+                    prefix = f"H{hunk_idx + 1}"
+                    hunks.append(f"{prefix}_wrongsparse{hunk_idx}")
+
+            commits.append(PlannedCommit(
+                id=f"C{commit_num + 1}",
+                title=f"Sparse commit {commit_num + 1}",
+                hunks=hunks,
+            ))
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Count incorrect before correction
+        all_hunks = [h for c in plan.commits for h in c.hunks]
+        incorrect_before = sum(1 for h in all_hunks if h not in inventory)
+        assert incorrect_before == 500
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500
+
+        # Validate after
+        errors_after = validate_plan(plan, inventory, max_commits=300)
+        assert len(errors_after) == 0
+
+    def test_extreme_sequential_level_confusion_pattern(self):
+        """
+        Extreme test: Sequential level confusion with 5 distinct error levels.
+
+        This simulates an LLM that systematically confuses hunks across 5 levels
+        in a predictable pattern:
+
+        Level 1 (H1-H200): Errors use hashes from Level 2
+        Level 2 (H201-H400): Errors use hashes from Level 3
+        Level 3 (H401-H600): Errors use hashes from Level 4
+        Level 4 (H601-H800): Errors use hashes from Level 5
+        Level 5 (H801-H1000): Errors use hashes from Level 1
+
+        Each level has 200 hunks, 100 correct + 100 incorrect.
+        Total: 500 correct + 500 incorrect = 1000 hunks
+        """
+        import hashlib
+
+        # Build inventory with 5 levels
+        inventory = {}
+        level_hashes = {1: [], 2: [], 3: [], 4: [], 5: []}
+
+        for i in range(1, 1001):
+            hash_val = hashlib.md5(f"level_content_{i}".encode(), usedforsecurity=False).hexdigest()[:6]
+            hunk_id = f"H{i}_{hash_val}"
+            level = (i - 1) // 200 + 1
+
+            inventory[hunk_id] = HunkRef(
+                id=hunk_id,
+                file_path=f"level{level}/file{i}.py",
+                header=f"@@ -{i},4 +{i},5 @@",
+                old_start=i, old_len=4, new_start=i, new_len=5,
+                lines=[f"@@ -{i},4 +{i},5 @@", f"+level{level}"],
+            )
+            level_hashes[level].append(hash_val)
+
+        # Build plan with level-crossing errors
+        correct_ids = list(inventory.keys())
+        commits = []
+        hunk_plan = []
+
+        for i in range(1, 1001):
+            current_level = (i - 1) // 200 + 1
+            position_in_level = (i - 1) % 200
+
+            if position_in_level < 100:
+                # First 100 in each level: correct
+                hunk_plan.append(correct_ids[i - 1])
+            else:
+                # Second 100 in each level: use hash from next level
+                next_level = (current_level % 5) + 1
+                hash_idx = position_in_level - 100  # 0-99
+                wrong_hash = level_hashes[next_level][hash_idx]
+                hunk_plan.append(f"H{i}_{wrong_hash}")
+
+        # Verify error distribution
+        incorrect_count = sum(1 for h in hunk_plan if h not in inventory)
+        assert incorrect_count == 500, f"Expected 500 incorrect, got {incorrect_count}"
+
+        # Create 100 commits with 10 hunks each
+        for commit_num in range(100):
+            start = commit_num * 10
+            commits.append(PlannedCommit(
+                id=f"C{commit_num + 1}",
+                title=f"Level-crossing commit {commit_num + 1}",
+                hunks=hunk_plan[start:start + 10],
+            ))
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Before correction
+        errors_before = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_before) == 500
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500
+
+        # Verify each level had 100 corrections
+        for level in range(1, 6):
+            level_start = (level - 1) * 200 + 1
+            level_end = level * 200
+            level_corrections = [
+                log for log in corrections_log
+                if any(f"H{i}_" in log for i in range(level_start + 100, level_end + 1))
+            ]
+            assert len(level_corrections) == 100, f"Level {level} should have 100 corrections"
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=200)
+        assert len(errors_after) == 0
+
+    def test_extreme_worst_case_all_different_hash_sources(self):
+        """
+        Extreme test: Worst case where every incorrect hash comes from a different source.
+
+        - 1000 hunks total
+        - 500 correct, 500 incorrect
+        - Each incorrect hunk uses a hash from a completely different hunk number
+        - Tests O(n) correction performance with maximum hash diversity
+        """
+        import hashlib
+
+        # Build inventory
+        inventory = {}
+        all_hashes = []
+
+        for i in range(1, 1001):
+            hash_val = hashlib.md5(f"worst_case_{i}".encode(), usedforsecurity=False).hexdigest()[:6]
+            hunk_id = f"H{i}_{hash_val}"
+            inventory[hunk_id] = HunkRef(
+                id=hunk_id,
+                file_path=f"worst/file{i}.py",
+                header=f"@@ -{i},3 +{i},4 @@",
+                old_start=i, old_len=3, new_start=i, new_len=4,
+                lines=[f"@@ -{i},3 +{i},4 @@", "+worst"],
+            )
+            all_hashes.append(hash_val)
+
+        correct_ids = list(inventory.keys())
+
+        # Build plan:
+        # - Hunks 1-500: correct
+        # - Hunks 501-1000: incorrect, each uses hash from hunk (i - 500)
+        plan_hunks = []
+        for i in range(1, 1001):
+            if i <= 500:
+                plan_hunks.append(correct_ids[i - 1])
+            else:
+                # Use hash from hunk (i - 500), so H501 gets hash from H1
+                wrong_hash = all_hashes[i - 501]  # Index for H1 is 0
+                plan_hunks.append(f"H{i}_{wrong_hash}")
+
+        # Create 50 commits with 20 hunks each
+        commits = []
+        for commit_num in range(50):
+            start = commit_num * 20
+            commits.append(PlannedCommit(
+                id=f"C{commit_num + 1}",
+                title=f"Worst case commit {commit_num + 1}",
+                hunks=plan_hunks[start:start + 20],
+            ))
+
+        plan = ComposePlan(version="1", commits=commits)
+
+        # Verify setup
+        all_plan_hunks = [h for c in plan.commits for h in c.hunks]
+        incorrect = [h for h in all_plan_hunks if h not in inventory]
+        assert len(incorrect) == 500
+
+        # Apply correction
+        corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
+
+        assert corrections_made is True
+        assert len(corrections_log) == 500
+
+        # Verify all corrections point to the right target
+        for log in corrections_log:
+            # Log format: "Corrected H501_xxx -> H501_yyy in commit Cz"
+            assert "Corrected" in log
+            assert " -> " in log
+
+        # After correction
+        errors_after = validate_plan(plan, inventory, max_commits=100)
+        assert len(errors_after) == 0
 
 
 class TestBuildCommitPatchEdgeCases:
