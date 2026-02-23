@@ -19,17 +19,13 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux AMD64
           - os: ubuntu-latest
             target: linux_amd64
             asset_name: hunknote_linux_amd64
-          # Linux ARM64
-          - os: ubuntu-latest
-            target: linux_arm64
-            asset_name: hunknote_linux_arm64
-            cross_compile: true
           # macOS AMD64 (Intel)
           - os: macos-13
             target: darwin_amd64
@@ -38,6 +34,8 @@ jobs:
           - os: macos-14
             target: darwin_arm64
             asset_name: hunknote_darwin_arm64
+          # Note: Linux ARM64 is not included due to lack of native ARM runners
+          # Users on Linux ARM64 can install via pip: pip install hunknote
 
     runs-on: ${{ matrix.os }}
 
@@ -65,8 +63,7 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build with PyInstaller (native)
-        if: ${{ !matrix.cross_compile }}
+      - name: Build with PyInstaller
         run: |
           poetry run pyinstaller \
             --onefile \
@@ -86,42 +83,6 @@ jobs:
             --collect-all pydantic \
             --collect-all typer \
             hunknote/__main__.py
-
-      - name: Set up QEMU for ARM64 cross-compilation
-        if: ${{ matrix.cross_compile }}
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Build ARM64 binary in Docker
-        if: ${{ matrix.cross_compile }}
-        run: |
-          docker run --rm --platform linux/arm64 \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            python:3.12-slim \
-            bash -c "
-              pip install poetry pyinstaller &&
-              poetry install --only main &&
-              poetry run pyinstaller \
-                --onefile \
-                --name hunknote \
-                --hidden-import=hunknote.cli \
-                --hidden-import=hunknote.llm \
-                --hidden-import=hunknote.compose \
-                --hidden-import=hunknote.cache \
-                --hidden-import=hunknote.git \
-                --hidden-import=hunknote.styles \
-                --collect-all anthropic \
-                --collect-all openai \
-                --collect-all google.genai \
-                --collect-all mistralai \
-                --collect-all cohere \
-                --collect-all groq \
-                --collect-all pydantic \
-                --collect-all typer \
-                hunknote/__main__.py
-            "
 
       - name: Prepare artifact
         run: |
