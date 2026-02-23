@@ -17,8 +17,10 @@ from hunknote.compose import (
     try_correct_hunk_ids,
     build_commit_patch,
     build_compose_prompt,
+    build_compose_retry_prompt,
     create_snapshot,
     COMPOSE_SYSTEM_PROMPT,
+    COMPOSE_RETRY_SYSTEM_PROMPT,
 )
 
 
@@ -577,6 +579,215 @@ class TestComposeSystemPrompt:
     def test_system_prompt_mentions_json(self):
         """Test that system prompt mentions JSON output."""
         assert "JSON" in COMPOSE_SYSTEM_PROMPT
+
+
+class TestComposeRetryPrompt:
+    """Tests for compose retry prompt functions."""
+
+    def test_retry_system_prompt_exists(self):
+        """Test that retry system prompt is defined."""
+        assert len(COMPOSE_RETRY_SYSTEM_PROMPT) > 0
+
+    def test_retry_system_prompt_mentions_fixing_errors(self):
+        """Test that retry system prompt mentions fixing errors."""
+        assert "fix" in COMPOSE_RETRY_SYSTEM_PROMPT.lower()
+        assert "error" in COMPOSE_RETRY_SYSTEM_PROMPT.lower()
+
+    def test_retry_system_prompt_emphasizes_exact_ids(self):
+        """Test that retry system prompt emphasizes using exact hunk IDs."""
+        assert "EXACT" in COMPOSE_RETRY_SYSTEM_PROMPT or "exact" in COMPOSE_RETRY_SYSTEM_PROMPT.lower()
+
+    def test_build_retry_prompt_includes_errors(self, sample_diff):
+        """Test that retry prompt includes validation errors."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Test commit",
+                    hunks=["H1_wrong", "H2_wrong"],
+                ),
+            ],
+        )
+
+        validation_errors = [
+            "Commit C1 references unknown hunk: H1_wrong",
+            "Commit C1 references unknown hunk: H2_wrong",
+        ]
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=validation_errors,
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[VALIDATION ERRORS]" in prompt
+        assert "H1_wrong" in prompt
+        assert "H2_wrong" in prompt
+
+    def test_build_retry_prompt_includes_previous_plan(self, sample_diff):
+        """Test that retry prompt includes previous plan structure."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(
+                    id="C1",
+                    title="Add feature X",
+                    hunks=["H1_wrong"],
+                ),
+                PlannedCommit(
+                    id="C2",
+                    title="Fix bug Y",
+                    hunks=["H2_wrong"],
+                ),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Some error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[YOUR PREVIOUS PLAN]" in prompt
+        assert "C1" in prompt
+        assert "C2" in prompt
+        assert "Add feature X" in prompt
+        assert "Fix bug Y" in prompt
+
+    def test_build_retry_prompt_includes_valid_hunk_ids(self, sample_diff):
+        """Test that retry prompt includes valid hunk IDs list."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(id="C1", title="Test", hunks=["wrong"]),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[VALID HUNK IDs" in prompt
+        # Check that at least some valid IDs are in the prompt
+        for hunk_id in valid_hunk_ids[:3]:
+            assert hunk_id in prompt
+
+    def test_build_retry_prompt_includes_inventory(self, sample_diff):
+        """Test that retry prompt includes full hunk inventory."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(id="C1", title="Test", hunks=["wrong"]),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[FULL HUNK INVENTORY" in prompt
+        assert "[HUNK INVENTORY]" in prompt
+
+    def test_build_retry_prompt_includes_common_mistakes(self, sample_diff):
+        """Test that retry prompt warns about common mistakes."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(id="C1", title="Test", hunks=["wrong"]),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[COMMON MISTAKES TO AVOID]" in prompt
+        assert "wrong hash" in prompt.lower() or "hash suffix" in prompt.lower()
+
+    def test_build_retry_prompt_includes_output_schema(self, sample_diff):
+        """Test that retry prompt includes JSON output schema."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(id="C1", title="Test", hunks=["wrong"]),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=6,
+        )
+
+        assert "[OUTPUT SCHEMA]" in prompt
+        assert '"commits"' in prompt
+        assert '"hunks"' in prompt
+
+    def test_build_retry_prompt_respects_max_commits(self, sample_diff):
+        """Test that retry prompt includes max commits constraint."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+        inventory = build_hunk_inventory(file_diffs)
+        valid_hunk_ids = list(inventory.keys())
+
+        previous_plan = ComposePlan(
+            version="1",
+            commits=[
+                PlannedCommit(id="C1", title="Test", hunks=["wrong"]),
+            ],
+        )
+
+        prompt = build_compose_retry_prompt(
+            file_diffs=file_diffs,
+            previous_plan=previous_plan,
+            validation_errors=["Error"],
+            valid_hunk_ids=valid_hunk_ids,
+            max_commits=3,
+        )
+
+        assert "3" in prompt  # max commits value
 
 
 # ============================================================================
