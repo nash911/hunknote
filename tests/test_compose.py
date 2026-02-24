@@ -3832,3 +3832,62 @@ class TestPlanValidationError:
         from hunknote.compose import PlanValidationError
 
         assert issubclass(PlanValidationError, Exception)
+
+
+class TestComposeIgnorePatterns:
+    """Tests for ignore patterns in compose command."""
+
+    def test_should_exclude_file_with_ignore_patterns(self):
+        """Test that _should_exclude_file correctly filters files."""
+        from hunknote.git.diff import _should_exclude_file
+
+        patterns = ["poetry.lock", "*.min.js", "build/*"]
+
+        # Should be excluded
+        assert _should_exclude_file("poetry.lock", patterns) is True
+        assert _should_exclude_file("app.min.js", patterns) is True
+        assert _should_exclude_file("build/output.js", patterns) is True
+
+        # Should NOT be excluded
+        assert _should_exclude_file("pyproject.toml", patterns) is False
+        assert _should_exclude_file("src/main.py", patterns) is False
+        assert _should_exclude_file("app.js", patterns) is False
+
+    def test_should_exclude_file_with_glob_patterns(self):
+        """Test glob pattern matching."""
+        from hunknote.git.diff import _should_exclude_file
+
+        patterns = ["*.lock", "*.pyc", ".idea/*"]
+
+        # Lock files
+        assert _should_exclude_file("poetry.lock", patterns) is True
+        assert _should_exclude_file("yarn.lock", patterns) is True
+
+        # Compiled Python
+        assert _should_exclude_file("module.pyc", patterns) is True
+        assert _should_exclude_file("src/module.pyc", patterns) is True
+
+        # IDE files
+        assert _should_exclude_file(".idea/workspace.xml", patterns) is True
+
+    def test_filter_staged_files_with_ignore_patterns(self):
+        """Test filtering staged files using ignore patterns."""
+        from hunknote.git.diff import _should_exclude_file
+
+        staged_files = [
+            "pyproject.toml",
+            "poetry.lock",
+            "src/main.py",
+            "package-lock.json",
+            "README.md",
+        ]
+        ignore_patterns = ["poetry.lock", "package-lock.json"]
+
+        files_to_include = [
+            f for f in staged_files
+            if not _should_exclude_file(f, ignore_patterns)
+        ]
+
+        assert files_to_include == ["pyproject.toml", "src/main.py", "README.md"]
+        assert "poetry.lock" not in files_to_include
+        assert "package-lock.json" not in files_to_include
