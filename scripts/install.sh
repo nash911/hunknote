@@ -126,6 +126,7 @@ get_latest_version() {
         curl_opts+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
     fi
 
+    # Fetch latest release info and extract tag_name
     version=$(curl "${curl_opts[@]}" "$url" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
 
     if [[ -z "$version" ]]; then
