@@ -229,11 +229,19 @@ install_binary() {
     local install_path="${install_dir}/hunknote"
     mv "$binary_path" "$install_path"
 
-    # Verify installation
-    if "$install_path" --version &> /dev/null; then
+    # Verify installation with better error reporting
+    local version_output
+    if version_output=$("$install_path" --version 2>&1); then
         success "Hunknote installed to ${install_path}"
     else
-        error "Installation completed but the binary failed to execute. Please report this issue."
+        echo ""
+        warn "Binary verification failed. Output:"
+        echo "$version_output"
+        echo ""
+        warn "This may be due to missing system libraries. Falling back to pip installation..."
+        rm -f "$install_path"
+        # Return non-zero to trigger fallback
+        return 1
     fi
 
     echo "$install_path"
@@ -578,9 +586,15 @@ main() {
     local archive_name="hunknote_${os}_${arch}.tar.gz"
     local check_url="https://github.com/${GITHUB_REPO}/releases/download/v${version}/${archive_name}"
 
+    local binary_install_success=false
     if curl --output /dev/null --silent --head --fail "$check_url"; then
-        install_path=$(install_binary "$os" "$arch" "$version" "$install_dir")
-    else
+        if install_path=$(install_binary "$os" "$arch" "$version" "$install_dir"); then
+            binary_install_success=true
+        fi
+    fi
+
+    # Fallback to pip if binary install failed or wasn't available
+    if [[ "$binary_install_success" != true ]]; then
         fallback_to_pip "$os" "$arch"
         install_path=$(command -v hunknote || echo "$HOME/.local/bin/hunknote")
     fi
