@@ -168,6 +168,15 @@ verify_checksum() {
 # Installation
 # -----------------------------------------------------------------------------
 
+# Global variable for cleanup
+CLEANUP_DIR=""
+
+cleanup() {
+    if [[ -n "$CLEANUP_DIR" && -d "$CLEANUP_DIR" ]]; then
+        rm -rf "$CLEANUP_DIR"
+    fi
+}
+
 install_binary() {
     local os="$1"
     local arch="$2"
@@ -179,18 +188,17 @@ install_binary() {
     local checksums_url="https://github.com/${GITHUB_REPO}/releases/download/v${version}/checksums.txt"
 
     # Create temp directory
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' EXIT
+    CLEANUP_DIR=$(mktemp -d)
+    trap cleanup EXIT
 
     # Download archive
-    local archive_path="${tmp_dir}/${archive_name}"
+    local archive_path="${CLEANUP_DIR}/${archive_name}"
     info "Downloading ${archive_name}..."
     download_file "$download_url" "$archive_path"
 
     # Download and verify checksums
     info "Downloading checksums..."
-    local checksums_path="${tmp_dir}/checksums.txt"
+    local checksums_path="${CLEANUP_DIR}/checksums.txt"
     download_file "$checksums_url" "$checksums_path"
 
     info "Verifying checksum..."
@@ -205,9 +213,9 @@ install_binary() {
 
     # Extract
     info "Extracting..."
-    tar -xzf "$archive_path" -C "$tmp_dir"
+    tar -xzf "$archive_path" -C "$CLEANUP_DIR"
 
-    local binary_path="${tmp_dir}/hunknote"
+    local binary_path="${CLEANUP_DIR}/hunknote"
     chmod +x "$binary_path"
 
     # Install
