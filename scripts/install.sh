@@ -376,15 +376,15 @@ fallback_to_pip() {
     done
 
     if [[ -z "$python_cmd" ]]; then
-        error "Python not found. Please install Python 3.12+ and try again, or install manually: pip install hunknote"
+        error "Python not found. Please install Python 3.10+ and try again, or install manually: pip install hunknote"
     fi
 
     # Check Python version
     local py_version
     py_version=$($python_cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
 
-    if [[ "$(printf '%s\n' "3.12" "$py_version" | sort -V | head -n1)" != "3.12" ]]; then
-        error "Python 3.12+ required (found $py_version). Please upgrade Python or install manually: pip install hunknote"
+    if [[ "$(printf '%s\n' "3.10" "$py_version" | sort -V | head -n1)" != "3.10" ]]; then
+        error "Python 3.10+ required (found $py_version). Please upgrade Python or install manually: pip install hunknote"
     fi
 
     # Try pipx first, then pip
