@@ -1,5 +1,6 @@
 """Main CLI command for generating commit messages."""
 
+from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
 from typing import Optional
 
@@ -48,8 +49,59 @@ from hunknote.cli.utils import (
 )
 
 
+def get_version() -> str:
+    """Get the package version dynamically.
+
+    Tries importlib.metadata first (for installed package),
+    falls back to reading pyproject.toml (for development).
+    """
+    try:
+        return version("hunknote")
+    except PackageNotFoundError:
+        # Fallback for development mode - read from pyproject.toml
+        try:
+            # tomllib is available in Python 3.11+
+            import tomllib
+            pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
+            if pyproject_path.exists():
+                with open(pyproject_path, "rb") as f:
+                    data = tomllib.load(f)
+                return data.get("tool", {}).get("poetry", {}).get("version", "unknown")
+        except ImportError:
+            # Python < 3.11, try toml package
+            try:
+                import toml
+                pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
+                if pyproject_path.exists():
+                    data = toml.load(pyproject_path)
+                    return data.get("tool", {}).get("poetry", {}).get("version", "unknown")
+            except ImportError:
+                pass
+        except Exception:
+            pass
+        return "unknown"
+
+
+__version__ = get_version()
+
+
+def version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        typer.echo(f"hunknote {__version__}")
+        raise typer.Exit()
+
+
 def main_command(
     ctx: typer.Context,
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
+    ),
     max_diff_chars: int = typer.Option(
         50000,
         "--max-diff-chars",
