@@ -74,7 +74,7 @@ app.command("init")(init_config)
 app.command("commit")(commit_command)
 app.command("compose")(compose_command)
 
-# Set the main callback for default behavior
+# Set the main callback for default behavior (includes --version flag)
 app.callback(invoke_without_command=True)(main_command)
 
 
