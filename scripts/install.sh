@@ -243,8 +243,6 @@ install_binary() {
         # Return non-zero to trigger fallback
         return 1
     fi
-
-    echo "$install_path"
 }
 
 # -----------------------------------------------------------------------------
@@ -597,8 +595,9 @@ main() {
     local binary_install_success=false
     local fallback_reason="not_available"
     if curl --output /dev/null --silent --head --fail "$check_url"; then
-        if install_path=$(install_binary "$os" "$arch" "$version" "$install_dir"); then
+        if install_binary "$os" "$arch" "$version" "$install_dir"; then
             binary_install_success=true
+            install_path="${install_dir}/hunknote"
         else
             fallback_reason="binary_failed"
         fi
