@@ -22,8 +22,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux AMD64
-          - os: ubuntu-latest
+          # Linux AMD64 - Use ubuntu-22.04 for GLIBC 2.35 compatibility
+          # This ensures the binary works on Ubuntu 22.04+ and similar distros
+          - os: ubuntu-22.04
             target: linux_amd64
             asset_name: hunknote_linux_amd64
           # macOS ARM64 (Apple Silicon)
