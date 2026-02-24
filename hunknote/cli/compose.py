@@ -13,6 +13,9 @@ import typer
 
 from hunknote.cache import compute_context_hash
 from hunknote.git_ctx import GitError, get_repo_root, get_branch
+from hunknote.git.diff import _should_exclude_file
+from hunknote.git.status import _get_staged_files_list
+from hunknote.user_config import get_ignore_patterns
 from hunknote.llm import LLMError, MissingAPIKeyError
 from hunknote.llm.base import parse_json_response, JSONParseError
 from hunknote.styles import StyleProfile
@@ -180,10 +183,30 @@ def compose_command(
         )
         recent_commits = recent_commits_result.stdout.strip().split("\n") if recent_commits_result.returncode == 0 else []
 
+        # Get list of staged files and filter out ignored files
+        staged_files = _get_staged_files_list()
+        if not staged_files:
+            typer.echo("No staged changes to compose.", err=True)
+            typer.echo("Stage your changes first with: git add <files>", err=True)
+            raise typer.Exit(0)
 
-        # Get diff of staged changes only (like the main hunknote command)
+        # Get ignore patterns from config
+        ignore_patterns = get_ignore_patterns(repo_root)
+
+        # Filter out files matching ignore patterns
+        files_to_include = [
+            f for f in staged_files
+            if not _should_exclude_file(f, ignore_patterns)
+        ]
+
+        if not files_to_include:
+            typer.echo("No staged changes to compose (all staged files are in ignore list).", err=True)
+            typer.echo("Check your .hunknote/config.yaml ignore patterns.", err=True)
+            raise typer.Exit(0)
+
+        # Get diff of staged changes only for non-ignored files
         diff_result = subprocess.run(
-            ["git", "diff", "--cached", "--patch"],
+            ["git", "diff", "--cached", "--patch", "--"] + files_to_include,
             capture_output=True,
             text=True,
             cwd=repo_root,
