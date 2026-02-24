@@ -27,6 +27,7 @@ if [[ -t 1 ]]; then
     GREEN='\033[0;32m'
     YELLOW='\033[0;33m'
     BLUE='\033[0;34m'
+    LIGHT_BLUE='\033[0;94m'
     CYAN='\033[0;36m'
     BOLD='\033[1m'
     NC='\033[0m' # No Color
@@ -34,7 +35,7 @@ else
     RED=''
     GREEN=''
     YELLOW=''
-    BLUE=''
+    LIGHT_BLUE=''
     CYAN=''
     BOLD=''
     NC=''
@@ -45,7 +46,7 @@ fi
 # -----------------------------------------------------------------------------
 
 print_banner() {
-    echo -e "${BLUE}"
+    echo -e "${LIGHT_BLUE}"
     echo "  _   _             _                _       "
     echo " | | | |_   _ _ __ | | ___ __   ___ | |_ ___ "
     echo " | |_| | | | | '_ \| |/ / '_ \ / _ \| __/ _ \\"
@@ -57,7 +58,7 @@ print_banner() {
 }
 
 info() {
-    printf '%b%s%b\n' "${BLUE}==>${NC} ${BOLD}" "$1" "${NC}"
+    printf '%b%s%b\n' "${LIGHT_BLUE}==>${NC} ${BOLD}" "$1" "${NC}"
 }
 
 success() {
@@ -208,7 +209,7 @@ install_binary() {
         warn "Checksum for ${archive_name} not found. Skipping verification."
     else
         verify_checksum "$archive_path" "$expected_checksum"
-        success "Checksum verified"
+        info "Checksum verified"
     fi
 
     # Extract
@@ -232,7 +233,7 @@ install_binary() {
     # Verify installation with better error reporting
     local version_output
     if version_output=$("$install_path" --version 2>&1); then
-        success "Hunknote installed to ${install_path}"
+        info "Hunknote installed to ${install_path}"
     else
         echo ""
         warn "Binary verification failed. Output:"
@@ -322,34 +323,58 @@ print_next_steps() {
     echo ""
     echo -e "${BOLD}Next steps:${NC}"
     echo ""
-    echo "  1. Set up your API key (choose one):"
+    echo "  1. Run the interactive setup wizard:"
     echo ""
-    echo -e "     ${BLUE}# For Anthropic Claude (recommended)${NC}"
-    echo "     export ANTHROPIC_API_KEY='your-api-key'"
+    echo -e "     ${BOLD}hunknote init${NC}"
     echo ""
-    echo -e "     ${BLUE}# For OpenAI${NC}"
-    echo "     export OPENAI_API_KEY='your-api-key'"
+    echo "     This will guide you through selecting an LLM provider,"
+    echo "     model, and configuring your API key."
     echo ""
-    echo -e "     ${BLUE}# For Google Gemini${NC}"
-    echo "     export GEMINI_API_KEY='your-api-key'"
+    echo -e "     Supported providers: Anthropic, OpenAI, Google Gemini,"
+    echo "     Mistral, Cohere, Groq, OpenRouter"
     echo ""
-    echo "  2. Add the export to your shell profile (~/.bashrc or ~/.zshrc)"
+    echo "  2. Try it out:"
     echo ""
-    echo "  3. Try it out:"
+    echo -e "     ${LIGHT_BLUE}# Stage some changes${NC}"
+    echo "     git add <files>"
     echo ""
-    echo -e "     ${BLUE}# Stage some changes${NC}"
-    echo "     git add ."
-    echo ""
-    echo -e "     ${BLUE}# Generate a commit message${NC}"
+    echo -e "     ${LIGHT_BLUE}# Generate a commit message${NC}"
     echo "     hunknote"
     echo ""
-    echo -e "     ${BLUE}# Or commit directly${NC}"
-    echo "     hunknote --commit"
+    echo -e "     ${LIGHT_BLUE}# Review and commit${NC}"
+    echo "     hunknote commit"
+    echo ""
+    echo -e "     ${LIGHT_BLUE}# Or split mixed changes into atomic commits${NC}"
+    echo "     hunknote compose"
     echo ""
     echo -e "${BOLD}Documentation:${NC} https://docs.hunknote.com"
     echo -e "${BOLD}GitHub:${NC}        https://github.com/${GITHUB_REPO}"
     echo ""
 }
+
+print_try_it_out() {
+    echo ""
+    echo -e "${GREEN}${BOLD}✓ Hunknote is already installed!${NC}"
+    echo ""
+    echo -e "Try it out:"
+    echo ""
+    echo -e "  ${LIGHT_BLUE}# Stage some changes${NC}"
+    echo "  git add <files>"
+    echo ""
+    echo -e "  ${LIGHT_BLUE}# Generate a commit message${NC}"
+    echo "  hunknote"
+    echo ""
+    echo -e "  ${LIGHT_BLUE}# Review and commit${NC}"
+    echo "  hunknote commit"
+    echo ""
+    echo -e "  ${LIGHT_BLUE}# Or split mixed changes into atomic commits${NC}"
+    echo "  hunknote compose"
+    echo ""
+    echo -e "${BOLD}Documentation:${NC} https://docs.hunknote.com"
+    echo -e "${BOLD}GitHub:${NC}        https://github.com/${GITHUB_REPO}"
+    echo ""
+}
+
 
 # -----------------------------------------------------------------------------
 # Fallback to pip installation
@@ -576,6 +601,19 @@ main() {
     arch=$(detect_arch)
     info "Detected platform: ${os}/${arch}"
 
+    # Check if hunknote is already installed
+    if command -v hunknote &> /dev/null; then
+        local existing_path
+        existing_path=$(command -v hunknote)
+        existing_version=$("$existing_path" --version 2>/dev/null || echo "unknown")
+
+        # Remove the leading 'hunknote ' from the version output if present
+        existing_version="${existing_version#hunknote }"
+    else
+        existing_path=""
+        existing_version=""
+    fi
+
     # Get latest version
     info "Fetching latest version..."
     local version
@@ -583,6 +621,21 @@ main() {
     version="${version#v}"  # Strip leading 'v' if present
     info "Latest version: ${version}"
     echo ""
+
+    # If already installed, check version
+    if [[ -n "$existing_path" ]]; then
+        if [[ "$existing_version" == "$version" ]]; then
+            success "Hunknote ${version} is already installed at ${existing_path}"
+            echo ""
+            print_try_it_out
+            exit 0
+        else
+            warn "A different version of hunknote is already installed at ${existing_path} (version: ${existing_version})."
+            echo ""
+            warn "The installer will attempt to update it to the latest version (${version})."
+            echo ""
+        fi
+    fi
 
     # Try to download pre-built binary
     local install_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
