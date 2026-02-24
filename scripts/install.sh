@@ -360,8 +360,16 @@ print_next_steps() {
 fallback_to_pip() {
     local os="$1"
     local arch="$2"
+    local reason="${3:-not_available}"
 
-    warn "Pre-built binary not available for ${os}/${arch}."
+    if [[ "$reason" == "binary_failed" ]]; then
+        # Binary was downloaded but failed to run (GLIBC issue, etc.)
+        # The error message was already shown by install_binary
+        :
+    else
+        # Binary not available for this platform
+        warn "Pre-built binary not available for ${os}/${arch}."
+    fi
     echo ""
     info "Falling back to pip installation..."
     echo ""
@@ -587,15 +595,18 @@ main() {
     local check_url="https://github.com/${GITHUB_REPO}/releases/download/v${version}/${archive_name}"
 
     local binary_install_success=false
+    local fallback_reason="not_available"
     if curl --output /dev/null --silent --head --fail "$check_url"; then
         if install_path=$(install_binary "$os" "$arch" "$version" "$install_dir"); then
             binary_install_success=true
+        else
+            fallback_reason="binary_failed"
         fi
     fi
 
     # Fallback to pip if binary install failed or wasn't available
     if [[ "$binary_install_success" != true ]]; then
-        fallback_to_pip "$os" "$arch"
+        fallback_to_pip "$os" "$arch" "$fallback_reason"
         install_path=$(command -v hunknote || echo "$HOME/.local/bin/hunknote")
     fi
 
