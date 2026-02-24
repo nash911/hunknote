@@ -48,8 +48,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install poetry pyinstaller
+          pip install poetry
           poetry install --only main
+          poetry run pip install pyinstaller pyinstaller-hooks-contrib
 
       - name: Get version
         id: version
@@ -62,24 +63,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          poetry run pyinstaller \
-            --onefile \
-            --name hunknote \
-            --hidden-import=hunknote.cli \
-            --hidden-import=hunknote.llm \
-            --hidden-import=hunknote.compose \
-            --hidden-import=hunknote.cache \
-            --hidden-import=hunknote.git \
-            --hidden-import=hunknote.styles \
-            --collect-all anthropic \
-            --collect-all openai \
-            --collect-all google.genai \
-            --collect-all mistralai \
-            --collect-all cohere \
-            --collect-all groq \
-            --collect-all pydantic \
-            --collect-all typer \
-            hunknote/__main__.py
+          poetry run pyinstaller hunknote.spec --noconfirm
 
       - name: Prepare artifact
         run: |
