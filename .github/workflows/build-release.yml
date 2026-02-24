@@ -26,16 +26,12 @@ jobs:
           - os: ubuntu-latest
             target: linux_amd64
             asset_name: hunknote_linux_amd64
-          # macOS AMD64 (Intel)
-          - os: macos-13
-            target: darwin_amd64
-            asset_name: hunknote_darwin_amd64
           # macOS ARM64 (Apple Silicon)
           - os: macos-14
             target: darwin_arm64
             asset_name: hunknote_darwin_arm64
-          # Note: Linux ARM64 is not included due to lack of native ARM runners
-          # Users on Linux ARM64 can install via pip: pip install hunknote
+          # Note: Linux ARM64 and macOS Intel are not included
+          # Users on those platforms can install via pip: pip install hunknote
 
     runs-on: ${{ matrix.os }}
 
