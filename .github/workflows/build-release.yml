@@ -134,6 +134,11 @@ jobs:
             ```bash
             curl -fsSL https://hunknote.com/install.sh | bash
             ```
+
+            Or on macOS:
+            ```bash
+            brew install nash911/tap/hunknote
+            ```
             
             Or download the appropriate binary for your platform below.
             
@@ -145,4 +150,78 @@ jobs:
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula
+        if: success()
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Get checksums for each platform
+          DARWIN_ARM64_SHA=""
+          LINUX_AMD64_SHA=""
+          
+          if [ -f release/hunknote_darwin_arm64.tar.gz ]; then
+            DARWIN_ARM64_SHA=$(sha256sum release/hunknote_darwin_arm64.tar.gz | awk '{print $1}')
+          fi
+          if [ -f release/hunknote_linux_amd64.tar.gz ]; then
+            LINUX_AMD64_SHA=$(sha256sum release/hunknote_linux_amd64.tar.gz | awk '{print $1}')
+          fi
+          
+          echo "Version: $VERSION"
+          echo "Darwin ARM64 SHA: $DARWIN_ARM64_SHA"
+          echo "Linux AMD64 SHA: $LINUX_AMD64_SHA"
+          
+          # Clone the tap repo
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/nash911/homebrew-tap.git" tap-repo
+          cd tap-repo
+          
+          # Generate updated formula
+          cat > Formula/hunknote.rb << FORMULA
+          # typed: false
+          # frozen_string_literal: true
+          
+          # Homebrew formula for Hunknote
+          # Auto-updated by GitHub Actions on release
+          
+          class Hunknote < Formula
+            desc "AI-powered CLI tool for generating git commit messages and composing atomic commit stacks"
+            homepage "https://github.com/nash911/hunknote"
+            version "${VERSION}"
+            license "MIT"
+          
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/nash911/hunknote/releases/download/v#{version}/hunknote_darwin_arm64.tar.gz"
+                sha256 "${DARWIN_ARM64_SHA}"
+              end
+            end
+          
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/nash911/hunknote/releases/download/v#{version}/hunknote_linux_amd64.tar.gz"
+                sha256 "${LINUX_AMD64_SHA}"
+              end
+            end
+          
+            def install
+              bin.install "hunknote"
+            end
+          
+            test do
+              assert_match "hunknote #{version}", shell_output("#{bin}/hunknote --version")
+            end
+          end
+          FORMULA
+          
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' Formula/hunknote.rb
+          
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/hunknote.rb
+          git commit -m "Update hunknote to ${VERSION}" || echo "No changes to commit"
+          git push
 
