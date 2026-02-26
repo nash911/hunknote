@@ -249,7 +249,7 @@ Initialize hunknote with interactive setup.
 
 **Configuration files created:**
 - `~/.hunknote/config.yaml` - Settings
-- `~/.hunknote/credentials` - API keys (secure permissions)
+- API keys are stored securely in the system keychain
 
 ---
 
@@ -815,7 +815,7 @@ Changes:
 Keys are resolved in order:
 
 1. Environment variables (highest priority)
-2. `~/.hunknote/credentials` file
+2. System keychain (via `keyring` library)
 3. Project `.env` file
 
 ---
@@ -844,11 +844,12 @@ default_ignore:
   - package-lock.json
 ```
 
-**credentials**
+**API Keys (System Keychain)**
 
-```
-GOOGLE_API_KEY=your-api-key
-ANTHROPIC_API_KEY=your-api-key
+API keys are stored securely in your operating system's keychain (e.g., GNOME Keyring on Linux, Keychain on macOS) using the `keyring` library. Set keys via:
+
+```bash
+hunknote config set-key google
 ```
 
 ### Repository Configuration
