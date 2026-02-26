@@ -7,7 +7,6 @@ from hunknote.global_config import (
     get_global_config_dir,
     ensure_global_config_dir,
     get_config_file_path,
-    get_credentials_file_path,
     load_global_config,
     save_global_config,
     load_credentials,
@@ -60,14 +59,6 @@ class TestConfigFilePaths:
         assert result.name == "config.yaml"
         assert ".hunknote" in str(result)
 
-    def test_get_credentials_file_path_returns_credentials(self, mocker, temp_dir):
-        """Test that credentials file path ends with credentials."""
-        mock_dir = temp_dir / ".hunknote"
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
-
-        result = get_credentials_file_path()
-
-        assert result.name == "credentials"
 
 
 class TestLoadSaveGlobalConfig:
@@ -110,74 +101,76 @@ class TestLoadSaveGlobalConfig:
 
 
 class TestCredentials:
-    """Tests for credentials management."""
+    """Tests for credentials management via system keychain."""
 
-    def test_load_credentials_returns_empty_if_missing(self, mocker, temp_dir):
-        """Test load returns empty dict if no credentials file."""
-        mock_dir = temp_dir / ".hunknote"
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+    def test_load_credentials_returns_empty_if_no_keys(self, mocker):
+        """Test load returns empty dict if no keys are stored."""
+        mocker.patch("hunknote.global_config.keyring.get_password", return_value=None)
 
         result = load_credentials()
 
         assert result == {}
 
-    def test_load_credentials_parses_file(self, mocker, temp_dir):
-        """Test loading credentials from file."""
-        mock_dir = temp_dir / ".hunknote"
-        mock_dir.mkdir(parents=True)
-        creds_file = mock_dir / "credentials"
-        creds_file.write_text("GOOGLE_API_KEY=test-key-123\nANTHROPIC_API_KEY=other-key\n")
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+    def test_load_credentials_returns_stored_keys(self, mocker):
+        """Test loading credentials from keychain."""
+        def mock_get_password(service, key):
+            store = {
+                "GOOGLE_API_KEY": "test-key-123",
+                "ANTHROPIC_API_KEY": "other-key",
+            }
+            return store.get(key)
+
+        mocker.patch("hunknote.global_config.keyring.get_password", side_effect=mock_get_password)
 
         result = load_credentials()
 
         assert result["GOOGLE_API_KEY"] == "test-key-123"
         assert result["ANTHROPIC_API_KEY"] == "other-key"
 
-    def test_load_credentials_ignores_comments(self, mocker, temp_dir):
-        """Test that comments are ignored."""
-        mock_dir = temp_dir / ".hunknote"
-        mock_dir.mkdir(parents=True)
-        creds_file = mock_dir / "credentials"
-        creds_file.write_text("# This is a comment\nGOOGLE_API_KEY=key\n")
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+    def test_load_credentials_handles_keyring_errors(self, mocker):
+        """Test that keyring errors are silently skipped."""
+        mocker.patch("hunknote.global_config.keyring.get_password", side_effect=Exception("keyring error"))
 
         result = load_credentials()
 
-        assert "# This is a comment" not in result
-        assert result["GOOGLE_API_KEY"] == "key"
+        assert result == {}
 
-    def test_save_credential_creates_file(self, mocker, temp_dir):
-        """Test saving a credential creates/updates the file."""
-        mock_dir = temp_dir / ".hunknote"
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+    def test_save_credential_calls_keyring_set(self, mocker):
+        """Test saving a credential uses keyring.set_password."""
+        mock_set = mocker.patch("hunknote.global_config.keyring.set_password")
 
         save_credential("TEST_API_KEY", "test-value-123")
 
-        creds_file = mock_dir / "credentials"
-        assert creds_file.exists()
-        content = creds_file.read_text()
-        assert "TEST_API_KEY=test-value-123" in content
+        mock_set.assert_called_once_with("hunknote", "TEST_API_KEY", "test-value-123")
 
-    def test_get_credential_returns_value(self, mocker, temp_dir):
-        """Test getting a specific credential."""
-        mock_dir = temp_dir / ".hunknote"
-        mock_dir.mkdir(parents=True)
-        creds_file = mock_dir / "credentials"
-        creds_file.write_text("GOOGLE_API_KEY=my-google-key\n")
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+    def test_save_credential_raises_on_keyring_error(self, mocker):
+        """Test that keyring errors are wrapped in GlobalConfigError."""
+        from hunknote.global_config import GlobalConfigError
+        mocker.patch("hunknote.global_config.keyring.set_password", side_effect=Exception("keyring error"))
+
+        import pytest
+        with pytest.raises(GlobalConfigError, match="keychain"):
+            save_credential("TEST_API_KEY", "test-value-123")
+
+    def test_get_credential_returns_value(self, mocker):
+        """Test getting a specific credential from keychain."""
+        mocker.patch("hunknote.global_config.keyring.get_password", return_value="my-google-key")
 
         result = get_credential("GOOGLE_API_KEY")
 
         assert result == "my-google-key"
 
-    def test_get_credential_returns_none_if_missing(self, mocker, temp_dir):
+    def test_get_credential_returns_none_if_missing(self, mocker):
         """Test getting a missing credential returns None."""
-        mock_dir = temp_dir / ".hunknote"
-        mock_dir.mkdir(parents=True)
-        creds_file = mock_dir / "credentials"
-        creds_file.write_text("OTHER_KEY=value\n")
-        mocker.patch("hunknote.global_config._CONFIG_DIR", mock_dir)
+        mocker.patch("hunknote.global_config.keyring.get_password", return_value=None)
+
+        result = get_credential("GOOGLE_API_KEY")
+
+        assert result is None
+
+    def test_get_credential_returns_none_on_error(self, mocker):
+        """Test that keyring errors return None instead of raising."""
+        mocker.patch("hunknote.global_config.keyring.get_password", side_effect=Exception("keyring error"))
 
         result = get_credential("GOOGLE_API_KEY")
 
