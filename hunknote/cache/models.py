@@ -44,6 +44,8 @@ class ComposeCacheMetadata(BaseModel):
     num_commits: int
     style: str
     max_commits: int
+    # File relationships text (Strategy 2 output for debugging)
+    file_relationships_text: Optional[str] = None
     # Retry statistics (for debugging purposes)
     retry_count: int = 0
     retry_stats: Optional[list[dict]] = None  # Per-retry token usage

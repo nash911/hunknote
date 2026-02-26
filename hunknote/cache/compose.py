@@ -56,6 +56,7 @@ def save_compose_cache(
     num_commits: int,
     style: str,
     max_commits: int,
+    file_relationships_text: Optional[str] = None,
     retry_count: int = 0,
     retry_stats: list[dict] | None = None,
 ) -> None:
@@ -73,6 +74,7 @@ def save_compose_cache(
         num_commits: Number of commits in the plan.
         style: The style profile used.
         max_commits: Maximum commits setting.
+        file_relationships_text: Formatted file relationships text from Strategy 2.
         retry_count: Number of LLM retries performed (0 if none).
         retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].
     """
@@ -94,6 +96,7 @@ def save_compose_cache(
         num_commits=num_commits,
         style=style,
         max_commits=max_commits,
+        file_relationships_text=file_relationships_text,
         retry_count=retry_count,
         retry_stats=retry_stats,
     )
