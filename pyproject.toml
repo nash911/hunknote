@@ -29,11 +29,11 @@ include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.15"
-#typer = "^0.23.0"
 typer = "0.21.2"
 pydantic = "^2.12.5"
 python-dotenv = "^1.2.1"
 pyyaml = "^6.0.3"
+keyring = "^25.7.0"
 # LLM Provider SDKs
 anthropic = "^0.79.0"
 openai = "^2.20.0"

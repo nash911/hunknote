@@ -82,6 +82,16 @@ a = Analysis(
         'charset_normalizer',
         'urllib3',
         'requests',
+        # Keyring and backends
+        'keyring',
+        'keyring.backends',
+        'keyring.backend',
+        'secretstorage',
+        'jeepney',
+        'jaraco',
+        'jaraco.classes',
+        'jaraco.context',
+        'jaraco.functools',
         # Encoding support
         'encodings',
         'codecs',
