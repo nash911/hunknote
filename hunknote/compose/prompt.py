@@ -6,15 +6,19 @@ Contains:
 - build_compose_retry_prompt: Build retry prompt when validation fails
 """
 
+from typing import Optional
+
 from hunknote.compose.models import FileDiff, ComposePlan
 from hunknote.compose.inventory import format_inventory_for_llm
+from hunknote.compose.relationships import FileRelationship, format_relationships_for_llm
 
 
 COMPOSE_SYSTEM_PROMPT = """You are an expert software engineer creating a clean commit stack from a set of changes.
 
 Your task is to split the given changes (hunks) into logical, atomic commits following best practices:
 - Each commit should be cohesive and focused on one logical change
-- Separate features, refactors, tests, docs, and config changes
+- Separate features, refactors, tests, docs, and config changes ONLY when they are independent
+- If a change in one file requires a corresponding change in another file to keep the codebase valid, those hunks MUST be in the same commit — a commit must never leave the codebase in a broken state
 - Order commits logically (infrastructure before features, etc.)
 - Do not split hunks from the same new file across commits
 - Reference ONLY the hunk IDs provided in the inventory
@@ -41,6 +45,7 @@ def build_compose_prompt(
     recent_commits: list[str],
     style: str,
     max_commits: int,
+    file_relationships: Optional[list[FileRelationship]] = None,
 ) -> str:
     """Build the user prompt for compose planning.
 
@@ -50,11 +55,17 @@ def build_compose_prompt(
         recent_commits: Last N commit subjects
         style: Style profile name
         max_commits: Maximum number of commits
+        file_relationships: Detected import dependencies between changed files
 
     Returns:
         User prompt string
     """
     inventory_text = format_inventory_for_llm(file_diffs)
+
+    # Format file relationships if available
+    relationships_text = ""
+    if file_relationships:
+        relationships_text = format_relationships_for_llm(file_relationships)
 
     # Count stats
     total_files = len([f for f in file_diffs if not f.is_binary])
@@ -72,7 +83,7 @@ Max commits: {max_commits}
 Files with changes: {total_files}
 Total hunks: {total_hunks}
 
-{inventory_text}
+{relationships_text + chr(10) if relationships_text else ""}{inventory_text}
 
 [OUTPUT SCHEMA]
 Return a JSON object with this exact structure:
@@ -112,6 +123,7 @@ The type and scope are already separate JSON fields — do NOT repeat them insid
 4. Keep new file hunks together in one commit
 5. Order: infrastructure → features → tests → docs
 6. Use appropriate commit type based on changes
+7. If a change in one file requires a corresponding change in another file to keep the codebase valid (e.g., changing a default and updating its tests, renaming a function and updating call sites, modifying an interface and its implementations), those hunks MUST be in the same commit — never leave the codebase in a broken state
 
 Output ONLY the JSON object:"""
 

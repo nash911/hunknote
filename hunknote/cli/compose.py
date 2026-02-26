@@ -24,6 +24,7 @@ from hunknote.cli.utils import (
     colorize_diff,
     show_in_pager,
 )
+from hunknote.compose.relationships import detect_file_relationships
 
 
 def compose_command(
@@ -286,6 +287,9 @@ def compose_command(
             # Generate plan via LLM
             typer.echo("Generating compose plan...", err=True)
 
+            # Detect file relationships for coherent commit grouping
+            file_relationships = detect_file_relationships(file_diffs, repo_root)
+
             # Build prompt
             prompt = build_compose_prompt(
                 file_diffs=file_diffs,
@@ -293,6 +297,7 @@ def compose_command(
                 recent_commits=recent_commits,
                 style=effective_profile.value,
                 max_commits=max_commits,
+                file_relationships=file_relationships,
             )
 
             if debug:
