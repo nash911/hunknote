@@ -498,6 +498,7 @@ def detect_file_relationships(
 
     Uses a tiered approach:
     - Tier 1: Python ast-based import extraction (100% accurate)
+    - Tier 1.5: Re-export tracing through __init__.py / index.ts
     - Tier 2: Regex-based import extraction for other languages
     - Tier 3: Path-based heuristic fallbacks
 
