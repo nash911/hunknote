@@ -7,6 +7,7 @@ This package provides modular compose handling with:
 - validation: validate_plan, PlanValidationError
 - patch: build_commit_patch
 - prompt: COMPOSE_SYSTEM_PROMPT, build_compose_prompt
+- relationships: detect_file_relationships, FileRelationship, format_relationships_for_llm
 - executor: ComposeSnapshot, ComposeExecutionError, create_snapshot,
             restore_from_snapshot, execute_commit
 - cleanup: cleanup_temp_files
@@ -52,6 +53,13 @@ from hunknote.compose.prompt import (
     build_compose_retry_prompt,
 )
 
+# Relationships (file dependency detection)
+from hunknote.compose.relationships import (
+    FileRelationship,
+    detect_file_relationships,
+    format_relationships_for_llm,
+)
+
 # Executor
 from hunknote.compose.executor import (
     ComposeExecutionError,
@@ -90,6 +98,10 @@ __all__ = [
     "COMPOSE_RETRY_SYSTEM_PROMPT",
     "build_compose_prompt",
     "build_compose_retry_prompt",
+    # Relationships
+    "FileRelationship",
+    "detect_file_relationships",
+    "format_relationships_for_llm",
     # Executor
     "ComposeSnapshot",
     "ComposeExecutionError",
