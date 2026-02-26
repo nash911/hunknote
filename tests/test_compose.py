@@ -580,6 +580,150 @@ class TestComposeSystemPrompt:
         """Test that system prompt mentions JSON output."""
         assert "JSON" in COMPOSE_SYSTEM_PROMPT
 
+    def test_system_prompt_contains_coherence_rule(self):
+        """Test that system prompt includes the atomic coherence rule."""
+        prompt_lower = COMPOSE_SYSTEM_PROMPT.lower()
+        # Must mention keeping dependent changes together
+        assert "broken state" in prompt_lower
+        assert "same commit" in prompt_lower
+
+    def test_system_prompt_coherence_overrides_type_separation(self):
+        """Test that coherence rule qualifies the type separation guidance.
+
+        The prompt should say to separate types ONLY when independent,
+        not unconditionally.
+        """
+        assert "ONLY when they are independent" in COMPOSE_SYSTEM_PROMPT
+
+    def test_system_prompt_mentions_cross_file_dependency(self):
+        """Test that system prompt addresses cross-file dependencies."""
+        prompt_lower = COMPOSE_SYSTEM_PROMPT.lower()
+        # Should mention changes in one file requiring changes in another
+        assert "one file" in prompt_lower
+        assert "another file" in prompt_lower
+
+
+class TestCoherenceRuleInPrompt:
+    """Tests that the coherence rule is properly included in compose prompts.
+
+    Strategy 1: The LLM prompt must instruct that causally dependent hunks
+    across different files are kept in the same commit.
+    """
+
+    def test_user_prompt_contains_coherence_rule(self, sample_diff):
+        """Test that the user prompt includes the coherence rule in RULES."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        prompt_lower = prompt.lower()
+        # The RULES section must contain the coherence rule
+        assert "broken state" in prompt_lower
+        assert "same commit" in prompt_lower
+
+    def test_coherence_rule_mentions_tests(self, sample_diff):
+        """Test that coherence rule explicitly mentions test updates as example."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        prompt_lower = prompt.lower()
+        assert "test" in prompt_lower
+
+    def test_coherence_rule_mentions_renaming(self, sample_diff):
+        """Test that coherence rule mentions function renaming as example."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        prompt_lower = prompt.lower()
+        assert "rename" in prompt_lower or "renaming" in prompt_lower
+
+    def test_coherence_rule_mentions_interface_changes(self, sample_diff):
+        """Test that coherence rule mentions interface/implementation changes."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        prompt_lower = prompt.lower()
+        assert "interface" in prompt_lower or "implementation" in prompt_lower
+
+    def test_coherence_rule_is_numbered_in_rules_section(self, sample_diff):
+        """Test that coherence rule is a numbered rule in the RULES section."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        prompt = build_compose_prompt(
+            file_diffs=file_diffs,
+            branch="main",
+            recent_commits=[],
+            style="default",
+            max_commits=6,
+        )
+
+        # Extract the RULES section
+        rules_start = prompt.find("[RULES]")
+        assert rules_start != -1, "RULES section not found in prompt"
+
+        rules_section = prompt[rules_start:]
+        # The coherence rule should be rule 7
+        assert "7." in rules_section
+
+    def test_coherence_rule_present_regardless_of_style(self, sample_diff):
+        """Test that coherence rule is present for all style profiles."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        for style in ["default", "blueprint", "conventional", "ticket", "kernel"]:
+            prompt = build_compose_prompt(
+                file_diffs=file_diffs,
+                branch="main",
+                recent_commits=[],
+                style=style,
+                max_commits=6,
+            )
+            assert "broken state" in prompt.lower(), (
+                f"Coherence rule missing for style: {style}"
+            )
+
+    def test_coherence_rule_present_regardless_of_max_commits(self, sample_diff):
+        """Test that coherence rule is present for any max_commits value."""
+        file_diffs, _ = parse_unified_diff(sample_diff)
+
+        for max_commits in [1, 2, 5, 10, 20]:
+            prompt = build_compose_prompt(
+                file_diffs=file_diffs,
+                branch="main",
+                recent_commits=[],
+                style="default",
+                max_commits=max_commits,
+            )
+            assert "broken state" in prompt.lower(), (
+                f"Coherence rule missing for max_commits={max_commits}"
+            )
+
 
 class TestComposeRetryPrompt:
     """Tests for compose retry prompt functions."""
