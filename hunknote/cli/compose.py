@@ -625,7 +625,15 @@ def compose_command(
                 typer.echo(f"  {i}. {prefix}{title}")
             else:
                 typer.echo(f"  {i}. {title}")
-            typer.echo(f"     ({len(planned_commit.hunks)} hunks)")
+            # Count unique files in this commit
+            commit_files = set()
+            for hid in planned_commit.hunks:
+                hunk_ref = inventory.get(hid)
+                if hunk_ref:
+                    commit_files.add(hunk_ref.file_path)
+            num_files = len(commit_files)
+            file_label = "file" if num_files == 1 else "files"
+            typer.echo(f"     ({len(planned_commit.hunks)} hunks, {num_files} {file_label})")
 
         # Print detailed previews
         typer.echo("")
