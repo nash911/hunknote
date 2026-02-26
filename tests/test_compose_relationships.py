@@ -26,6 +26,7 @@ from hunknote.compose.relationships import (
     extract_python_imports,
     format_relationships_for_llm,
     resolve_module_to_file,
+    trace_reexports,
 )
 from hunknote.compose.models import FileDiff, HunkRef
 from hunknote.compose.prompt import build_compose_prompt
@@ -611,6 +612,244 @@ class TestDetectFileRelationships:
         result = detect_file_relationships(diffs, temp_repo)
         pairs = [(r.source, r.target) for r in result]
         assert ("src/loader.py", "src/plugin.py") in pairs
+
+
+# ============================================================
+# Tier 1.5: Re-export tracing through __init__.py / index.ts
+# ============================================================
+
+class TestTraceReexports:
+    """Tests for trace_reexports — Tier 1.5 re-export tracing."""
+
+    def test_python_init_reexport(self, temp_repo):
+        """Test tracing Python __init__.py re-exports to actual source module."""
+        _make_file(temp_repo, "mypackage/__init__.py", textwrap.dedent('''\
+            from mypackage.prompt import build_prompt
+            from mypackage.models import DataModel
+        '''))
+        _make_file(temp_repo, "mypackage/prompt.py", "def build_prompt(): pass")
+        _make_file(temp_repo, "mypackage/models.py", "class DataModel: pass")
+
+        changed = {"mypackage/prompt.py", "mypackage/models.py"}
+        result = trace_reexports("mypackage/__init__.py", temp_repo, changed)
+
+        assert "mypackage/prompt.py" in result
+        assert "mypackage/models.py" in result
+
+    def test_python_init_partial_match(self, temp_repo):
+        """Test that only changed files are returned from re-exports."""
+        _make_file(temp_repo, "pkg/__init__.py", textwrap.dedent('''\
+            from pkg.alpha import A
+            from pkg.beta import B
+            from pkg.gamma import C
+        '''))
+        _make_file(temp_repo, "pkg/alpha.py", "A = 1")
+        _make_file(temp_repo, "pkg/beta.py", "B = 2")
+        _make_file(temp_repo, "pkg/gamma.py", "C = 3")
+
+        # Only alpha.py is in the changed set
+        changed = {"pkg/alpha.py"}
+        result = trace_reexports("pkg/__init__.py", temp_repo, changed)
+
+        assert "pkg/alpha.py" in result
+        assert "pkg/beta.py" not in result
+        assert "pkg/gamma.py" not in result
+
+    def test_python_init_no_changed_reexports(self, temp_repo):
+        """Test that empty set returned when no re-exports match changed files."""
+        _make_file(temp_repo, "pkg/__init__.py", textwrap.dedent('''\
+            from pkg.alpha import A
+        '''))
+        _make_file(temp_repo, "pkg/alpha.py", "A = 1")
+
+        changed = {"some/other/file.py"}  # Not re-exported
+        result = trace_reexports("pkg/__init__.py", temp_repo, changed)
+
+        assert result == set()
+
+    def test_js_index_reexport(self, temp_repo):
+        """Test tracing JS/TS index.ts barrel re-exports."""
+        _make_file(temp_repo, "src/models/index.ts", textwrap.dedent('''\
+            export { UserConfig } from './user';
+            export { OrderConfig } from './order';
+        '''))
+        _make_file(temp_repo, "src/models/user.ts", "export interface UserConfig {}")
+        _make_file(temp_repo, "src/models/order.ts", "export interface OrderConfig {}")
+
+        changed = {"src/models/user.ts"}
+        result = trace_reexports("src/models/index.ts", temp_repo, changed)
+
+        assert "src/models/user.ts" in result
+
+    def test_nonexistent_init_file(self, temp_repo):
+        """Test graceful handling when init file doesn't exist."""
+        result = trace_reexports(
+            "nonexistent/__init__.py", temp_repo, {"some/file.py"}
+        )
+        assert result == set()
+
+    def test_empty_init_file(self, temp_repo):
+        """Test empty __init__.py returns no targets."""
+        _make_file(temp_repo, "pkg/__init__.py", "")
+        result = trace_reexports("pkg/__init__.py", temp_repo, {"pkg/module.py"})
+        assert result == set()
+
+
+class TestDetectFileRelationshipsWithReexports:
+    """Tests for detect_file_relationships with Tier 1.5 re-export tracing."""
+
+    def test_python_import_via_init_reexport(self, temp_repo):
+        """Test the exact real-world case: import via __init__.py re-export.
+
+        cli/app.py imports build_prompt from mypackage (the __init__.py).
+        mypackage/__init__.py re-exports from mypackage.prompt.
+        mypackage/prompt.py is in the changed set.
+        The relationship cli/app.py → mypackage/prompt.py should be detected.
+        """
+        # The __init__.py re-exports build_prompt from prompt.py
+        _make_file(temp_repo, "mypackage/__init__.py", textwrap.dedent('''\
+            from mypackage.prompt import build_prompt
+            from mypackage.models import DataModel
+        '''))
+        _make_file(temp_repo, "mypackage/prompt.py", textwrap.dedent('''\
+            def build_prompt(file_diffs, style, file_relationships):
+                pass
+        '''))
+        # cli/app.py imports from mypackage (the __init__.py)
+        _make_file(temp_repo, "cli/app.py", textwrap.dedent('''\
+            from mypackage import build_prompt
+            def run():
+                build_prompt([], "default", [])
+        '''))
+
+        diffs = [
+            _make_file_diff("mypackage/prompt.py"),
+            _make_file_diff("cli/app.py"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        pairs = [(r.source, r.target) for r in result]
+        assert ("cli/app.py", "mypackage/prompt.py") in pairs
+
+    def test_python_import_via_nested_init(self, temp_repo):
+        """Test import via nested package __init__.py re-export."""
+        _make_file(temp_repo, "core/compose/__init__.py", textwrap.dedent('''\
+            from core.compose.prompt import build_compose_prompt
+            from core.compose.validation import validate_plan
+        '''))
+        _make_file(temp_repo, "core/compose/prompt.py",
+                   "def build_compose_prompt(): pass")
+        _make_file(temp_repo, "core/compose/validation.py",
+                   "def validate_plan(): pass")
+        _make_file(temp_repo, "cli/compose_cmd.py", textwrap.dedent('''\
+            from core.compose import build_compose_prompt
+            def run():
+                build_compose_prompt()
+        '''))
+
+        diffs = [
+            _make_file_diff("core/compose/prompt.py"),
+            _make_file_diff("cli/compose_cmd.py"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        pairs = [(r.source, r.target) for r in result]
+        assert ("cli/compose_cmd.py", "core/compose/prompt.py") in pairs
+
+    def test_js_import_via_index_barrel(self, temp_repo):
+        """Test JS/TS import via index.ts barrel re-export."""
+        _make_file(temp_repo, "src/models/index.ts", textwrap.dedent('''\
+            export { UserConfig } from './user';
+            export { OrderConfig } from './order';
+        '''))
+        _make_file(temp_repo, "src/models/user.ts",
+                   "export interface UserConfig { name: string; }")
+        _make_file(temp_repo, "src/services/auth.ts", textwrap.dedent('''\
+            import { UserConfig } from '../models';
+            export function authenticate(config: UserConfig) {}
+        '''))
+
+        diffs = [
+            _make_file_diff("src/models/user.ts"),
+            _make_file_diff("src/services/auth.ts"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        pairs = [(r.source, r.target) for r in result]
+        assert ("src/services/auth.ts", "src/models/user.ts") in pairs
+
+    def test_reexport_does_not_duplicate_direct_import(self, temp_repo):
+        """Test that direct import + re-export don't create duplicate edges."""
+        _make_file(temp_repo, "pkg/__init__.py", textwrap.dedent('''\
+            from pkg.module_a import func_a
+        '''))
+        _make_file(temp_repo, "pkg/module_a.py", "def func_a(): pass")
+        # This file imports BOTH directly and via __init__.py
+        _make_file(temp_repo, "pkg/module_b.py", textwrap.dedent('''\
+            from pkg.module_a import func_a
+            from pkg import func_a as func_a2
+        '''))
+
+        diffs = [
+            _make_file_diff("pkg/module_a.py"),
+            _make_file_diff("pkg/module_b.py"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        # Should have exactly one relationship, not duplicated
+        pairs = [(r.source, r.target) for r in result if r.kind == "direct"]
+        assert ("pkg/module_b.py", "pkg/module_a.py") in pairs
+        # Count: should appear only once
+        count = sum(1 for r in result
+                    if r.source == "pkg/module_b.py"
+                    and r.target == "pkg/module_a.py")
+        assert count == 1
+
+    def test_init_in_changed_set_not_traced(self, temp_repo):
+        """Test that __init__.py in the changed set is treated as a normal file."""
+        _make_file(temp_repo, "pkg/__init__.py", textwrap.dedent('''\
+            from pkg.module_a import func_a
+        '''))
+        _make_file(temp_repo, "pkg/module_a.py", "def func_a(): pass")
+        _make_file(temp_repo, "pkg/consumer.py", textwrap.dedent('''\
+            from pkg import func_a
+        '''))
+
+        # __init__.py IS in the changed set — it should be treated as a direct target
+        diffs = [
+            _make_file_diff("pkg/__init__.py"),
+            _make_file_diff("pkg/module_a.py"),
+            _make_file_diff("pkg/consumer.py"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        pairs = [(r.source, r.target) for r in result]
+        # consumer.py should link to __init__.py directly (it's in the changed set)
+        assert ("pkg/consumer.py", "pkg/__init__.py") in pairs
+
+    def test_multiple_consumers_same_reexport(self, temp_repo):
+        """Test multiple files importing through the same __init__.py."""
+        _make_file(temp_repo, "lib/__init__.py", textwrap.dedent('''\
+            from lib.core import process
+        '''))
+        _make_file(temp_repo, "lib/core.py", "def process(): pass")
+        _make_file(temp_repo, "api/endpoint_a.py", textwrap.dedent('''\
+            from lib import process
+        '''))
+        _make_file(temp_repo, "api/endpoint_b.py", textwrap.dedent('''\
+            from lib import process
+        '''))
+
+        diffs = [
+            _make_file_diff("lib/core.py"),
+            _make_file_diff("api/endpoint_a.py"),
+            _make_file_diff("api/endpoint_b.py"),
+        ]
+
+        result = detect_file_relationships(diffs, temp_repo)
+        pairs = [(r.source, r.target) for r in result]
+        assert ("api/endpoint_a.py", "lib/core.py") in pairs
+        assert ("api/endpoint_b.py", "lib/core.py") in pairs
 
 
 # ============================================================
