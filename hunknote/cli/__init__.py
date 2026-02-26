@@ -60,7 +60,7 @@ from hunknote.git_ctx import build_context_bundle, get_staged_diff, get_status
 # Main application
 app = typer.Typer(
     name="hunknote",
-    help="AI-powered git commit message generator using LLMs",
+    help="hunknote: AI-powered Git commit manager",
     add_completion=False,
 )
 
