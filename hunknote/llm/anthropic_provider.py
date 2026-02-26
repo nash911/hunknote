@@ -35,7 +35,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.ANTHROPIC]
 
     def get_api_key(self) -> str:
-        """Get the Anthropic API key from environment or credentials file.
+        """Get the Anthropic API key from environment or system keychain.
 
         Returns:
             The API key string.

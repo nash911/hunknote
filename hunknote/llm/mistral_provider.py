@@ -34,7 +34,7 @@ class MistralProvider(BaseLLMProvider):
         self.api_key_env_var = API_KEY_ENV_VARS[LLMProvider.MISTRAL]
 
     def get_api_key(self) -> str:
-        """Get the Mistral API key from environment or credentials file.
+        """Get the Mistral API key from environment or system keychain.
 
         Returns:
             The API key string.

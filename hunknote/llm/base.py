@@ -112,11 +112,11 @@ class BaseLLMProvider(ABC):
 
     @abstractmethod
     def get_api_key(self) -> str:
-        """Get the API key from environment or credentials file.
+        """Get the API key from environment or system keychain.
 
         Checks in order:
         1. Environment variable
-        2. ~/.hunknote/credentials file
+        2. System keychain (via keyring library)
         3. Repo-level .env file (if loaded)
 
         Returns:
@@ -128,7 +128,7 @@ class BaseLLMProvider(ABC):
         pass
 
     def _get_api_key_with_fallback(self, env_var_name: str, provider_name: str) -> str:
-        """Helper to get API key with fallback to credentials file.
+        """Helper to get API key with fallback to system keychain.
 
         Args:
             env_var_name: Environment variable name to check.
@@ -147,7 +147,7 @@ class BaseLLMProvider(ABC):
         if api_key:
             return api_key
 
-        # Then check credentials file
+        # Then check system keychain
         try:
             from hunknote.global_config import get_credential
             api_key = get_credential(env_var_name)
