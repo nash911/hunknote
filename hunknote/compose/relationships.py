@@ -12,6 +12,7 @@ can group causally dependent hunks into the same commit.
 """
 
 import ast
+import os
 import re
 from collections import deque
 from dataclasses import dataclass
@@ -265,6 +266,75 @@ def resolve_module_to_file(
 
 
 # ============================================================
+# Tier 1.5: Re-export tracing through __init__.py / index.ts
+# ============================================================
+
+# File names that act as re-export packages
+_PYTHON_INIT_FILES = {"__init__.py"}
+_JS_INDEX_FILES = {"index.ts", "index.js", "index.tsx", "index.jsx"}
+
+
+def _is_reexport_file(file_path: str) -> bool:
+    """Check if a file path is a re-export package file (__init__.py or index.ts)."""
+    name = Path(file_path).name
+    return name in _PYTHON_INIT_FILES or name in _JS_INDEX_FILES
+
+
+def trace_reexports(
+    init_file: str,
+    repo_root: Path,
+    changed_files: set[str],
+) -> set[str]:
+    """Trace re-exports through an __init__.py or index.ts to find actual source modules.
+
+    When a module resolves to __init__.py / index.ts that is NOT in the changed set,
+    this function reads that file, extracts its re-exports, and checks if any of
+    those re-exported source modules ARE in the changed set.
+
+    Args:
+        init_file: Relative path to the __init__.py or index.ts file.
+        repo_root: Absolute path to the repository root.
+        changed_files: Set of changed file paths.
+
+    Returns:
+        Set of changed file paths that are re-exported through the init/index file.
+    """
+    source_code = _read_file_safe(repo_root / init_file)
+    if source_code is None:
+        return set()
+
+    ext = Path(init_file).suffix
+    init_dir = os.path.normpath(str(Path(init_file).parent))
+    reexported_targets: set[str] = set()
+
+    # Extract imports from the init/index file
+    if ext == ".py":
+        raw_imports = extract_python_imports(source_code)
+    else:
+        raw_imports = extract_imports_regex(source_code, ext)
+
+    # Resolve each re-exported import and check against changed set
+    for module_path in raw_imports:
+        # For JS/TS relative paths, resolve relative to the init/index file's dir
+        if ext in (".ts", ".tsx", ".js", ".jsx") and module_path.startswith("."):
+            # Join the init dir with the relative path and normalize
+            joined = str((Path(init_dir) / module_path).as_posix())
+            # Ensure it starts with ./ so resolve_module_to_file treats it as relative
+            if not joined.startswith((".", "/")):
+                joined = "./" + joined
+            resolved = resolve_module_to_file(joined, repo_root, ext)
+        else:
+            resolved = resolve_module_to_file(module_path, repo_root, ext)
+
+        if resolved:
+            resolved = os.path.normpath(resolved)
+            if resolved in changed_files:
+                reexported_targets.add(resolved)
+
+    return reexported_targets
+
+
+# ============================================================
 # Tier 3: Path-based heuristic fallbacks
 # ============================================================
 
@@ -470,10 +540,31 @@ def detect_file_relationships(
 
         # Resolve imports to file paths and check against changed set
         resolved_targets: set[str] = set()
+        file_dir = str(Path(file_path).parent)  # Directory of the importing file
+
         for module_path in raw_imports:
-            resolved = resolve_module_to_file(module_path, repo_root, ext)
-            if resolved and resolved in changed_files and resolved != file_path:
+            # For JS/TS relative paths, resolve relative to the importing file's dir
+            if ext in (".ts", ".tsx", ".js", ".jsx") and module_path.startswith("."):
+                joined = str((Path(file_dir) / module_path).as_posix())
+                if not joined.startswith((".", "/")):
+                    joined = "./" + joined
+                resolved = resolve_module_to_file(joined, repo_root, ext)
+            else:
+                resolved = resolve_module_to_file(module_path, repo_root, ext)
+            if resolved is None:
+                continue
+            # Normalize path to resolve any ../ components
+            resolved = os.path.normpath(resolved)
+            if resolved in changed_files and resolved != file_path:
+                # Direct hit: the imported file is in the changed set
                 resolved_targets.add(resolved)
+            elif _is_reexport_file(resolved) and resolved not in changed_files:
+                # Tier 1.5: Resolved to __init__.py / index.ts not in changed set.
+                # Trace its re-exports to find the actual source modules.
+                reexported = trace_reexports(resolved, repo_root, changed_files)
+                for target in reexported:
+                    if target != file_path:
+                        resolved_targets.add(target)
 
         if resolved_targets:
             direct_edges[file_path] = resolved_targets
