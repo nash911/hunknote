@@ -58,6 +58,7 @@ from hunknote.compose.relationships import (
     FileRelationship,
     detect_file_relationships,
     format_relationships_for_llm,
+    trace_reexports,
 )
 
 # Executor
@@ -102,6 +103,7 @@ __all__ = [
     "FileRelationship",
     "detect_file_relationships",
     "format_relationships_for_llm",
+    "trace_reexports",
     # Executor
     "ComposeSnapshot",
     "ComposeExecutionError",
