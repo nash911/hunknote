@@ -161,8 +161,7 @@ class BaseLLMProvider(ABC):
         raise MissingAPIKeyError(
             f"{provider_name} API key not found. Set it using:\n"
             f"  1. Environment variable: export {env_var_name}=your_key_here\n"
-            f"  2. Run: hunknote config set-key {provider_name.lower()}\n"
-            f"  3. Manually add to ~/.hunknote/credentials"
+            f"  2. Run: hunknote config set-key {provider_name.lower()}"
         )
 
     def build_user_prompt(self, context_bundle: str) -> str:

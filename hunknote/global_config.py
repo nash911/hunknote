@@ -2,17 +2,20 @@
 
 Handles user-level configuration stored in ~/.hunknote/:
 - config.yaml: Provider, model, and preference settings
-- credentials: API keys for LLM providers
+
+API keys are stored securely using the system keychain via the keyring library.
 """
 
-import os
-import stat
 from pathlib import Path
 from typing import Dict, Optional, Any
 
+import keyring
 import yaml
 
 from hunknote.config import LLMProvider
+
+# Keyring service name for all hunknote credentials
+_KEYRING_SERVICE = "hunknote"
 
 
 class GlobalConfigError(Exception):
@@ -52,15 +55,6 @@ def get_config_file_path() -> Path:
     return get_global_config_dir() / "config.yaml"
 
 
-def get_credentials_file_path() -> Path:
-    """Get path to credentials file.
-
-    Returns:
-        Path to ~/.hunknote/credentials
-    """
-    return get_global_config_dir() / "credentials"
-
-
 def load_global_config() -> Dict[str, Any]:
     """Load global configuration from ~/.hunknote/config.yaml.
 
@@ -97,81 +91,43 @@ def save_global_config(config: Dict[str, Any]) -> None:
 
 
 def load_credentials() -> Dict[str, str]:
-    """Load API keys from ~/.hunknote/credentials.
+    """Load all known API keys from the system keychain.
+
+    Queries keyring for each known provider's API key environment variable.
 
     Returns:
-        Dictionary mapping provider names to API keys.
+        Dictionary mapping provider env var names to API keys.
     """
-    credentials_file = get_credentials_file_path()
-
-    if not credentials_file.exists():
-        return {}
+    from hunknote.config import API_KEY_ENV_VARS
 
     credentials = {}
+    for provider, env_var in API_KEY_ENV_VARS.items():
+        try:
+            value = keyring.get_password(_KEYRING_SERVICE, env_var)
+            if value:
+                credentials[env_var] = value
+        except Exception:
+            # Skip keys that can't be retrieved
+            continue
 
-    try:
-        with open(credentials_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                # Skip empty lines and comments
-                if not line or line.startswith("#"):
-                    continue
-
-                # Parse KEY=value format
-                if "=" in line:
-                    key, value = line.split("=", 1)
-                    credentials[key.strip()] = value.strip()
-
-        return credentials
-    except Exception as e:
-        raise GlobalConfigError(f"Failed to load credentials from {credentials_file}: {e}")
+    return credentials
 
 
 def save_credential(provider_key: str, api_key: str) -> None:
-    """Save or update an API key in the credentials file.
+    """Save or update an API key in the system keychain.
 
     Args:
         provider_key: Environment variable name (e.g., "ANTHROPIC_API_KEY")
         api_key: The API key value.
     """
-    ensure_global_config_dir()
-    credentials_file = get_credentials_file_path()
-
-    # Load existing credentials
-    existing_creds = {}
-    if credentials_file.exists():
-        try:
-            with open(credentials_file, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        key, value = line.split("=", 1)
-                        existing_creds[key.strip()] = value.strip()
-        except Exception as e:
-            raise GlobalConfigError(f"Failed to read existing credentials: {e}")
-
-    # Update the credential
-    existing_creds[provider_key] = api_key
-
-    # Write back all credentials
     try:
-        with open(credentials_file, "w") as f:
-            f.write("# hunknote API credentials\n")
-            f.write("# This file stores API keys for LLM providers\n")
-            f.write("# Format: PROVIDER_API_KEY=your_key_here\n\n")
-
-            for key, value in existing_creds.items():
-                f.write(f"{key}={value}\n")
-
-        # Set secure permissions (owner read/write only)
-        os.chmod(credentials_file, stat.S_IRUSR | stat.S_IWUSR)
-
+        keyring.set_password(_KEYRING_SERVICE, provider_key, api_key)
     except Exception as e:
-        raise GlobalConfigError(f"Failed to save credential: {e}")
+        raise GlobalConfigError(f"Failed to save credential to keychain: {e}")
 
 
 def get_credential(provider_key: str) -> Optional[str]:
-    """Get an API key from credentials file.
+    """Get an API key from the system keychain.
 
     Args:
         provider_key: Environment variable name (e.g., "ANTHROPIC_API_KEY")
@@ -179,8 +135,10 @@ def get_credential(provider_key: str) -> Optional[str]:
     Returns:
         The API key if found, None otherwise.
     """
-    credentials = load_credentials()
-    return credentials.get(provider_key)
+    try:
+        return keyring.get_password(_KEYRING_SERVICE, provider_key)
+    except Exception:
+        return None
 
 
 def get_active_provider() -> Optional[LLMProvider]:
