@@ -24,7 +24,7 @@ from hunknote.cli.utils import (
     colorize_diff,
     show_in_pager,
 )
-from hunknote.compose.relationships import detect_file_relationships
+from hunknote.compose.relationships import detect_file_relationships, format_relationships_for_llm
 
 
 def compose_command(
@@ -248,6 +248,7 @@ def compose_command(
         llm_input_tokens = 0
         llm_output_tokens = 0
         cached_metadata = None
+        file_relationships_text = ""
 
         if from_plan:
             # Load plan from external JSON file
@@ -278,6 +279,7 @@ def compose_command(
                         llm_model = cached_metadata.model
                         llm_input_tokens = cached_metadata.input_tokens
                         llm_output_tokens = cached_metadata.output_tokens
+                        file_relationships_text = cached_metadata.file_relationships_text or ""
                 except Exception as e:
                     typer.echo(f"Failed to load cached plan: {e}", err=True)
                     typer.echo("Regenerating...", err=True)
@@ -289,6 +291,7 @@ def compose_command(
 
             # Detect file relationships for coherent commit grouping
             file_relationships = detect_file_relationships(file_diffs, repo_root)
+            file_relationships_text = format_relationships_for_llm(file_relationships)
 
             # Build prompt
             prompt = build_compose_prompt(
@@ -349,6 +352,7 @@ def compose_command(
                     num_commits=len(plan.commits),
                     style=effective_profile.value,
                     max_commits=max_commits,
+                    file_relationships_text=file_relationships_text or None,
                 )
 
                 # Build and save hunk IDs file
@@ -451,6 +455,19 @@ def compose_command(
                 typer.echo(f"  ... and {len(file_diffs) - 15} more files", err=True)
             typer.echo("", err=True)
 
+            # File relationships (Strategy 2)
+            if file_relationships_text:
+                typer.echo("File Relationships:", err=True)
+                # Skip the [FILE RELATIONSHIPS] header line and the description line
+                for line in file_relationships_text.split("\n"):
+                    if line.startswith("[FILE RELATIONSHIPS]"):
+                        continue
+                    if line.startswith("Detected import dependencies"):
+                        continue
+                    if line.strip():
+                        typer.echo(f"  {line.strip()}", err=True)
+                typer.echo("", err=True)
+
             # Warnings
             if parse_warnings:
                 typer.echo("Warnings:", err=True)
@@ -540,6 +557,7 @@ def compose_command(
                         num_commits=len(plan.commits),
                         style=effective_profile.value,
                         max_commits=max_commits,
+                        file_relationships_text=file_relationships_text or None,
                         retry_count=retry_count,
                         retry_stats=retry_stats,
                     )
