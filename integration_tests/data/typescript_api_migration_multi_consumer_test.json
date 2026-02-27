@@ -1,0 +1,212 @@
+{
+  "id": "ts_api_migration_multi_consumer_test",
+  "language": "typescript",
+  "name": "TypeScript: API migration — rename + 3 consumers + 3 tests — 7 files, 14 hunks",
+  "description": "lib/api.ts renames fetchUser() to getUser() and changes return type. Three consumer files (pages/Profile.tsx, pages/Admin.tsx, hooks/useUser.ts) call the old function. Three test files (tests/Profile.test.tsx, tests/Admin.test.tsx, tests/useUser.test.ts) mock the old function. All 7 files MUST be in a single commit because the rename breaks every consumer and every test mock simultaneously. The LLM is strongly tempted to split into source-rename commit + test-update commit.",
+  "difficulty": "super_hard",
+  "category": "api_migration_multi_consumer_test",
+  "num_files": 7,
+  "num_hunks": 14,
+  "file_diffs": [
+    {
+      "file_path": "src/lib/api.ts",
+      "hunks": [
+        {
+          "id": "H1_sh02a1",
+          "header": "@@ -12,8 +12,8 @@",
+          "lines": [
+            "-export async function fetchUser(id: string): Promise<UserData> {",
+            "-  const res = await fetch(`/api/users/${id}`);",
+            "-  return res.json();",
+            "+export async function getUser(id: string): Promise<UserProfile> {",
+            "+  const res = await fetch(`/api/v2/users/${id}`);",
+            "+  return transformProfile(await res.json());",
+            " }"
+          ]
+        },
+        {
+          "id": "H2_sh02a2",
+          "header": "@@ -25,6 +25,10 @@",
+          "lines": [
+            "+function transformProfile(raw: any): UserProfile {",
+            "+  return { id: raw.id, name: raw.display_name, avatar: raw.avatar_url };",
+            "+}",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/pages/Profile.tsx",
+      "hunks": [
+        {
+          "id": "H3_sh02b3",
+          "header": "@@ -2,7 +2,7 @@",
+          "lines": [
+            "-import { fetchUser } from '../lib/api';",
+            "+import { getUser } from '../lib/api';"
+          ]
+        },
+        {
+          "id": "H4_sh02b4",
+          "header": "@@ -18,7 +18,7 @@",
+          "lines": [
+            " const Profile: React.FC<{ userId: string }> = ({ userId }) => {",
+            "   useEffect(() => {",
+            "-    fetchUser(userId).then(setUser);",
+            "+    getUser(userId).then(setUser);",
+            "   }, [userId]);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/pages/Admin.tsx",
+      "hunks": [
+        {
+          "id": "H5_sh02c5",
+          "header": "@@ -3,7 +3,7 @@",
+          "lines": [
+            "-import { fetchUser } from '../lib/api';",
+            "+import { getUser } from '../lib/api';"
+          ]
+        },
+        {
+          "id": "H6_sh02c6",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            "   const loadUser = async (id: string) => {",
+            "-    const data = await fetchUser(id);",
+            "+    const data = await getUser(id);",
+            "     setSelectedUser(data);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/hooks/useUser.ts",
+      "hunks": [
+        {
+          "id": "H7_sh02d7",
+          "header": "@@ -1,7 +1,7 @@",
+          "lines": [
+            "-import { fetchUser } from '../lib/api';",
+            "+import { getUser } from '../lib/api';"
+          ]
+        },
+        {
+          "id": "H8_sh02d8",
+          "header": "@@ -12,7 +12,7 @@",
+          "lines": [
+            " export function useUser(id: string) {",
+            "   useEffect(() => {",
+            "-    fetchUser(id).then(setData).catch(setError);",
+            "+    getUser(id).then(setData).catch(setError);",
+            "   }, [id]);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/Profile.test.tsx",
+      "hunks": [
+        {
+          "id": "H9_sh02e9",
+          "header": "@@ -5,7 +5,7 @@",
+          "lines": [
+            "-jest.mock('../lib/api', () => ({ fetchUser: jest.fn() }));",
+            "+jest.mock('../lib/api', () => ({ getUser: jest.fn() }));"
+          ]
+        },
+        {
+          "id": "H10_sh02ea",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            " it('renders user profile', async () => {",
+            "-  (fetchUser as jest.Mock).mockResolvedValue({ name: 'Alice' });",
+            "+  (getUser as jest.Mock).mockResolvedValue({ name: 'Alice' });",
+            "   render(<Profile userId='1' />);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/Admin.test.tsx",
+      "hunks": [
+        {
+          "id": "H11_sh02fb",
+          "header": "@@ -5,7 +5,7 @@",
+          "lines": [
+            "-jest.mock('../lib/api', () => ({ fetchUser: jest.fn() }));",
+            "+jest.mock('../lib/api', () => ({ getUser: jest.fn() }));"
+          ]
+        },
+        {
+          "id": "H12_sh02fc",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " it('loads selected user', async () => {",
+            "-  (fetchUser as jest.Mock).mockResolvedValue({ name: 'Bob', role: 'admin' });",
+            "+  (getUser as jest.Mock).mockResolvedValue({ name: 'Bob', role: 'admin' });",
+            "   render(<Admin />);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/useUser.test.ts",
+      "hunks": [
+        {
+          "id": "H13_sh02gd",
+          "header": "@@ -3,7 +3,7 @@",
+          "lines": [
+            "-jest.mock('../lib/api', () => ({ fetchUser: jest.fn() }));",
+            "+jest.mock('../lib/api', () => ({ getUser: jest.fn() }));"
+          ]
+        },
+        {
+          "id": "H14_sh02ge",
+          "header": "@@ -12,7 +12,7 @@",
+          "lines": [
+            " it('returns user data', async () => {",
+            "-  (fetchUser as jest.Mock).mockResolvedValue({ id: '1', name: 'Alice' });",
+            "+  (getUser as jest.Mock).mockResolvedValue({ id: '1', name: 'Alice' });",
+            "   const { result } = renderHook(() => useUser('1'));"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/pages/Profile.tsx", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "src/pages/Admin.tsx", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "src/hooks/useUser.ts", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "tests/Profile.test.tsx", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "tests/Admin.test.tsx", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "tests/useUser.test.ts", "target": "src/lib/api.ts", "kind": "direct"},
+    {"source": "tests/Profile.test.tsx", "target": "src/pages/Profile.tsx", "kind": "direct"},
+    {"source": "tests/Admin.test.tsx", "target": "src/pages/Admin.tsx", "kind": "direct"},
+    {"source": "tests/useUser.test.ts", "target": "src/hooks/useUser.ts", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/lib/api.ts", "src/pages/Profile.tsx", "src/pages/Admin.tsx", "src/hooks/useUser.ts", "tests/Profile.test.tsx", "tests/Admin.test.tsx", "tests/useUser.test.ts"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh02a1": "src/lib/api.ts",
+    "H2_sh02a2": "src/lib/api.ts",
+    "H3_sh02b3": "src/pages/Profile.tsx",
+    "H4_sh02b4": "src/pages/Profile.tsx",
+    "H5_sh02c5": "src/pages/Admin.tsx",
+    "H6_sh02c6": "src/pages/Admin.tsx",
+    "H7_sh02d7": "src/hooks/useUser.ts",
+    "H8_sh02d8": "src/hooks/useUser.ts",
+    "H9_sh02e9": "tests/Profile.test.tsx",
+    "H10_sh02ea": "tests/Profile.test.tsx",
+    "H11_sh02fb": "tests/Admin.test.tsx",
+    "H12_sh02fc": "tests/Admin.test.tsx",
+    "H13_sh02gd": "tests/useUser.test.ts",
+    "H14_sh02ge": "tests/useUser.test.ts"
+  }
+}
+

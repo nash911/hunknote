@@ -1,0 +1,874 @@
+{
+  "id": "py_large_refactor_class_rename_20_consumers",
+  "language": "python",
+  "name": "Python: Class rename BaseModel->Entity across 29 files, 57 hunks",
+  "description": "models/base.py renames BaseModel to Entity and to_dict() to serialize(). 4 model files + __init__.py update inheritance. 12 consumer files (6 API views, 4 services, 1 CLI) update imports and isinstance checks. 5 test files update imports and assertions. 3 migration files, 2 new feature files, docs, and config as noise. ALL 22 renamed-reference files must be in the same commit. The LLM is strongly tempted to split into: models commit, consumers commit, tests commit, migrations commit \u2014 each of which breaks the codebase.",
+  "difficulty": "hyper_hard",
+  "category": "class_rename_mass_consumer",
+  "num_files": 29,
+  "num_hunks": 57,
+  "file_diffs": [
+    {
+      "file_path": "models/base.py",
+      "hunks": [
+        {
+          "id": "H1_hh0301",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-class BaseModel:",
+            "+class Entity:",
+            "     id = Column(Integer, primary_key=True)",
+            "     created_at = Column(DateTime, default=datetime.utcnow)"
+          ]
+        },
+        {
+          "id": "H2_hh0302",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-    def to_dict(self):",
+            "+    def serialize(self):",
+            "         return {c.name: getattr(self, c.name) for c in self.__table__.columns}"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "models/user.py",
+      "hunks": [
+        {
+          "id": "H3_hh0303",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models.base import BaseModel",
+            "+from models.base import Entity"
+          ]
+        },
+        {
+          "id": "H4_hh0304",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-class User(BaseModel):",
+            "+class User(Entity):",
+            "     email = Column(String, unique=True)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "models/product.py",
+      "hunks": [
+        {
+          "id": "H5_hh0305",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models.base import BaseModel",
+            "+from models.base import Entity"
+          ]
+        },
+        {
+          "id": "H6_hh0306",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-class Product(BaseModel):",
+            "+class Product(Entity):",
+            "     name = Column(String)",
+            "     price = Column(Float)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "models/order.py",
+      "hunks": [
+        {
+          "id": "H7_hh0307",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models.base import BaseModel",
+            "+from models.base import Entity"
+          ]
+        },
+        {
+          "id": "H8_hh0308",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-class Order(BaseModel):",
+            "+class Order(Entity):",
+            "     user_id = Column(Integer, ForeignKey('user.id'))"
+          ]
+        },
+        {
+          "id": "H9_hh0309",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-    def summary(self):",
+            "-        return self.to_dict()",
+            "+    def summary(self):",
+            "+        return self.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "models/__init__.py",
+      "hunks": [
+        {
+          "id": "H10_hh030a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models.base import BaseModel",
+            "+from models.base import Entity"
+          ]
+        },
+        {
+          "id": "H11_hh030b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-__all__ = ['BaseModel', 'User', 'Product', 'Order']",
+            "+__all__ = ['Entity', 'User', 'Product', 'Order']"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/users.py",
+      "hunks": [
+        {
+          "id": "H12_hh030c",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H13_hh030d",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/products.py",
+      "hunks": [
+        {
+          "id": "H14_hh030e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H15_hh030f",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/orders.py",
+      "hunks": [
+        {
+          "id": "H16_hh0310",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H17_hh0311",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/admin.py",
+      "hunks": [
+        {
+          "id": "H18_hh0312",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H19_hh0313",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/search.py",
+      "hunks": [
+        {
+          "id": "H20_hh0314",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H21_hh0315",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views/reports.py",
+      "hunks": [
+        {
+          "id": "H22_hh0316",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H23_hh0317",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/auth.py",
+      "hunks": [
+        {
+          "id": "H24_hh0318",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H25_hh0319",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/billing.py",
+      "hunks": [
+        {
+          "id": "H26_hh031a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H27_hh031b",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/shipping.py",
+      "hunks": [
+        {
+          "id": "H28_hh031c",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H29_hh031d",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/analytics.py",
+      "hunks": [
+        {
+          "id": "H30_hh031e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H31_hh031f",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/notifications.py",
+      "hunks": [
+        {
+          "id": "H32_hh0320",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H33_hh0321",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "cli/import_cmd.py",
+      "hunks": [
+        {
+          "id": "H34_hh0322",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H35_hh0323",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " def process(obj):",
+            "-    if isinstance(obj, BaseModel):",
+            "+    if isinstance(obj, Entity):",
+            "-        return obj.to_dict()",
+            "+        return obj.serialize()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_user.py",
+      "hunks": [
+        {
+          "id": "H36_hh0324",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H37_hh0325",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def test_model_creation():",
+            "-    assert isinstance(obj, BaseModel)",
+            "+    assert isinstance(obj, Entity)"
+          ]
+        },
+        {
+          "id": "H38_hh0326",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_serialization():",
+            "-    data = obj.to_dict()",
+            "+    data = obj.serialize()",
+            "     assert 'id' in data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_product.py",
+      "hunks": [
+        {
+          "id": "H39_hh0327",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H40_hh0328",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def test_model_creation():",
+            "-    assert isinstance(obj, BaseModel)",
+            "+    assert isinstance(obj, Entity)"
+          ]
+        },
+        {
+          "id": "H41_hh0329",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_serialization():",
+            "-    data = obj.to_dict()",
+            "+    data = obj.serialize()",
+            "     assert 'id' in data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_order.py",
+      "hunks": [
+        {
+          "id": "H42_hh032a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H43_hh032b",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def test_model_creation():",
+            "-    assert isinstance(obj, BaseModel)",
+            "+    assert isinstance(obj, Entity)"
+          ]
+        },
+        {
+          "id": "H44_hh032c",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_serialization():",
+            "-    data = obj.to_dict()",
+            "+    data = obj.serialize()",
+            "     assert 'id' in data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_api_views.py",
+      "hunks": [
+        {
+          "id": "H45_hh032d",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H46_hh032e",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def test_model_creation():",
+            "-    assert isinstance(obj, BaseModel)",
+            "+    assert isinstance(obj, Entity)"
+          ]
+        },
+        {
+          "id": "H47_hh032f",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_serialization():",
+            "-    data = obj.to_dict()",
+            "+    data = obj.serialize()",
+            "     assert 'id' in data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_services.py",
+      "hunks": [
+        {
+          "id": "H48_hh0330",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from models import BaseModel",
+            "+from models import Entity"
+          ]
+        },
+        {
+          "id": "H49_hh0331",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def test_model_creation():",
+            "-    assert isinstance(obj, BaseModel)",
+            "+    assert isinstance(obj, Entity)"
+          ]
+        },
+        {
+          "id": "H50_hh0332",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_serialization():",
+            "-    data = obj.to_dict()",
+            "+    data = obj.serialize()",
+            "     assert 'id' in data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "migrations/rename_basemodel_table.py",
+      "hunks": [
+        {
+          "id": "H51_hh0333",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# Migration 1: rename_basemodel_table",
+            "+def upgrade():",
+            "+    op.rename_table('basemodel', 'entity')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "migrations/update_constraints.py",
+      "hunks": [
+        {
+          "id": "H52_hh0334",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# Migration 2: update_constraints",
+            "+def upgrade():",
+            "+    op.alter_column('entity', 'updated')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "migrations/add_audit_columns.py",
+      "hunks": [
+        {
+          "id": "H53_hh0335",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# Migration 3: add_audit_columns",
+            "+def upgrade():",
+            "+    op.alter_column('entity', 'updated')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "features/export.py",
+      "hunks": [
+        {
+          "id": "H54_hh0336",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "+from models import Entity",
+            "+",
+            "+def export_all(model_class: type[Entity]) -> list[dict]:",
+            "+    return [obj.serialize() for obj in model_class.query.all()]"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "features/bulk_import.py",
+      "hunks": [
+        {
+          "id": "H55_hh0337",
+          "header": "@@ -12,5 +12,8 @@",
+          "lines": [
+            "+from models import Entity",
+            "+",
+            "+def bulk_import(model_class: type[Entity], data: list[dict]):",
+            "+    for item in data:",
+            "+        obj = model_class(**item)",
+            "+        db.session.add(obj)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "docs/models.md",
+      "hunks": [
+        {
+          "id": "H56_hh0338",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "+## Entity Base Class",
+            "+All models now inherit from `Entity` instead of `BaseModel`."
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "pyproject.toml",
+      "hunks": [
+        {
+          "id": "H57_hh0339",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "+[tool.pytest.ini_options]",
+            "+testpaths = [\"tests\"]"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {
+      "source": "api/views/users.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views/products.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views/orders.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views/admin.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views/search.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views/reports.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/auth.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/billing.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/shipping.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/analytics.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/notifications.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "cli/import_cmd.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_user.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_product.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_order.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_api_views.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_services.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "features/export.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "features/bulk_import.py",
+      "target": "models/base.py",
+      "kind": "direct"
+    }
+  ],
+  "must_be_together": [
+    [
+      "api/views/admin.py",
+      "api/views/orders.py",
+      "api/views/products.py",
+      "api/views/reports.py",
+      "api/views/search.py",
+      "api/views/users.py",
+      "cli/import_cmd.py",
+      "models/__init__.py",
+      "models/base.py",
+      "models/order.py",
+      "models/product.py",
+      "models/user.py",
+      "services/analytics.py",
+      "services/auth.py",
+      "services/billing.py",
+      "services/notifications.py",
+      "services/shipping.py",
+      "tests/test_api_views.py",
+      "tests/test_order.py",
+      "tests/test_product.py",
+      "tests/test_services.py",
+      "tests/test_user.py"
+    ]
+  ],
+  "must_be_ordered": [
+    [
+      "models/base.py",
+      "features/export.py"
+    ],
+    [
+      "models/base.py",
+      "features/bulk_import.py"
+    ]
+  ],
+  "hunk_to_file": {
+    "H1_hh0301": "models/base.py",
+    "H2_hh0302": "models/base.py",
+    "H3_hh0303": "models/user.py",
+    "H4_hh0304": "models/user.py",
+    "H5_hh0305": "models/product.py",
+    "H6_hh0306": "models/product.py",
+    "H7_hh0307": "models/order.py",
+    "H8_hh0308": "models/order.py",
+    "H9_hh0309": "models/order.py",
+    "H10_hh030a": "models/__init__.py",
+    "H11_hh030b": "models/__init__.py",
+    "H12_hh030c": "api/views/users.py",
+    "H13_hh030d": "api/views/users.py",
+    "H14_hh030e": "api/views/products.py",
+    "H15_hh030f": "api/views/products.py",
+    "H16_hh0310": "api/views/orders.py",
+    "H17_hh0311": "api/views/orders.py",
+    "H18_hh0312": "api/views/admin.py",
+    "H19_hh0313": "api/views/admin.py",
+    "H20_hh0314": "api/views/search.py",
+    "H21_hh0315": "api/views/search.py",
+    "H22_hh0316": "api/views/reports.py",
+    "H23_hh0317": "api/views/reports.py",
+    "H24_hh0318": "services/auth.py",
+    "H25_hh0319": "services/auth.py",
+    "H26_hh031a": "services/billing.py",
+    "H27_hh031b": "services/billing.py",
+    "H28_hh031c": "services/shipping.py",
+    "H29_hh031d": "services/shipping.py",
+    "H30_hh031e": "services/analytics.py",
+    "H31_hh031f": "services/analytics.py",
+    "H32_hh0320": "services/notifications.py",
+    "H33_hh0321": "services/notifications.py",
+    "H34_hh0322": "cli/import_cmd.py",
+    "H35_hh0323": "cli/import_cmd.py",
+    "H36_hh0324": "tests/test_user.py",
+    "H37_hh0325": "tests/test_user.py",
+    "H38_hh0326": "tests/test_user.py",
+    "H39_hh0327": "tests/test_product.py",
+    "H40_hh0328": "tests/test_product.py",
+    "H41_hh0329": "tests/test_product.py",
+    "H42_hh032a": "tests/test_order.py",
+    "H43_hh032b": "tests/test_order.py",
+    "H44_hh032c": "tests/test_order.py",
+    "H45_hh032d": "tests/test_api_views.py",
+    "H46_hh032e": "tests/test_api_views.py",
+    "H47_hh032f": "tests/test_api_views.py",
+    "H48_hh0330": "tests/test_services.py",
+    "H49_hh0331": "tests/test_services.py",
+    "H50_hh0332": "tests/test_services.py",
+    "H51_hh0333": "migrations/rename_basemodel_table.py",
+    "H52_hh0334": "migrations/update_constraints.py",
+    "H53_hh0335": "migrations/add_audit_columns.py",
+    "H54_hh0336": "features/export.py",
+    "H55_hh0337": "features/bulk_import.py",
+    "H56_hh0338": "docs/models.md",
+    "H57_hh0339": "pyproject.toml"
+  }
+}

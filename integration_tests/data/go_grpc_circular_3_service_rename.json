@@ -1,0 +1,715 @@
+{
+  "id": "go_grpc_circular_3_service_rename",
+  "language": "go",
+  "name": "Go: gRPC 3-service circular rename \u2014 20 files, 45 hunks",
+  "description": "3 gRPC services (auth, user, payment) each rename an RPC method. Services form a circular dependency: auth->user->payment->auth. Each has proto, generated code, server, client, and test files. A gateway and middleware also reference all 3 services. Integration test calls all 3. Plus Makefile and docs as noise. ALL 18 files with renames must be in a single commit. The LLM is tempted to split by service (auth commit, user commit, payment commit) or by layer (proto commit, server commit, test commit) \u2014 both break the circular deps.",
+  "difficulty": "hyper_hard",
+  "category": "grpc_circular_service_rename",
+  "num_files": 20,
+  "num_hunks": 45,
+  "file_diffs": [
+    {
+      "file_path": "proto/auth.proto",
+      "hunks": [
+        {
+          "id": "H1_hh0401",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "   // AuthService API",
+            "-  rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse);",
+            "+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);"
+          ]
+        },
+        {
+          "id": "H2_hh0402",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-message VerifyTokenRequest {",
+            "+message ValidateTokenRequest {",
+            "   string id = 1;",
+            " }"
+          ]
+        },
+        {
+          "id": "H3_hh0403",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-message VerifyTokenResponse {",
+            "+message ValidateTokenResponse {",
+            "   bool success = 1;",
+            "   string message = 2;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "proto/user.proto",
+      "hunks": [
+        {
+          "id": "H4_hh0404",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "   // UserService API",
+            "-  rpc GetUser(GetUserRequest) returns (GetUserResponse);",
+            "+  rpc FetchUser(FetchUserRequest) returns (FetchUserResponse);"
+          ]
+        },
+        {
+          "id": "H5_hh0405",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-message GetUserRequest {",
+            "+message FetchUserRequest {",
+            "   string id = 1;",
+            " }"
+          ]
+        },
+        {
+          "id": "H6_hh0406",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-message GetUserResponse {",
+            "+message FetchUserResponse {",
+            "   bool success = 1;",
+            "   string message = 2;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "proto/payment.proto",
+      "hunks": [
+        {
+          "id": "H7_hh0407",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "   // PaymentService API",
+            "-  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);",
+            "+  rpc ExecutePayment(ExecutePaymentRequest) returns (ExecutePaymentResponse);"
+          ]
+        },
+        {
+          "id": "H8_hh0408",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-message ProcessPaymentRequest {",
+            "+message ExecutePaymentRequest {",
+            "   string id = 1;",
+            " }"
+          ]
+        },
+        {
+          "id": "H9_hh0409",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-message ProcessPaymentResponse {",
+            "+message ExecutePaymentResponse {",
+            "   bool success = 1;",
+            "   string message = 2;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "gen/auth/auth.pb.go",
+      "hunks": [
+        {
+          "id": "H10_hh040a",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-type VerifyTokenRequest struct {",
+            "+type ValidateTokenRequest struct {",
+            "\tId string `protobuf:\"bytes,1,opt,name=id\"`",
+            "}"
+          ]
+        },
+        {
+          "id": "H11_hh040b",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-type VerifyTokenResponse struct {",
+            "+type ValidateTokenResponse struct {",
+            "\tSuccess bool",
+            "\tMessage string",
+            "}"
+          ]
+        },
+        {
+          "id": "H12_hh040c",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-func (c *AuthServiceClient) VerifyToken(ctx context.Context, req *VerifyTokenRequest) (*VerifyTokenResponse, error) {",
+            "+func (c *AuthServiceClient) ValidateToken(ctx context.Context, req *ValidateTokenRequest) (*ValidateTokenResponse, error) {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "gen/user/user.pb.go",
+      "hunks": [
+        {
+          "id": "H13_hh040d",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-type GetUserRequest struct {",
+            "+type FetchUserRequest struct {",
+            "\tId string `protobuf:\"bytes,1,opt,name=id\"`",
+            "}"
+          ]
+        },
+        {
+          "id": "H14_hh040e",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-type GetUserResponse struct {",
+            "+type FetchUserResponse struct {",
+            "\tSuccess bool",
+            "\tMessage string",
+            "}"
+          ]
+        },
+        {
+          "id": "H15_hh040f",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-func (c *UserServiceClient) GetUser(ctx context.Context, req *GetUserRequest) (*GetUserResponse, error) {",
+            "+func (c *UserServiceClient) FetchUser(ctx context.Context, req *FetchUserRequest) (*FetchUserResponse, error) {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "gen/payment/payment.pb.go",
+      "hunks": [
+        {
+          "id": "H16_hh0410",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-type ProcessPaymentRequest struct {",
+            "+type ExecutePaymentRequest struct {",
+            "\tId string `protobuf:\"bytes,1,opt,name=id\"`",
+            "}"
+          ]
+        },
+        {
+          "id": "H17_hh0411",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-type ProcessPaymentResponse struct {",
+            "+type ExecutePaymentResponse struct {",
+            "\tSuccess bool",
+            "\tMessage string",
+            "}"
+          ]
+        },
+        {
+          "id": "H18_hh0412",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-func (c *PaymentServiceClient) ProcessPayment(ctx context.Context, req *ProcessPaymentRequest) (*ProcessPaymentResponse, error) {",
+            "+func (c *PaymentServiceClient) ExecutePayment(ctx context.Context, req *ExecutePaymentRequest) (*ExecutePaymentResponse, error) {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/auth/server.go",
+      "hunks": [
+        {
+          "id": "H19_hh0413",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func (s *Server) VerifyToken(ctx context.Context, req *pb.VerifyTokenRequest) (*pb.VerifyTokenResponse, error) {",
+            "+func (s *Server) ValidateToken(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.ValidateTokenResponse, error) {",
+            "\tlog.Info(\"ValidateToken called\")"
+          ]
+        },
+        {
+          "id": "H20_hh0414",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-\tresp := &pb.VerifyTokenResponse{Success: true}",
+            "+\tresp := &pb.ValidateTokenResponse{Success: true}",
+            "\treturn resp, nil"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/user/client.go",
+      "hunks": [
+        {
+          "id": "H21_hh0415",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func CallGetUser(ctx context.Context, id string) error {",
+            "+func CallFetchUser(ctx context.Context, id string) error {",
+            "\tclient := pb.NewUserServiceClient(conn)"
+          ]
+        },
+        {
+          "id": "H22_hh0416",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-\treq := &pb.GetUserRequest{Id: id}",
+            "+\treq := &pb.FetchUserRequest{Id: id}",
+            "-\t_, err := client.GetUser(ctx, req)",
+            "+\t_, err := client.FetchUser(ctx, req)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/user/server.go",
+      "hunks": [
+        {
+          "id": "H23_hh0417",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func (s *Server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {",
+            "+func (s *Server) FetchUser(ctx context.Context, req *pb.FetchUserRequest) (*pb.FetchUserResponse, error) {",
+            "\tlog.Info(\"FetchUser called\")"
+          ]
+        },
+        {
+          "id": "H24_hh0418",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-\tresp := &pb.GetUserResponse{Success: true}",
+            "+\tresp := &pb.FetchUserResponse{Success: true}",
+            "\treturn resp, nil"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/payment/client.go",
+      "hunks": [
+        {
+          "id": "H25_hh0419",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func CallProcessPayment(ctx context.Context, id string) error {",
+            "+func CallExecutePayment(ctx context.Context, id string) error {",
+            "\tclient := pb.NewPaymentServiceClient(conn)"
+          ]
+        },
+        {
+          "id": "H26_hh041a",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-\treq := &pb.ProcessPaymentRequest{Id: id}",
+            "+\treq := &pb.ExecutePaymentRequest{Id: id}",
+            "-\t_, err := client.ProcessPayment(ctx, req)",
+            "+\t_, err := client.ExecutePayment(ctx, req)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/payment/server.go",
+      "hunks": [
+        {
+          "id": "H27_hh041b",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func (s *Server) ProcessPayment(ctx context.Context, req *pb.ProcessPaymentRequest) (*pb.ProcessPaymentResponse, error) {",
+            "+func (s *Server) ExecutePayment(ctx context.Context, req *pb.ExecutePaymentRequest) (*pb.ExecutePaymentResponse, error) {",
+            "\tlog.Info(\"ExecutePayment called\")"
+          ]
+        },
+        {
+          "id": "H28_hh041c",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-\tresp := &pb.ProcessPaymentResponse{Success: true}",
+            "+\tresp := &pb.ExecutePaymentResponse{Success: true}",
+            "\treturn resp, nil"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/auth/client.go",
+      "hunks": [
+        {
+          "id": "H29_hh041d",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-func CallVerifyToken(ctx context.Context, id string) error {",
+            "+func CallValidateToken(ctx context.Context, id string) error {",
+            "\tclient := pb.NewAuthServiceClient(conn)"
+          ]
+        },
+        {
+          "id": "H30_hh041e",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-\treq := &pb.VerifyTokenRequest{Id: id}",
+            "+\treq := &pb.ValidateTokenRequest{Id: id}",
+            "-\t_, err := client.VerifyToken(ctx, req)",
+            "+\t_, err := client.ValidateToken(ctx, req)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/middleware/auth.go",
+      "hunks": [
+        {
+          "id": "H31_hh041f",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-func AuthInterceptor(ctx context.Context) error {",
+            "-\tresp, err := authClient.VerifyToken(ctx, &pb.VerifyTokenRequest{Id: tokenID})",
+            "+func AuthInterceptor(ctx context.Context) error {",
+            "+\tresp, err := authClient.ValidateToken(ctx, &pb.ValidateTokenRequest{Id: tokenID})"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/gateway/router.go",
+      "hunks": [
+        {
+          "id": "H32_hh0420",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tauthResp, _ := authClient.VerifyToken(ctx, &authpb.VerifyTokenRequest{})",
+            "+\tauthResp, _ := authClient.ValidateToken(ctx, &authpb.ValidateTokenRequest{})"
+          ]
+        },
+        {
+          "id": "H33_hh0421",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tuserResp, _ := userClient.GetUser(ctx, &userpb.GetUserRequest{Id: uid})",
+            "+\tuserResp, _ := userClient.FetchUser(ctx, &userpb.FetchUserRequest{Id: uid})"
+          ]
+        },
+        {
+          "id": "H34_hh0422",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tpayResp, _ := payClient.ProcessPayment(ctx, &paypb.ProcessPaymentRequest{Id: pid})",
+            "+\tpayResp, _ := payClient.ExecutePayment(ctx, &paypb.ExecutePaymentRequest{Id: pid})"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/auth/server_test.go",
+      "hunks": [
+        {
+          "id": "H35_hh0423",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " func TestVerifyToken(t *testing.T) {",
+            "-\treq := &pb.VerifyTokenRequest{Id: \"test\"}",
+            "+\treq := &pb.ValidateTokenRequest{Id: \"test\"}",
+            "-\tresp, err := server.VerifyToken(ctx, req)",
+            "+\tresp, err := server.ValidateToken(ctx, req)"
+          ]
+        },
+        {
+          "id": "H36_hh0424",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tassert.NotNil(t, resp.(*pb.VerifyTokenResponse))",
+            "+\tassert.NotNil(t, resp.(*pb.ValidateTokenResponse))"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/user/server_test.go",
+      "hunks": [
+        {
+          "id": "H37_hh0425",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " func TestGetUser(t *testing.T) {",
+            "-\treq := &pb.GetUserRequest{Id: \"test\"}",
+            "+\treq := &pb.FetchUserRequest{Id: \"test\"}",
+            "-\tresp, err := server.GetUser(ctx, req)",
+            "+\tresp, err := server.FetchUser(ctx, req)"
+          ]
+        },
+        {
+          "id": "H38_hh0426",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tassert.NotNil(t, resp.(*pb.GetUserResponse))",
+            "+\tassert.NotNil(t, resp.(*pb.FetchUserResponse))"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "internal/payment/server_test.go",
+      "hunks": [
+        {
+          "id": "H39_hh0427",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " func TestProcessPayment(t *testing.T) {",
+            "-\treq := &pb.ProcessPaymentRequest{Id: \"test\"}",
+            "+\treq := &pb.ExecutePaymentRequest{Id: \"test\"}",
+            "-\tresp, err := server.ProcessPayment(ctx, req)",
+            "+\tresp, err := server.ExecutePayment(ctx, req)"
+          ]
+        },
+        {
+          "id": "H40_hh0428",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tassert.NotNil(t, resp.(*pb.ProcessPaymentResponse))",
+            "+\tassert.NotNil(t, resp.(*pb.ExecutePaymentResponse))"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/integration_test.go",
+      "hunks": [
+        {
+          "id": "H41_hh0429",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tresp, err := authClient.VerifyToken(ctx, &authpb.VerifyTokenRequest{Id: \"1\"})",
+            "+\tresp, err := authClient.ValidateToken(ctx, &authpb.ValidateTokenRequest{Id: \"1\"})"
+          ]
+        },
+        {
+          "id": "H42_hh042a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tuserResp, _ := userClient.GetUser(ctx, &userpb.GetUserRequest{Id: \"1\"})",
+            "+\tuserResp, _ := userClient.FetchUser(ctx, &userpb.FetchUserRequest{Id: \"1\"})"
+          ]
+        },
+        {
+          "id": "H43_hh042b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-\tpayResp, _ := payClient.ProcessPayment(ctx, &paypb.ProcessPaymentRequest{Id: \"1\"})",
+            "+\tpayResp, _ := payClient.ExecutePayment(ctx, &paypb.ExecutePaymentRequest{Id: \"1\"})"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "Makefile",
+      "hunks": [
+        {
+          "id": "H44_hh042c",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "+proto-gen:",
+            "+\tprotoc --go_out=gen/ proto/*.proto"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "docs/rpc-reference.md",
+      "hunks": [
+        {
+          "id": "H45_hh042d",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "+## Updated RPC Methods",
+            "+- AuthService: ValidateToken",
+            "+- UserService: FetchUser",
+            "+- PaymentService: ExecutePayment"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {
+      "source": "gen/auth/auth.pb.go",
+      "target": "proto/auth.proto",
+      "kind": "direct"
+    },
+    {
+      "source": "gen/user/user.pb.go",
+      "target": "proto/user.proto",
+      "kind": "direct"
+    },
+    {
+      "source": "gen/payment/payment.pb.go",
+      "target": "proto/payment.proto",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/auth/server.go",
+      "target": "gen/auth/auth.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/user/client.go",
+      "target": "gen/user/user.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/auth/server.go",
+      "target": "internal/user/client.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/user/server.go",
+      "target": "gen/user/user.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/payment/client.go",
+      "target": "gen/payment/payment.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/user/server.go",
+      "target": "internal/payment/client.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/payment/server.go",
+      "target": "gen/payment/payment.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/auth/client.go",
+      "target": "gen/auth/auth.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/payment/server.go",
+      "target": "internal/auth/client.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/middleware/auth.go",
+      "target": "gen/auth/auth.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/gateway/router.go",
+      "target": "gen/auth/auth.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/gateway/router.go",
+      "target": "gen/user/user.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/gateway/router.go",
+      "target": "gen/payment/payment.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/auth/server_test.go",
+      "target": "internal/auth/server.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/user/server_test.go",
+      "target": "internal/user/server.go",
+      "kind": "direct"
+    },
+    {
+      "source": "internal/payment/server_test.go",
+      "target": "internal/payment/server.go",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/integration_test.go",
+      "target": "gen/auth/auth.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/integration_test.go",
+      "target": "gen/user/user.pb.go",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/integration_test.go",
+      "target": "gen/payment/payment.pb.go",
+      "kind": "direct"
+    }
+  ],
+  "must_be_together": [
+    [
+      "gen/auth/auth.pb.go",
+      "gen/payment/payment.pb.go",
+      "gen/user/user.pb.go",
+      "internal/auth/client.go",
+      "internal/auth/server.go",
+      "internal/auth/server_test.go",
+      "internal/gateway/router.go",
+      "internal/middleware/auth.go",
+      "internal/payment/client.go",
+      "internal/payment/server.go",
+      "internal/payment/server_test.go",
+      "internal/user/client.go",
+      "internal/user/server.go",
+      "internal/user/server_test.go",
+      "proto/auth.proto",
+      "proto/payment.proto",
+      "proto/user.proto",
+      "tests/integration_test.go"
+    ]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_hh0401": "proto/auth.proto",
+    "H2_hh0402": "proto/auth.proto",
+    "H3_hh0403": "proto/auth.proto",
+    "H4_hh0404": "proto/user.proto",
+    "H5_hh0405": "proto/user.proto",
+    "H6_hh0406": "proto/user.proto",
+    "H7_hh0407": "proto/payment.proto",
+    "H8_hh0408": "proto/payment.proto",
+    "H9_hh0409": "proto/payment.proto",
+    "H10_hh040a": "gen/auth/auth.pb.go",
+    "H11_hh040b": "gen/auth/auth.pb.go",
+    "H12_hh040c": "gen/auth/auth.pb.go",
+    "H13_hh040d": "gen/user/user.pb.go",
+    "H14_hh040e": "gen/user/user.pb.go",
+    "H15_hh040f": "gen/user/user.pb.go",
+    "H16_hh0410": "gen/payment/payment.pb.go",
+    "H17_hh0411": "gen/payment/payment.pb.go",
+    "H18_hh0412": "gen/payment/payment.pb.go",
+    "H19_hh0413": "internal/auth/server.go",
+    "H20_hh0414": "internal/auth/server.go",
+    "H21_hh0415": "internal/user/client.go",
+    "H22_hh0416": "internal/user/client.go",
+    "H23_hh0417": "internal/user/server.go",
+    "H24_hh0418": "internal/user/server.go",
+    "H25_hh0419": "internal/payment/client.go",
+    "H26_hh041a": "internal/payment/client.go",
+    "H27_hh041b": "internal/payment/server.go",
+    "H28_hh041c": "internal/payment/server.go",
+    "H29_hh041d": "internal/auth/client.go",
+    "H30_hh041e": "internal/auth/client.go",
+    "H31_hh041f": "internal/middleware/auth.go",
+    "H32_hh0420": "internal/gateway/router.go",
+    "H33_hh0421": "internal/gateway/router.go",
+    "H34_hh0422": "internal/gateway/router.go",
+    "H35_hh0423": "internal/auth/server_test.go",
+    "H36_hh0424": "internal/auth/server_test.go",
+    "H37_hh0425": "internal/user/server_test.go",
+    "H38_hh0426": "internal/user/server_test.go",
+    "H39_hh0427": "internal/payment/server_test.go",
+    "H40_hh0428": "internal/payment/server_test.go",
+    "H41_hh0429": "tests/integration_test.go",
+    "H42_hh042a": "tests/integration_test.go",
+    "H43_hh042b": "tests/integration_test.go",
+    "H44_hh042c": "Makefile",
+    "H45_hh042d": "docs/rpc-reference.md"
+  }
+}

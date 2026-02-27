@@ -1,0 +1,192 @@
+{
+  "id": "py_base_class_change_subclasses_tests",
+  "language": "python",
+  "name": "Python: Base class constructor change + 3 subclasses + 2 tests — 6 files, 11 hunks",
+  "description": "core/base.py adds a required 'logger' parameter to BaseProcessor.__init__(). Three subclasses (processors/csv.py, processors/json.py, processors/xml.py) must pass the new parameter to super().__init__(). Two test files (tests/test_csv.py, tests/test_json.py) instantiate processors and must pass the logger. All must be together — any subclass without the parameter raises TypeError on instantiation.",
+  "difficulty": "super_hard",
+  "category": "base_class_constructor_change",
+  "num_files": 6,
+  "num_hunks": 11,
+  "file_diffs": [
+    {
+      "file_path": "core/base.py",
+      "hunks": [
+        {
+          "id": "H1_sh07a1",
+          "header": "@@ -8,8 +8,10 @@",
+          "lines": [
+            " class BaseProcessor:",
+            "-    def __init__(self, config: dict):",
+            "+    def __init__(self, config: dict, logger: Logger):",
+            "         self.config = config",
+            "+        self.logger = logger",
+            "         self._initialized = False"
+          ]
+        },
+        {
+          "id": "H2_sh07a2",
+          "header": "@@ -25,6 +27,7 @@",
+          "lines": [
+            "     def process(self, data):",
+            "+        self.logger.info(f'Processing {len(data)} records')",
+            "         self._validate(data)",
+            "         return self._transform(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "processors/csv_processor.py",
+      "hunks": [
+        {
+          "id": "H3_sh07b3",
+          "header": "@@ -10,8 +10,8 @@",
+          "lines": [
+            " class CSVProcessor(BaseProcessor):",
+            "-    def __init__(self, config: dict, delimiter: str = ','):",
+            "-        super().__init__(config)",
+            "+    def __init__(self, config: dict, logger: Logger, delimiter: str = ','):",
+            "+        super().__init__(config, logger)",
+            "         self.delimiter = delimiter"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "processors/json_processor.py",
+      "hunks": [
+        {
+          "id": "H4_sh07c4",
+          "header": "@@ -8,8 +8,8 @@",
+          "lines": [
+            " class JSONProcessor(BaseProcessor):",
+            "-    def __init__(self, config: dict, indent: int = 2):",
+            "-        super().__init__(config)",
+            "+    def __init__(self, config: dict, logger: Logger, indent: int = 2):",
+            "+        super().__init__(config, logger)",
+            "         self.indent = indent"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "processors/xml_processor.py",
+      "hunks": [
+        {
+          "id": "H5_sh07d5",
+          "header": "@@ -12,8 +12,8 @@",
+          "lines": [
+            " class XMLProcessor(BaseProcessor):",
+            "-    def __init__(self, config: dict, encoding: str = 'utf-8'):",
+            "-        super().__init__(config)",
+            "+    def __init__(self, config: dict, logger: Logger, encoding: str = 'utf-8'):",
+            "+        super().__init__(config, logger)",
+            "         self.encoding = encoding"
+          ]
+        },
+        {
+          "id": "H6_sh07d6",
+          "header": "@@ -30,6 +30,7 @@",
+          "lines": [
+            "     def _parse_xml(self, data: str):",
+            "+        self.logger.debug(f'Parsing XML with encoding={self.encoding}')",
+            "         return ET.fromstring(data.encode(self.encoding))"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_csv_processor.py",
+      "hunks": [
+        {
+          "id": "H7_sh07e7",
+          "header": "@@ -3,12 +3,14 @@",
+          "lines": [
+            " import pytest",
+            "+from unittest.mock import MagicMock",
+            " from processors.csv_processor import CSVProcessor"
+          ]
+        },
+        {
+          "id": "H8_sh07e8",
+          "header": "@@ -15,7 +17,8 @@",
+          "lines": [
+            " class TestCSVProcessor:",
+            "     def test_basic_parse(self):",
+            "-        proc = CSVProcessor({'format': 'csv'})",
+            "+        logger = MagicMock()",
+            "+        proc = CSVProcessor({'format': 'csv'}, logger)",
+            "         result = proc.process('a,b,c\\n1,2,3')",
+            "         assert len(result) == 1"
+          ]
+        },
+        {
+          "id": "H9_sh07e9",
+          "header": "@@ -30,7 +33,8 @@",
+          "lines": [
+            "     def test_custom_delimiter(self):",
+            "-        proc = CSVProcessor({'format': 'csv'}, delimiter=';')",
+            "+        logger = MagicMock()",
+            "+        proc = CSVProcessor({'format': 'csv'}, logger, delimiter=';')",
+            "         result = proc.process('a;b;c\\n1;2;3')",
+            "         assert len(result) == 1"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_json_processor.py",
+      "hunks": [
+        {
+          "id": "H10_sh07fa",
+          "header": "@@ -3,11 +3,13 @@",
+          "lines": [
+            " import pytest",
+            "+from unittest.mock import MagicMock",
+            " from processors.json_processor import JSONProcessor"
+          ]
+        },
+        {
+          "id": "H11_sh07fb",
+          "header": "@@ -12,7 +14,8 @@",
+          "lines": [
+            " class TestJSONProcessor:",
+            "     def test_parse_json(self):",
+            "-        proc = JSONProcessor({'format': 'json'})",
+            "+        logger = MagicMock()",
+            "+        proc = JSONProcessor({'format': 'json'}, logger)",
+            "         result = proc.process('{\"key\": \"value\"}')",
+            "         assert result['key'] == 'value'"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "processors/csv_processor.py", "target": "core/base.py", "kind": "direct"},
+    {"source": "processors/json_processor.py", "target": "core/base.py", "kind": "direct"},
+    {"source": "processors/xml_processor.py", "target": "core/base.py", "kind": "direct"},
+    {"source": "tests/test_csv_processor.py", "target": "processors/csv_processor.py", "kind": "direct"},
+    {"source": "tests/test_json_processor.py", "target": "processors/json_processor.py", "kind": "direct"},
+    {"source": "tests/test_csv_processor.py", "target": "core/base.py", "kind": "transitive", "via": "processors/csv_processor.py"},
+    {"source": "tests/test_json_processor.py", "target": "core/base.py", "kind": "transitive", "via": "processors/json_processor.py"}
+  ],
+  "must_be_together": [
+    ["core/base.py", "processors/csv_processor.py", "processors/json_processor.py", "processors/xml_processor.py", "tests/test_csv_processor.py", "tests/test_json_processor.py"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh07a1": "core/base.py",
+    "H2_sh07a2": "core/base.py",
+    "H3_sh07b3": "processors/csv_processor.py",
+    "H4_sh07c4": "processors/json_processor.py",
+    "H5_sh07d5": "processors/xml_processor.py",
+    "H6_sh07d6": "processors/xml_processor.py",
+    "H7_sh07e7": "tests/test_csv_processor.py",
+    "H8_sh07e8": "tests/test_csv_processor.py",
+    "H9_sh07e9": "tests/test_csv_processor.py",
+    "H10_sh07fa": "tests/test_json_processor.py",
+    "H11_sh07fb": "tests/test_json_processor.py"
+  }
+}
+

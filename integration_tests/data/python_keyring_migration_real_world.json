@@ -1,0 +1,223 @@
+{
+  "id": "py_keyring_migration_real_world",
+  "language": "python",
+  "name": "Python: Keyring migration — source + test + 4 docstring updates — 7 files, 12 hunks",
+  "description": "Mirrors the real-world hunknote keyring migration that broke. config.py removes get_creds_file() and switches to keyring. tests/test_config.py removes old import + updates assertions. llm/base.py updates error message. 3 LLM provider files update docstrings. The LLM is strongly tempted to: (1) split config.py from test_config.py into feat+test commits, (2) group all LLM files together. But config.py + test_config.py MUST be together (function removal), and config.py + llm/base.py MUST be together (error message references the removed function).",
+  "difficulty": "super_hard",
+  "category": "real_world_migration_multi_constraint",
+  "num_files": 7,
+  "num_hunks": 12,
+  "file_diffs": [
+    {
+      "file_path": "core/config.py",
+      "hunks": [
+        {
+          "id": "H1_sh03a1",
+          "header": "@@ -2,8 +2,10 @@",
+          "lines": [
+            "-import os",
+            "-import stat",
+            " from pathlib import Path",
+            "+import keyring",
+            "+",
+            "+_KEYRING_SERVICE = 'myapp'"
+          ]
+        },
+        {
+          "id": "H2_sh03a2",
+          "header": "@@ -50,10 +52,6 @@",
+          "lines": [
+            "-def get_creds_file() -> Path:",
+            "-    \"\"\"Get path to credentials file.\"\"\"",
+            "-    return _DIR / 'credentials'",
+            "-",
+            " def load_config():"
+          ]
+        },
+        {
+          "id": "H3_sh03a3",
+          "header": "@@ -80,20 +78,8 @@",
+          "lines": [
+            " def save_credential(key: str, value: str):",
+            "-    \"\"\"Save an API key to the credentials file.\"\"\"",
+            "-    creds = get_creds_file()",
+            "-    try:",
+            "-        with open(creds, 'w') as f:",
+            "-            f.write(f'{key}={value}\\n')",
+            "-        os.chmod(creds, stat.S_IRUSR | stat.S_IWUSR)",
+            "-    except Exception as e:",
+            "-        raise ConfigError(f'Save failed: {e}')",
+            "+    \"\"\"Save an API key to the system keychain.\"\"\"",
+            "+    try:",
+            "+        keyring.set_password(_KEYRING_SERVICE, key, value)",
+            "+    except Exception as e:",
+            "+        raise ConfigError(f'Keychain save failed: {e}')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/base.py",
+      "hunks": [
+        {
+          "id": "H4_sh03b4",
+          "header": "@@ -55,8 +55,7 @@",
+          "lines": [
+            "         raise MissingAPIKeyError(",
+            "             f'{provider} API key not found. Set it via:\\n'",
+            "-            f'  1. export {env_var}=your_key\\n'",
+            "-            f'  2. Add to ~/.myapp/credentials'",
+            "+            f'  1. Run: myapp config set-key {provider.lower()}'",
+            "         )"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/anthropic_provider.py",
+      "hunks": [
+        {
+          "id": "H5_sh03c5",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get API key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get API key from keychain or environment.\"\"\"",
+            "         return self._resolve_key('ANTHROPIC_API_KEY', 'Anthropic')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/openai_provider.py",
+      "hunks": [
+        {
+          "id": "H6_sh03d6",
+          "header": "@@ -18,7 +18,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get API key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get API key from keychain or environment.\"\"\"",
+            "         return self._resolve_key('OPENAI_API_KEY', 'OpenAI')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/google_provider.py",
+      "hunks": [
+        {
+          "id": "H7_sh03e7",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get API key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get API key from keychain or environment.\"\"\"",
+            "         return self._resolve_key('GOOGLE_API_KEY', 'Google')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "cli/main.py",
+      "hunks": [
+        {
+          "id": "H8_sh03f8",
+          "header": "@@ -45,7 +45,7 @@",
+          "lines": [
+            " @app.command()",
+            " def set_key(provider: str, key: str):",
+            "-    \"\"\"Store an API key in the credentials file.\"\"\"",
+            "+    \"\"\"Store an API key in the system keychain.\"\"\"",
+            "     save_credential(provider, key)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_config.py",
+      "hunks": [
+        {
+          "id": "H9_sh03g9",
+          "header": "@@ -5,7 +5,6 @@",
+          "lines": [
+            " from core.config import (",
+            "     get_config_dir,",
+            "-    get_creds_file,",
+            "     load_config,",
+            "     save_credential,",
+            " )"
+          ]
+        },
+        {
+          "id": "H10_sh03ga",
+          "header": "@@ -40,12 +39,6 @@",
+          "lines": [
+            "-    def test_get_creds_file(self, mocker, tmp_path):",
+            "-        mocker.patch('core.config._DIR', tmp_path)",
+            "-        result = get_creds_file()",
+            "-        assert result == tmp_path / 'credentials'",
+            "-"
+          ]
+        },
+        {
+          "id": "H11_sh03gb",
+          "header": "@@ -65,15 +58,10 @@",
+          "lines": [
+            "-    def test_save_credential_creates_file(self, mocker, tmp_path):",
+            "-        mocker.patch('core.config._DIR', tmp_path)",
+            "-        save_credential('KEY', 'value')",
+            "-        assert (tmp_path / 'credentials').exists()",
+            "+    def test_save_credential_uses_keyring(self, mocker):",
+            "+        mock_set = mocker.patch('core.config.keyring.set_password')",
+            "+        save_credential('KEY', 'value')",
+            "+        mock_set.assert_called_once_with('myapp', 'KEY', 'value')"
+          ]
+        },
+        {
+          "id": "H12_sh03gc",
+          "header": "@@ -85,8 +73,8 @@",
+          "lines": [
+            "-    def test_save_credential_sets_permissions(self, mocker, tmp_path):",
+            "-        mocker.patch('core.config._DIR', tmp_path)",
+            "-        save_credential('KEY', 'val')",
+            "-        mode = (tmp_path / 'credentials').stat().st_mode",
+            "-        assert mode & 0o077 == 0  # no group/other access",
+            "+    def test_save_credential_keyring_error(self, mocker):",
+            "+        mocker.patch('core.config.keyring.set_password', side_effect=Exception('fail'))",
+            "+        with pytest.raises(ConfigError):",
+            "+            save_credential('KEY', 'val')"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "llm/base.py", "target": "core/config.py", "kind": "direct"},
+    {"source": "llm/anthropic_provider.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "llm/openai_provider.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "llm/google_provider.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "tests/test_config.py", "target": "core/config.py", "kind": "direct"},
+    {"source": "cli/main.py", "target": "core/config.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["core/config.py", "tests/test_config.py"],
+    ["core/config.py", "llm/base.py"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh03a1": "core/config.py",
+    "H2_sh03a2": "core/config.py",
+    "H3_sh03a3": "core/config.py",
+    "H4_sh03b4": "llm/base.py",
+    "H5_sh03c5": "llm/anthropic_provider.py",
+    "H6_sh03d6": "llm/openai_provider.py",
+    "H7_sh03e7": "llm/google_provider.py",
+    "H8_sh03f8": "cli/main.py",
+    "H9_sh03g9": "tests/test_config.py",
+    "H10_sh03ga": "tests/test_config.py",
+    "H11_sh03gb": "tests/test_config.py",
+    "H12_sh03gc": "tests/test_config.py"
+  }
+}
+

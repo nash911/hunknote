@@ -1,0 +1,822 @@
+{
+  "id": "ts_monorepo_type_rename_cascade",
+  "language": "typescript",
+  "name": "TypeScript: Monorepo type rename across 4 packages \u2014 26 files, 53 hunks",
+  "description": "A TypeScript monorepo with 4 packages (core, auth, api, ui). core/types.ts renames UserRole->Permission and hasRole()->hasPermission(). This cascades through barrel exports to auth guards+middleware, 3 API routes + 3 handlers, UI hooks + 2 components, and all their tests. The rename touches every package via transitive re-exports. ALL renamed files must be in the same commit. Plus CI and tsconfig noise. The LLM is strongly tempted to split by package (core, auth, api, ui commits) which breaks every downstream consumer at each checkpoint.",
+  "difficulty": "hyper_hard",
+  "category": "monorepo_type_rename_cascade",
+  "num_files": 26,
+  "num_hunks": 53,
+  "file_diffs": [
+    {
+      "file_path": "packages/core/src/types.ts",
+      "hunks": [
+        {
+          "id": "H1_hh0201",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export type UserRole = 'admin' | 'editor' | 'viewer';",
+            "+export type Permission = 'admin' | 'editor' | 'viewer';"
+          ]
+        },
+        {
+          "id": "H2_hh0202",
+          "header": "@@ -14,5 +14,8 @@",
+          "lines": [
+            "-export interface RoleConfig {",
+            "-  role: UserRole;",
+            "-  level: number;",
+            "+export interface PermissionConfig {",
+            "+  permission: Permission;",
+            "+  level: number;",
+            " }"
+          ]
+        },
+        {
+          "id": "H3_hh0203",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            "-export function hasRole(user: User, role: UserRole): boolean {",
+            "-  return user.roles.includes(role);",
+            "+export function hasPermission(user: User, perm: Permission): boolean {",
+            "+  return user.permissions.includes(perm);",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/core/src/constants.ts",
+      "hunks": [
+        {
+          "id": "H4_hh0204",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export const DEFAULT_ROLE: UserRole = 'viewer';",
+            "+export const DEFAULT_PERMISSION: Permission = 'viewer';"
+          ]
+        },
+        {
+          "id": "H5_hh0205",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-export const ROLE_HIERARCHY: Record<UserRole, number> = {",
+            "+export const PERMISSION_HIERARCHY: Record<Permission, number> = {",
+            "   admin: 3, editor: 2, viewer: 1,",
+            " };"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/core/src/index.ts",
+      "hunks": [
+        {
+          "id": "H6_hh0206",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export { UserRole, RoleConfig, hasRole } from './types';",
+            "+export { Permission, PermissionConfig, hasPermission } from './types';"
+          ]
+        },
+        {
+          "id": "H7_hh0207",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export { DEFAULT_ROLE, ROLE_HIERARCHY } from './constants';",
+            "+export { DEFAULT_PERMISSION, PERMISSION_HIERARCHY } from './constants';"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/core/tests/types.test.ts",
+      "hunks": [
+        {
+          "id": "H8_hh0208",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { hasRole, UserRole } from '../src/types';",
+            "+import { hasPermission, Permission } from '../src/types';"
+          ]
+        },
+        {
+          "id": "H9_hh0209",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " it('checks admin role', () => {",
+            "-  expect(hasRole(adminUser, 'admin')).toBe(true);",
+            "+  expect(hasPermission(adminUser, 'admin')).toBe(true);",
+            " });"
+          ]
+        },
+        {
+          "id": "H10_hh020a",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " it('rejects unauthorized', () => {",
+            "-  expect(hasRole(viewer, 'admin')).toBe(false);",
+            "+  expect(hasPermission(viewer, 'admin')).toBe(false);",
+            " });"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/auth/src/guards.ts",
+      "hunks": [
+        {
+          "id": "H11_hh020b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole, hasRole } from '@core';",
+            "+import { Permission, hasPermission } from '@core';"
+          ]
+        },
+        {
+          "id": "H12_hh020c",
+          "header": "@@ -14,5 +14,8 @@",
+          "lines": [
+            "-export function requireRole(role: UserRole) {",
+            "+export function requirePermission(perm: Permission) {",
+            "   return (req: Request, res: Response, next: NextFunction) => {",
+            "-    if (!hasRole(req.user, role)) {",
+            "+    if (!hasPermission(req.user, perm)) {",
+            "       return res.status(403).json({ error: 'Forbidden' });",
+            "     }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/auth/src/middleware.ts",
+      "hunks": [
+        {
+          "id": "H13_hh020d",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole } from '@core';",
+            "+import { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H14_hh020e",
+          "header": "@@ -12,5 +12,8 @@",
+          "lines": [
+            "-export function extractRoles(token: string): UserRole[] {",
+            "+export function extractPermissions(token: string): Permission[] {",
+            "   const decoded = jwt.verify(token, SECRET);",
+            "-  return decoded.roles as UserRole[];",
+            "+  return decoded.permissions as Permission[];",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/auth/src/index.ts",
+      "hunks": [
+        {
+          "id": "H15_hh020f",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export { requireRole } from './guards';",
+            "+export { requirePermission } from './guards';"
+          ]
+        },
+        {
+          "id": "H16_hh0210",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-export { extractRoles } from './middleware';",
+            "+export { extractPermissions } from './middleware';"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/auth/tests/guards.test.ts",
+      "hunks": [
+        {
+          "id": "H17_hh0211",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { requireRole } from '../src/guards';",
+            "+import { requirePermission } from '../src/guards';"
+          ]
+        },
+        {
+          "id": "H18_hh0212",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " it('blocks unauthorized', () => {",
+            "-  const guard = requireRole('admin');",
+            "+  const guard = requirePermission('admin');",
+            "   guard(req, res, next);",
+            "   expect(res.status).toHaveBeenCalledWith(403);"
+          ]
+        },
+        {
+          "id": "H19_hh0213",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " it('allows authorized', () => {",
+            "-  const guard = requireRole('viewer');",
+            "+  const guard = requirePermission('viewer');",
+            "   guard(adminReq, res, next);",
+            "   expect(next).toHaveBeenCalled();"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/auth/tests/middleware.test.ts",
+      "hunks": [
+        {
+          "id": "H20_hh0214",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { extractRoles } from '../src/middleware';",
+            "+import { extractPermissions } from '../src/middleware';"
+          ]
+        },
+        {
+          "id": "H21_hh0215",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " it('extracts roles from token', () => {",
+            "-  const roles = extractRoles(validToken);",
+            "-  expect(roles).toContain('admin');",
+            "+  const perms = extractPermissions(validToken);",
+            "+  expect(perms).toContain('admin');"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/routes/users.ts",
+      "hunks": [
+        {
+          "id": "H22_hh0216",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { requireRole } from '@auth';",
+            "+import { requirePermission } from '@auth';"
+          ]
+        },
+        {
+          "id": "H23_hh0217",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " router.get('/users',",
+            "-  requireRole('viewer'),",
+            "+  requirePermission('viewer'),",
+            "   usersHandler,",
+            " );"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/handlers/users.handler.ts",
+      "hunks": [
+        {
+          "id": "H24_hh0218",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole } from '@core';",
+            "+import { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H25_hh0219",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-  const requiredRole: UserRole = 'viewer';",
+            "+  const requiredPerm: Permission = 'viewer';"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/tests/users.test.ts",
+      "hunks": [
+        {
+          "id": "H26_hh021a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-jest.mock('@auth', () => ({ requireRole: jest.fn(() => (req, res, next) => next()) }));",
+            "+jest.mock('@auth', () => ({ requirePermission: jest.fn(() => (req, res, next) => next()) }));"
+          ]
+        },
+        {
+          "id": "H27_hh021b",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " it('requires auth for users', () => {",
+            "-  expect(requireRole).toHaveBeenCalledWith('viewer');",
+            "+  expect(requirePermission).toHaveBeenCalledWith('viewer');",
+            " });"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/routes/admin.ts",
+      "hunks": [
+        {
+          "id": "H28_hh021c",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { requireRole } from '@auth';",
+            "+import { requirePermission } from '@auth';"
+          ]
+        },
+        {
+          "id": "H29_hh021d",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " router.get('/admin',",
+            "-  requireRole('admin'),",
+            "+  requirePermission('admin'),",
+            "   adminHandler,",
+            " );"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/handlers/admin.handler.ts",
+      "hunks": [
+        {
+          "id": "H30_hh021e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole } from '@core';",
+            "+import { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H31_hh021f",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-  const requiredRole: UserRole = 'admin';",
+            "+  const requiredPerm: Permission = 'admin';"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/tests/admin.test.ts",
+      "hunks": [
+        {
+          "id": "H32_hh0220",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-jest.mock('@auth', () => ({ requireRole: jest.fn(() => (req, res, next) => next()) }));",
+            "+jest.mock('@auth', () => ({ requirePermission: jest.fn(() => (req, res, next) => next()) }));"
+          ]
+        },
+        {
+          "id": "H33_hh0221",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " it('requires auth for admin', () => {",
+            "-  expect(requireRole).toHaveBeenCalledWith('admin');",
+            "+  expect(requirePermission).toHaveBeenCalledWith('admin');",
+            " });"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/routes/billing.ts",
+      "hunks": [
+        {
+          "id": "H34_hh0222",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { requireRole } from '@auth';",
+            "+import { requirePermission } from '@auth';"
+          ]
+        },
+        {
+          "id": "H35_hh0223",
+          "header": "@@ -10,5 +10,8 @@",
+          "lines": [
+            " router.get('/billing',",
+            "-  requireRole('viewer'),",
+            "+  requirePermission('viewer'),",
+            "   billingHandler,",
+            " );"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/src/handlers/billing.handler.ts",
+      "hunks": [
+        {
+          "id": "H36_hh0224",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole } from '@core';",
+            "+import { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H37_hh0225",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-  const requiredRole: UserRole = 'viewer';",
+            "+  const requiredPerm: Permission = 'viewer';"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/api/tests/billing.test.ts",
+      "hunks": [
+        {
+          "id": "H38_hh0226",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-jest.mock('@auth', () => ({ requireRole: jest.fn(() => (req, res, next) => next()) }));",
+            "+jest.mock('@auth', () => ({ requirePermission: jest.fn(() => (req, res, next) => next()) }));"
+          ]
+        },
+        {
+          "id": "H39_hh0227",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " it('requires auth for billing', () => {",
+            "-  expect(requireRole).toHaveBeenCalledWith('viewer');",
+            "+  expect(requirePermission).toHaveBeenCalledWith('viewer');",
+            " });"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/src/hooks/usePermissions.ts",
+      "hunks": [
+        {
+          "id": "H40_hh0228",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole, hasRole } from '@core';",
+            "+import { Permission, hasPermission } from '@core';"
+          ]
+        },
+        {
+          "id": "H41_hh0229",
+          "header": "@@ -20,5 +20,8 @@",
+          "lines": [
+            "-export function usePermissions(user: User): Record<UserRole, boolean> {",
+            "+export function usePermissions(user: User): Record<Permission, boolean> {",
+            "   return {",
+            "-    admin: hasRole(user, 'admin'),",
+            "-    editor: hasRole(user, 'editor'),",
+            "-    viewer: hasRole(user, 'viewer'),",
+            "+    admin: hasPermission(user, 'admin'),",
+            "+    editor: hasPermission(user, 'editor'),",
+            "+    viewer: hasPermission(user, 'viewer'),",
+            "   };"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/src/components/PermissionGate.tsx",
+      "hunks": [
+        {
+          "id": "H42_hh022a",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { UserRole } from '@core';",
+            "+import { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H43_hh022b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-interface Props { required: UserRole; children: React.ReactNode; }",
+            "+interface Props { required: Permission; children: React.ReactNode; }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/src/components/AdminPanel.tsx",
+      "hunks": [
+        {
+          "id": "H44_hh022c",
+          "header": "@@ -12,5 +12,8 @@",
+          "lines": [
+            " export const AdminPanel = () => (",
+            "-  <PermissionGate required='admin'>",
+            "+  <PermissionGate required='admin'>",
+            "     <AdminDashboard />",
+            "   </PermissionGate>",
+            " );"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/src/components/UserSettings.tsx",
+      "hunks": [
+        {
+          "id": "H45_hh022d",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import type { UserRole } from '@core';",
+            "+import type { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H46_hh022e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-  const [selectedRole, setSelectedRole] = useState<UserRole>('viewer');",
+            "+  const [selectedPerm, setSelectedPerm] = useState<Permission>('viewer');"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/tests/usePermissions.test.ts",
+      "hunks": [
+        {
+          "id": "H47_hh022f",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import { hasRole } from '@core';",
+            "+import { hasPermission } from '@core';"
+          ]
+        },
+        {
+          "id": "H48_hh0230",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-jest.mock('@core', () => ({ hasRole: jest.fn() }));",
+            "+jest.mock('@core', () => ({ hasPermission: jest.fn() }));"
+          ]
+        },
+        {
+          "id": "H49_hh0231",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " it('checks admin permission', () => {",
+            "-  (hasRole as jest.Mock).mockReturnValue(true);",
+            "+  (hasPermission as jest.Mock).mockReturnValue(true);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "packages/ui/tests/PermissionGate.test.tsx",
+      "hunks": [
+        {
+          "id": "H50_hh0232",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-import type { UserRole } from '@core';",
+            "+import type { Permission } from '@core';"
+          ]
+        },
+        {
+          "id": "H51_hh0233",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "-  const renderGate = (required: UserRole) =>",
+            "+  const renderGate = (required: Permission) =>",
+            "     render(<PermissionGate required={required}><Child /></PermissionGate>);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": ".github/workflows/ci.yml",
+      "hunks": [
+        {
+          "id": "H52_hh0234",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "+  # Updated test matrix for permission changes",
+            "+  strategy:",
+            "+    matrix:",
+            "+      package: [core, auth, api, ui]"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tsconfig.base.json",
+      "hunks": [
+        {
+          "id": "H53_hh0235",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "+    \"@core/*\": [\"packages/core/src/*\"],",
+            "+    \"@auth/*\": [\"packages/auth/src/*\"],"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {
+      "source": "packages/auth/src/guards.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/auth/src/middleware.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/auth/tests/guards.test.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/auth/tests/middleware.test.ts",
+      "target": "packages/auth/src/middleware.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/src/routes/users.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/src/handlers/users.handler.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/users.test.ts",
+      "target": "packages/api/src/routes/users.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/users.test.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "transitive",
+      "via": "packages/api/src/routes/users.ts"
+    },
+    {
+      "source": "packages/api/src/routes/admin.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/src/handlers/admin.handler.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/admin.test.ts",
+      "target": "packages/api/src/routes/admin.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/admin.test.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "transitive",
+      "via": "packages/api/src/routes/admin.ts"
+    },
+    {
+      "source": "packages/api/src/routes/billing.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/src/handlers/billing.handler.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/billing.test.ts",
+      "target": "packages/api/src/routes/billing.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/api/tests/billing.test.ts",
+      "target": "packages/auth/src/guards.ts",
+      "kind": "transitive",
+      "via": "packages/api/src/routes/billing.ts"
+    },
+    {
+      "source": "packages/ui/src/hooks/usePermissions.ts",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/ui/src/components/PermissionGate.tsx",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/ui/src/components/UserSettings.tsx",
+      "target": "packages/core/src/types.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/ui/tests/usePermissions.test.ts",
+      "target": "packages/ui/src/hooks/usePermissions.ts",
+      "kind": "direct"
+    },
+    {
+      "source": "packages/ui/tests/PermissionGate.test.tsx",
+      "target": "packages/ui/src/components/PermissionGate.tsx",
+      "kind": "direct"
+    }
+  ],
+  "must_be_together": [
+    [
+      "packages/api/src/handlers/admin.handler.ts",
+      "packages/api/src/handlers/billing.handler.ts",
+      "packages/api/src/handlers/users.handler.ts",
+      "packages/api/src/routes/admin.ts",
+      "packages/api/src/routes/billing.ts",
+      "packages/api/src/routes/users.ts",
+      "packages/api/tests/admin.test.ts",
+      "packages/api/tests/billing.test.ts",
+      "packages/api/tests/users.test.ts",
+      "packages/auth/src/guards.ts",
+      "packages/auth/src/index.ts",
+      "packages/auth/src/middleware.ts",
+      "packages/auth/tests/guards.test.ts",
+      "packages/auth/tests/middleware.test.ts",
+      "packages/core/src/constants.ts",
+      "packages/core/src/index.ts",
+      "packages/core/src/types.ts",
+      "packages/core/tests/types.test.ts",
+      "packages/ui/src/components/PermissionGate.tsx",
+      "packages/ui/src/components/UserSettings.tsx",
+      "packages/ui/src/hooks/usePermissions.ts",
+      "packages/ui/tests/PermissionGate.test.tsx",
+      "packages/ui/tests/usePermissions.test.ts"
+    ]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_hh0201": "packages/core/src/types.ts",
+    "H2_hh0202": "packages/core/src/types.ts",
+    "H3_hh0203": "packages/core/src/types.ts",
+    "H4_hh0204": "packages/core/src/constants.ts",
+    "H5_hh0205": "packages/core/src/constants.ts",
+    "H6_hh0206": "packages/core/src/index.ts",
+    "H7_hh0207": "packages/core/src/index.ts",
+    "H8_hh0208": "packages/core/tests/types.test.ts",
+    "H9_hh0209": "packages/core/tests/types.test.ts",
+    "H10_hh020a": "packages/core/tests/types.test.ts",
+    "H11_hh020b": "packages/auth/src/guards.ts",
+    "H12_hh020c": "packages/auth/src/guards.ts",
+    "H13_hh020d": "packages/auth/src/middleware.ts",
+    "H14_hh020e": "packages/auth/src/middleware.ts",
+    "H15_hh020f": "packages/auth/src/index.ts",
+    "H16_hh0210": "packages/auth/src/index.ts",
+    "H17_hh0211": "packages/auth/tests/guards.test.ts",
+    "H18_hh0212": "packages/auth/tests/guards.test.ts",
+    "H19_hh0213": "packages/auth/tests/guards.test.ts",
+    "H20_hh0214": "packages/auth/tests/middleware.test.ts",
+    "H21_hh0215": "packages/auth/tests/middleware.test.ts",
+    "H22_hh0216": "packages/api/src/routes/users.ts",
+    "H23_hh0217": "packages/api/src/routes/users.ts",
+    "H24_hh0218": "packages/api/src/handlers/users.handler.ts",
+    "H25_hh0219": "packages/api/src/handlers/users.handler.ts",
+    "H26_hh021a": "packages/api/tests/users.test.ts",
+    "H27_hh021b": "packages/api/tests/users.test.ts",
+    "H28_hh021c": "packages/api/src/routes/admin.ts",
+    "H29_hh021d": "packages/api/src/routes/admin.ts",
+    "H30_hh021e": "packages/api/src/handlers/admin.handler.ts",
+    "H31_hh021f": "packages/api/src/handlers/admin.handler.ts",
+    "H32_hh0220": "packages/api/tests/admin.test.ts",
+    "H33_hh0221": "packages/api/tests/admin.test.ts",
+    "H34_hh0222": "packages/api/src/routes/billing.ts",
+    "H35_hh0223": "packages/api/src/routes/billing.ts",
+    "H36_hh0224": "packages/api/src/handlers/billing.handler.ts",
+    "H37_hh0225": "packages/api/src/handlers/billing.handler.ts",
+    "H38_hh0226": "packages/api/tests/billing.test.ts",
+    "H39_hh0227": "packages/api/tests/billing.test.ts",
+    "H40_hh0228": "packages/ui/src/hooks/usePermissions.ts",
+    "H41_hh0229": "packages/ui/src/hooks/usePermissions.ts",
+    "H42_hh022a": "packages/ui/src/components/PermissionGate.tsx",
+    "H43_hh022b": "packages/ui/src/components/PermissionGate.tsx",
+    "H44_hh022c": "packages/ui/src/components/AdminPanel.tsx",
+    "H45_hh022d": "packages/ui/src/components/UserSettings.tsx",
+    "H46_hh022e": "packages/ui/src/components/UserSettings.tsx",
+    "H47_hh022f": "packages/ui/tests/usePermissions.test.ts",
+    "H48_hh0230": "packages/ui/tests/usePermissions.test.ts",
+    "H49_hh0231": "packages/ui/tests/usePermissions.test.ts",
+    "H50_hh0232": "packages/ui/tests/PermissionGate.test.tsx",
+    "H51_hh0233": "packages/ui/tests/PermissionGate.test.tsx",
+    "H52_hh0234": ".github/workflows/ci.yml",
+    "H53_hh0235": "tsconfig.base.json"
+  }
+}

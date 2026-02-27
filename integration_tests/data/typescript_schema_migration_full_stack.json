@@ -1,0 +1,252 @@
+{
+  "id": "ts_schema_migration_full_stack",
+  "language": "typescript",
+  "name": "TypeScript: Schema migration — model + 2 routes + seed + migration + tests — 8 files, 14 hunks",
+  "description": "db/models/User.ts renames 'username' column to 'handle'. The migration file adds the column rename. Seed data updates. Two API routes (routes/auth.ts, routes/profile.ts) read/write the old column name. Two test files test those routes. All schema-dependent files MUST be together. The migration file is the trap — LLMs often put migrations in a separate commit from model changes, which breaks the ORM at the split checkpoint.",
+  "difficulty": "super_hard",
+  "category": "schema_migration_full_stack",
+  "num_files": 8,
+  "num_hunks": 14,
+  "file_diffs": [
+    {
+      "file_path": "src/db/models/User.ts",
+      "hunks": [
+        {
+          "id": "H1_sh06a1",
+          "header": "@@ -8,7 +8,7 @@",
+          "lines": [
+            " @Entity()",
+            " export class User {",
+            "   @PrimaryGeneratedColumn()",
+            "   id: number;",
+            " ",
+            "-  @Column({ unique: true })",
+            "-  username: string;",
+            "+  @Column({ unique: true })",
+            "+  handle: string;",
+            " ",
+            "   @Column()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/db/migrations/20260227_rename_username.ts",
+      "hunks": [
+        {
+          "id": "H2_sh06b2",
+          "header": "@@ -0,0 +1,15 @@",
+          "lines": [
+            "+import { MigrationInterface, QueryRunner } from 'typeorm';",
+            "+",
+            "+export class RenameUsername20260227 implements MigrationInterface {",
+            "+  async up(runner: QueryRunner): Promise<void> {",
+            "+    await runner.renameColumn('user', 'username', 'handle');",
+            "+  }",
+            "+",
+            "+  async down(runner: QueryRunner): Promise<void> {",
+            "+    await runner.renameColumn('user', 'handle', 'username');",
+            "+  }",
+            "+}"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/db/seeds/users.ts",
+      "hunks": [
+        {
+          "id": "H3_sh06c3",
+          "header": "@@ -5,9 +5,9 @@",
+          "lines": [
+            " export const seedUsers = [",
+            "-  { username: 'admin', email: 'admin@app.com', role: 'admin' },",
+            "-  { username: 'alice', email: 'alice@app.com', role: 'user' },",
+            "-  { username: 'bob', email: 'bob@app.com', role: 'user' },",
+            "+  { handle: 'admin', email: 'admin@app.com', role: 'admin' },",
+            "+  { handle: 'alice', email: 'alice@app.com', role: 'user' },",
+            "+  { handle: 'bob', email: 'bob@app.com', role: 'user' },",
+            " ];"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/routes/auth.ts",
+      "hunks": [
+        {
+          "id": "H4_sh06d4",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            " router.post('/login', async (req, res) => {",
+            "-  const user = await User.findOne({ where: { username: req.body.username } });",
+            "+  const user = await User.findOne({ where: { handle: req.body.handle } });",
+            "   if (!user || !verifyPassword(req.body.password, user.password)) {"
+          ]
+        },
+        {
+          "id": "H5_sh06d5",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " router.post('/register', async (req, res) => {",
+            "   const newUser = new User();",
+            "-  newUser.username = req.body.username;",
+            "+  newUser.handle = req.body.handle;",
+            "   newUser.email = req.body.email;"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/routes/profile.ts",
+      "hunks": [
+        {
+          "id": "H6_sh06e6",
+          "header": "@@ -10,7 +10,7 @@",
+          "lines": [
+            " router.get('/profile/:id', async (req, res) => {",
+            "   const user = await User.findOne(req.params.id);",
+            "-  res.json({ id: user.id, username: user.username, email: user.email });",
+            "+  res.json({ id: user.id, handle: user.handle, email: user.email });"
+          ]
+        },
+        {
+          "id": "H7_sh06e7",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            " router.put('/profile/:id', async (req, res) => {",
+            "   const user = await User.findOne(req.params.id);",
+            "-  user.username = req.body.username || user.username;",
+            "+  user.handle = req.body.handle || user.handle;",
+            "   user.email = req.body.email || user.email;"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/auth.test.ts",
+      "hunks": [
+        {
+          "id": "H8_sh06f8",
+          "header": "@@ -12,7 +12,7 @@",
+          "lines": [
+            " describe('POST /login', () => {",
+            "   it('authenticates valid user', async () => {",
+            "     const res = await request(app).post('/login').send({",
+            "-      username: 'admin',",
+            "+      handle: 'admin',",
+            "       password: 'password123',"
+          ]
+        },
+        {
+          "id": "H9_sh06f9",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            "   it('registers new user', async () => {",
+            "     const res = await request(app).post('/register').send({",
+            "-      username: 'newuser',",
+            "+      handle: 'newuser',",
+            "       email: 'new@app.com',"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/profile.test.ts",
+      "hunks": [
+        {
+          "id": "H10_sh06ga",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            "   it('returns user profile', async () => {",
+            "     const res = await request(app).get('/profile/1');",
+            "     expect(res.status).toBe(200);",
+            "-    expect(res.body.username).toBe('admin');",
+            "+    expect(res.body.handle).toBe('admin');"
+          ]
+        },
+        {
+          "id": "H11_sh06gb",
+          "header": "@@ -28,7 +28,7 @@",
+          "lines": [
+            "   it('updates user profile', async () => {",
+            "     const res = await request(app).put('/profile/1').send({",
+            "-      username: 'admin_updated'",
+            "+      handle: 'admin_updated'",
+            "     });"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/utils/validators.ts",
+      "hunks": [
+        {
+          "id": "H12_sh06hc",
+          "header": "@@ -8,8 +8,8 @@",
+          "lines": [
+            "-export function validateUsername(username: string): boolean {",
+            "-  return /^[a-z0-9_]{3,20}$/.test(username);",
+            "+export function validateHandle(handle: string): boolean {",
+            "+  return /^[a-z0-9_]{3,20}$/.test(handle);",
+            " }"
+          ]
+        },
+        {
+          "id": "H13_sh06hd",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " export function validateRegistration(data: any): string[] {",
+            "   const errors: string[] = [];",
+            "-  if (!validateUsername(data.username)) {",
+            "-    errors.push('Invalid username format');",
+            "+  if (!validateHandle(data.handle)) {",
+            "+    errors.push('Invalid handle format');",
+            "   }"
+          ]
+        },
+        {
+          "id": "H14_sh06he",
+          "header": "@@ -35,7 +35,7 @@",
+          "lines": [
+            "-  if (await User.findOne({ where: { username: data.username } })) {",
+            "-    errors.push('Username already taken');",
+            "+  if (await User.findOne({ where: { handle: data.handle } })) {",
+            "+    errors.push('Handle already taken');",
+            "   }"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/routes/auth.ts", "target": "src/db/models/User.ts", "kind": "direct"},
+    {"source": "src/routes/profile.ts", "target": "src/db/models/User.ts", "kind": "direct"},
+    {"source": "src/utils/validators.ts", "target": "src/db/models/User.ts", "kind": "direct"},
+    {"source": "src/db/seeds/users.ts", "target": "src/db/models/User.ts", "kind": "direct"},
+    {"source": "tests/auth.test.ts", "target": "src/routes/auth.ts", "kind": "direct"},
+    {"source": "tests/profile.test.ts", "target": "src/routes/profile.ts", "kind": "direct"},
+    {"source": "src/routes/auth.ts", "target": "src/utils/validators.ts", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/db/models/User.ts", "src/db/migrations/20260227_rename_username.ts", "src/db/seeds/users.ts", "src/routes/auth.ts", "src/routes/profile.ts", "src/utils/validators.ts", "tests/auth.test.ts", "tests/profile.test.ts"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh06a1": "src/db/models/User.ts",
+    "H2_sh06b2": "src/db/migrations/20260227_rename_username.ts",
+    "H3_sh06c3": "src/db/seeds/users.ts",
+    "H4_sh06d4": "src/routes/auth.ts",
+    "H5_sh06d5": "src/routes/auth.ts",
+    "H6_sh06e6": "src/routes/profile.ts",
+    "H7_sh06e7": "src/routes/profile.ts",
+    "H8_sh06f8": "tests/auth.test.ts",
+    "H9_sh06f9": "tests/auth.test.ts",
+    "H10_sh06ga": "tests/profile.test.ts",
+    "H11_sh06gb": "tests/profile.test.ts",
+    "H12_sh06hc": "src/utils/validators.ts",
+    "H13_sh06hd": "src/utils/validators.ts",
+    "H14_sh06he": "src/utils/validators.ts"
+  }
+}
+

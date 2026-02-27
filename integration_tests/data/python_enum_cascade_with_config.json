@@ -1,0 +1,259 @@
+{
+  "id": "py_enum_change_cascade_with_config",
+  "language": "python",
+  "name": "Python: Enum rename cascading through 5 consumers + unrelated config — 8 files, 16 hunks",
+  "description": "core/status.py renames Status.IN_PROGRESS to Status.ACTIVE. Five consumer files (api/views.py, workers/processor.py, cli/report.py, db/queries.py, notifications/email.py) all reference the old enum value. Additionally, core/settings.py has an unrelated change (adding a new config key) that is independent. The LLM is tempted to: (1) split the enum definition from consumers, (2) group consumers by type rather than by dependency, (3) put settings.py with the enum change since both are in core/. All 6 enum-related files MUST be together. Settings is independent.",
+  "difficulty": "super_hard",
+  "category": "enum_cascade_multi_consumer",
+  "num_files": 8,
+  "num_hunks": 16,
+  "file_diffs": [
+    {
+      "file_path": "core/status.py",
+      "hunks": [
+        {
+          "id": "H1_sh05a1",
+          "header": "@@ -5,7 +5,7 @@",
+          "lines": [
+            " class Status(Enum):",
+            "     PENDING = 'pending'",
+            "-    IN_PROGRESS = 'in_progress'",
+            "+    ACTIVE = 'active'",
+            "     COMPLETED = 'completed'",
+            "     FAILED = 'failed'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "core/settings.py",
+      "hunks": [
+        {
+          "id": "H2_sh05b2",
+          "header": "@@ -15,6 +15,8 @@",
+          "lines": [
+            " DEFAULT_SETTINGS = {",
+            "     'max_retries': 3,",
+            "     'timeout': 30,",
+            "+    'batch_size': 100,",
+            "+    'enable_metrics': False,",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/views.py",
+      "hunks": [
+        {
+          "id": "H3_sh05c3",
+          "header": "@@ -25,7 +25,7 @@",
+          "lines": [
+            " def list_tasks(request):",
+            "     status_filter = request.query_params.get('status')",
+            "-    if status_filter == Status.IN_PROGRESS.value:",
+            "+    if status_filter == Status.ACTIVE.value:",
+            "         tasks = Task.objects.filter(status=status_filter)"
+          ]
+        },
+        {
+          "id": "H4_sh05c4",
+          "header": "@@ -45,7 +45,7 @@",
+          "lines": [
+            " def start_task(request, task_id):",
+            "     task = Task.objects.get(id=task_id)",
+            "-    task.status = Status.IN_PROGRESS",
+            "+    task.status = Status.ACTIVE",
+            "     task.started_at = timezone.now()",
+            "     task.save()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "workers/processor.py",
+      "hunks": [
+        {
+          "id": "H5_sh05d5",
+          "header": "@@ -18,7 +18,7 @@",
+          "lines": [
+            " def process_task(task_id: int):",
+            "     task = get_task(task_id)",
+            "-    update_status(task, Status.IN_PROGRESS)",
+            "+    update_status(task, Status.ACTIVE)",
+            "     try:"
+          ]
+        },
+        {
+          "id": "H6_sh05d6",
+          "header": "@@ -40,7 +40,7 @@",
+          "lines": [
+            " def get_active_tasks() -> list:",
+            "-    return Task.query.filter_by(status=Status.IN_PROGRESS).all()",
+            "+    return Task.query.filter_by(status=Status.ACTIVE).all()"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "cli/report.py",
+      "hunks": [
+        {
+          "id": "H7_sh05e7",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " def generate_report():",
+            "     stats = {",
+            "         'pending': count_by_status(Status.PENDING),",
+            "-        'in_progress': count_by_status(Status.IN_PROGRESS),",
+            "+        'active': count_by_status(Status.ACTIVE),",
+            "         'completed': count_by_status(Status.COMPLETED),"
+          ]
+        },
+        {
+          "id": "H8_sh05e8",
+          "header": "@@ -50,7 +50,7 @@",
+          "lines": [
+            " LABELS = {",
+            "     Status.PENDING: 'Waiting',",
+            "-    Status.IN_PROGRESS: 'In Progress',",
+            "+    Status.ACTIVE: 'Active',",
+            "     Status.COMPLETED: 'Done',"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "db/queries.py",
+      "hunks": [
+        {
+          "id": "H9_sh05f9",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            " def get_stale_tasks(hours: int = 24) -> list:",
+            "     cutoff = datetime.utcnow() - timedelta(hours=hours)",
+            "     return session.query(Task).filter(",
+            "-        Task.status == Status.IN_PROGRESS,",
+            "+        Task.status == Status.ACTIVE,",
+            "         Task.updated_at < cutoff",
+            "     ).all()"
+          ]
+        },
+        {
+          "id": "H10_sh05fa",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " VALID_TRANSITIONS = {",
+            "-    Status.PENDING: [Status.IN_PROGRESS, Status.FAILED],",
+            "-    Status.IN_PROGRESS: [Status.COMPLETED, Status.FAILED],",
+            "+    Status.PENDING: [Status.ACTIVE, Status.FAILED],",
+            "+    Status.ACTIVE: [Status.COMPLETED, Status.FAILED],",
+            "     Status.COMPLETED: [],",
+            "     Status.FAILED: [Status.PENDING],"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "notifications/email.py",
+      "hunks": [
+        {
+          "id": "H11_sh05gb",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " STATUS_TEMPLATES = {",
+            "     Status.PENDING: 'task_pending.html',",
+            "-    Status.IN_PROGRESS: 'task_in_progress.html',",
+            "+    Status.ACTIVE: 'task_active.html',",
+            "     Status.COMPLETED: 'task_completed.html',"
+          ]
+        },
+        {
+          "id": "H12_sh05gc",
+          "header": "@@ -45,7 +45,7 @@",
+          "lines": [
+            " def notify_status_change(task, old_status, new_status):",
+            "-    if new_status == Status.IN_PROGRESS:",
+            "+    if new_status == Status.ACTIVE:",
+            "         send_notification(task.assignee, 'Task started', STATUS_TEMPLATES[new_status])"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_status_transitions.py",
+      "hunks": [
+        {
+          "id": "H13_sh05hd",
+          "header": "@@ -10,7 +10,7 @@",
+          "lines": [
+            " def test_valid_transition_pending_to_active():",
+            "-    assert is_valid_transition(Status.PENDING, Status.IN_PROGRESS)",
+            "+    assert is_valid_transition(Status.PENDING, Status.ACTIVE)"
+          ]
+        },
+        {
+          "id": "H14_sh05he",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " def test_valid_transition_active_to_completed():",
+            "-    assert is_valid_transition(Status.IN_PROGRESS, Status.COMPLETED)",
+            "+    assert is_valid_transition(Status.ACTIVE, Status.COMPLETED)"
+          ]
+        },
+        {
+          "id": "H15_sh05hf",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " def test_invalid_transition_completed_to_active():",
+            "-    assert not is_valid_transition(Status.COMPLETED, Status.IN_PROGRESS)",
+            "+    assert not is_valid_transition(Status.COMPLETED, Status.ACTIVE)"
+          ]
+        },
+        {
+          "id": "H16_sh05hg",
+          "header": "@@ -42,7 +42,7 @@",
+          "lines": [
+            " def test_stale_task_detection():",
+            "     task = create_test_task(status=Status.PENDING)",
+            "-    task.status = Status.IN_PROGRESS",
+            "+    task.status = Status.ACTIVE",
+            "     task.updated_at = datetime.utcnow() - timedelta(hours=48)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "api/views.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "workers/processor.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "cli/report.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "db/queries.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "notifications/email.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "tests/test_status_transitions.py", "target": "core/status.py", "kind": "direct"},
+    {"source": "tests/test_status_transitions.py", "target": "db/queries.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["core/status.py", "api/views.py", "workers/processor.py", "cli/report.py", "db/queries.py", "notifications/email.py", "tests/test_status_transitions.py"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh05a1": "core/status.py",
+    "H2_sh05b2": "core/settings.py",
+    "H3_sh05c3": "api/views.py",
+    "H4_sh05c4": "api/views.py",
+    "H5_sh05d5": "workers/processor.py",
+    "H6_sh05d6": "workers/processor.py",
+    "H7_sh05e7": "cli/report.py",
+    "H8_sh05e8": "cli/report.py",
+    "H9_sh05f9": "db/queries.py",
+    "H10_sh05fa": "db/queries.py",
+    "H11_sh05gb": "notifications/email.py",
+    "H12_sh05gc": "notifications/email.py",
+    "H13_sh05hd": "tests/test_status_transitions.py",
+    "H14_sh05he": "tests/test_status_transitions.py",
+    "H15_sh05hf": "tests/test_status_transitions.py",
+    "H16_sh05hg": "tests/test_status_transitions.py"
+  }
+}
+

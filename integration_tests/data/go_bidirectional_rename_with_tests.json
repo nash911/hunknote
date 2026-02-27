@@ -1,0 +1,197 @@
+{
+  "id": "go_bidirectional_rename_with_tests",
+  "language": "go",
+  "name": "Go: Bidirectional renames across 2 packages + tests — 6 files, 12 hunks",
+  "description": "auth/auth.go renames Authenticate() to VerifyCredentials(). user/user.go renames GetProfile() to FetchProfile(). auth/auth.go calls user.GetProfile() (renamed). user/user.go calls auth.Authenticate() (renamed). Both packages depend on each other's renamed functions. tests/auth_test.go and tests/user_test.go call the old names. All 6 files MUST be in the same commit — any subset creates import errors. The LLM is tempted to split by package (auth commit, user commit) which breaks both.",
+  "difficulty": "super_hard",
+  "category": "bidirectional_rename_with_tests",
+  "num_files": 6,
+  "num_hunks": 12,
+  "file_diffs": [
+    {
+      "file_path": "auth/auth.go",
+      "hunks": [
+        {
+          "id": "H1_sh04a1",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            "-func Authenticate(username, password string) (*Token, error) {",
+            "+func VerifyCredentials(username, password string) (*Token, error) {",
+            " \tcreds := hashCredentials(username, password)",
+            " \treturn issueToken(creds)"
+          ]
+        },
+        {
+          "id": "H2_sh04a2",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " func GetAuthenticatedUser(token *Token) (*user.Profile, error) {",
+            " \tclaims := parseToken(token)",
+            "-\tprofile, err := user.GetProfile(claims.UserID)",
+            "+\tprofile, err := user.FetchProfile(claims.UserID)",
+            " \tif err != nil {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "user/user.go",
+      "hunks": [
+        {
+          "id": "H3_sh04b3",
+          "header": "@@ -12,7 +12,7 @@",
+          "lines": [
+            "-func GetProfile(userID int64) (*Profile, error) {",
+            "+func FetchProfile(userID int64) (*Profile, error) {",
+            " \treturn db.FindUser(userID)"
+          ]
+        },
+        {
+          "id": "H4_sh04b4",
+          "header": "@@ -25,7 +25,7 @@",
+          "lines": [
+            " func Login(username, password string) (*Session, error) {",
+            "-\ttoken, err := auth.Authenticate(username, password)",
+            "+\ttoken, err := auth.VerifyCredentials(username, password)",
+            " \tif err != nil {",
+            " \t\treturn nil, err"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "auth/middleware.go",
+      "hunks": [
+        {
+          "id": "H5_sh04c5",
+          "header": "@@ -18,7 +18,7 @@",
+          "lines": [
+            " func AuthMiddleware(next http.Handler) http.Handler {",
+            " \treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {",
+            " \t\ttoken := extractToken(r)",
+            "-\t\tprofile, err := user.GetProfile(token.UserID)",
+            "+\t\tprofile, err := user.FetchProfile(token.UserID)",
+            " \t\tif err != nil {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/handlers.go",
+      "hunks": [
+        {
+          "id": "H6_sh04d6",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            " func LoginHandler(w http.ResponseWriter, r *http.Request) {",
+            " \tvar req LoginRequest",
+            " \tjson.NewDecoder(r.Body).Decode(&req)",
+            "-\ttoken, err := auth.Authenticate(req.Username, req.Password)",
+            "+\ttoken, err := auth.VerifyCredentials(req.Username, req.Password)",
+            " \tif err != nil {"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/auth_test.go",
+      "hunks": [
+        {
+          "id": "H7_sh04e7",
+          "header": "@@ -10,7 +10,7 @@",
+          "lines": [
+            " func TestAuthenticate(t *testing.T) {",
+            "-\ttoken, err := auth.Authenticate(\"admin\", \"pass123\")",
+            "+\ttoken, err := auth.VerifyCredentials(\"admin\", \"pass123\")",
+            " \tassert.NoError(t, err)"
+          ]
+        },
+        {
+          "id": "H8_sh04e8",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            " func TestAuthenticateInvalid(t *testing.T) {",
+            "-\t_, err := auth.Authenticate(\"admin\", \"wrong\")",
+            "+\t_, err := auth.VerifyCredentials(\"admin\", \"wrong\")",
+            " \tassert.Error(t, err)"
+          ]
+        },
+        {
+          "id": "H9_sh04e9",
+          "header": "@@ -35,7 +35,7 @@",
+          "lines": [
+            " func TestGetAuthenticatedUser(t *testing.T) {",
+            "-\ttoken, _ := auth.Authenticate(\"admin\", \"pass123\")",
+            "+\ttoken, _ := auth.VerifyCredentials(\"admin\", \"pass123\")",
+            " \tprofile, err := auth.GetAuthenticatedUser(token)",
+            " \tassert.NoError(t, err)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/user_test.go",
+      "hunks": [
+        {
+          "id": "H10_sh04fa",
+          "header": "@@ -8,7 +8,7 @@",
+          "lines": [
+            " func TestGetProfile(t *testing.T) {",
+            "-\tprofile, err := user.GetProfile(1)",
+            "+\tprofile, err := user.FetchProfile(1)",
+            " \tassert.NoError(t, err)",
+            " \tassert.Equal(t, \"admin\", profile.Name)"
+          ]
+        },
+        {
+          "id": "H11_sh04fb",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " func TestGetProfileNotFound(t *testing.T) {",
+            "-\t_, err := user.GetProfile(999)",
+            "+\t_, err := user.FetchProfile(999)",
+            " \tassert.Error(t, err)"
+          ]
+        },
+        {
+          "id": "H12_sh04fc",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            " func TestLogin(t *testing.T) {",
+            "-\tsess, err := user.Login(\"admin\", \"pass123\")  // calls auth.Authenticate",
+            "+\tsess, err := user.Login(\"admin\", \"pass123\")  // calls auth.VerifyCredentials",
+            " \tassert.NoError(t, err)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "auth/auth.go", "target": "user/user.go", "kind": "direct"},
+    {"source": "user/user.go", "target": "auth/auth.go", "kind": "direct"},
+    {"source": "auth/middleware.go", "target": "user/user.go", "kind": "direct"},
+    {"source": "api/handlers.go", "target": "auth/auth.go", "kind": "direct"},
+    {"source": "tests/auth_test.go", "target": "auth/auth.go", "kind": "direct"},
+    {"source": "tests/user_test.go", "target": "user/user.go", "kind": "direct"},
+    {"source": "tests/user_test.go", "target": "auth/auth.go", "kind": "transitive", "via": "user/user.go"}
+  ],
+  "must_be_together": [
+    ["auth/auth.go", "user/user.go", "auth/middleware.go", "api/handlers.go", "tests/auth_test.go", "tests/user_test.go"]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_sh04a1": "auth/auth.go",
+    "H2_sh04a2": "auth/auth.go",
+    "H3_sh04b3": "user/user.go",
+    "H4_sh04b4": "user/user.go",
+    "H5_sh04c5": "auth/middleware.go",
+    "H6_sh04d6": "api/handlers.go",
+    "H7_sh04e7": "tests/auth_test.go",
+    "H8_sh04e8": "tests/auth_test.go",
+    "H9_sh04e9": "tests/auth_test.go",
+    "H10_sh04fa": "tests/user_test.go",
+    "H11_sh04fb": "tests/user_test.go",
+    "H12_sh04fc": "tests/user_test.go"
+  }
+}
+

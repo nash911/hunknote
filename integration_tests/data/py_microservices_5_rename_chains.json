@@ -1,0 +1,739 @@
+{
+  "id": "py_microservices_5_rename_chains",
+  "language": "python",
+  "name": "Python: 5 microservice rename chains + noise \u2014 24 files, 46 hunks",
+  "description": "5 microservice packages each rename a core function. Each rename propagates to another service's client file, forming a star-topology dependency web. auth renames login()->authenticate() used by user.client. user renames get_profile()->fetch_profile() used by auth.client. billing renames charge()->process_payment() used by order.client. order renames create_order()->place_order() used by billing.client. notification renames send()->dispatch() used by user.service. Each rename group (service+test+client+client_test) MUST be in the same commit. Plus 4 shared utility files and 2 doc files as noise. The LLM must satisfy 5 simultaneous must_be_together constraints.",
+  "difficulty": "hyper_hard",
+  "category": "multi_service_rename_star",
+  "num_files": 24,
+  "num_hunks": 46,
+  "file_diffs": [
+    {
+      "file_path": "services/auth/service.py",
+      "hunks": [
+        {
+          "id": "H1_hh0101",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-def login(request):",
+            "+def authenticate(request):",
+            "    \"\"\"Handle auth request.\"\"\"",
+            "    return process(request)"
+          ]
+        },
+        {
+          "id": "H2_hh0102",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def handle_auth_request(data):",
+            "-    return login(data)",
+            "+    return authenticate(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/auth/test_service.py",
+      "hunks": [
+        {
+          "id": "H3_hh0103",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.auth.service import login",
+            "+from services.auth.service import authenticate"
+          ]
+        },
+        {
+          "id": "H4_hh0104",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_login_success():",
+            "-    result = login(valid_request)",
+            "+    result = authenticate(valid_request)",
+            "     assert result.status == 'ok'"
+          ]
+        },
+        {
+          "id": "H5_hh0105",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_login_failure():",
+            "-    result = login(bad_request)",
+            "+    result = authenticate(bad_request)",
+            "     assert result.status == 'error'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/user/client.py",
+      "hunks": [
+        {
+          "id": "H6_hh0106",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.auth.service import login",
+            "+from services.auth.service import authenticate"
+          ]
+        },
+        {
+          "id": "H7_hh0107",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def call_auth(data):",
+            "-    return login(data)",
+            "+    return authenticate(data)"
+          ]
+        },
+        {
+          "id": "H38_hh0126",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.notification.service import send",
+            "+from services.notification.service import dispatch"
+          ]
+        },
+        {
+          "id": "H39_hh0127",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def call_notification(data):",
+            "-    return send(data)",
+            "+    return dispatch(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/user/test_client.py",
+      "hunks": [
+        {
+          "id": "H8_hh0108",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_call_auth():",
+            "-    mock_login.return_value = ok_response",
+            "+    mock_authenticate.return_value = ok_response",
+            "     result = call_auth(test_data)"
+          ]
+        },
+        {
+          "id": "H40_hh0128",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_call_notification():",
+            "-    mock_send.return_value = ok_response",
+            "+    mock_dispatch.return_value = ok_response",
+            "     result = call_notification(test_data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/user/service.py",
+      "hunks": [
+        {
+          "id": "H9_hh0109",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-def get_profile(request):",
+            "+def fetch_profile(request):",
+            "    \"\"\"Handle user request.\"\"\"",
+            "    return process(request)"
+          ]
+        },
+        {
+          "id": "H10_hh010a",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def handle_user_request(data):",
+            "-    return get_profile(data)",
+            "+    return fetch_profile(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/user/test_service.py",
+      "hunks": [
+        {
+          "id": "H11_hh010b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.user.service import get_profile",
+            "+from services.user.service import fetch_profile"
+          ]
+        },
+        {
+          "id": "H12_hh010c",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_get_profile_success():",
+            "-    result = get_profile(valid_request)",
+            "+    result = fetch_profile(valid_request)",
+            "     assert result.status == 'ok'"
+          ]
+        },
+        {
+          "id": "H13_hh010d",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_get_profile_failure():",
+            "-    result = get_profile(bad_request)",
+            "+    result = fetch_profile(bad_request)",
+            "     assert result.status == 'error'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/auth/client.py",
+      "hunks": [
+        {
+          "id": "H14_hh010e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.user.service import get_profile",
+            "+from services.user.service import fetch_profile"
+          ]
+        },
+        {
+          "id": "H15_hh010f",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def call_user(data):",
+            "-    return get_profile(data)",
+            "+    return fetch_profile(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/auth/test_client.py",
+      "hunks": [
+        {
+          "id": "H16_hh0110",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_call_user():",
+            "-    mock_get_profile.return_value = ok_response",
+            "+    mock_fetch_profile.return_value = ok_response",
+            "     result = call_user(test_data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/billing/service.py",
+      "hunks": [
+        {
+          "id": "H17_hh0111",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-def charge(request):",
+            "+def process_payment(request):",
+            "    \"\"\"Handle billing request.\"\"\"",
+            "    return process(request)"
+          ]
+        },
+        {
+          "id": "H18_hh0112",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def handle_billing_request(data):",
+            "-    return charge(data)",
+            "+    return process_payment(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/billing/test_service.py",
+      "hunks": [
+        {
+          "id": "H19_hh0113",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.billing.service import charge",
+            "+from services.billing.service import process_payment"
+          ]
+        },
+        {
+          "id": "H20_hh0114",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_charge_success():",
+            "-    result = charge(valid_request)",
+            "+    result = process_payment(valid_request)",
+            "     assert result.status == 'ok'"
+          ]
+        },
+        {
+          "id": "H21_hh0115",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_charge_failure():",
+            "-    result = charge(bad_request)",
+            "+    result = process_payment(bad_request)",
+            "     assert result.status == 'error'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/order/client.py",
+      "hunks": [
+        {
+          "id": "H22_hh0116",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.billing.service import charge",
+            "+from services.billing.service import process_payment"
+          ]
+        },
+        {
+          "id": "H23_hh0117",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def call_billing(data):",
+            "-    return charge(data)",
+            "+    return process_payment(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/order/test_client.py",
+      "hunks": [
+        {
+          "id": "H24_hh0118",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_call_billing():",
+            "-    mock_charge.return_value = ok_response",
+            "+    mock_process_payment.return_value = ok_response",
+            "     result = call_billing(test_data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/order/service.py",
+      "hunks": [
+        {
+          "id": "H25_hh0119",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-def create_order(request):",
+            "+def place_order(request):",
+            "    \"\"\"Handle order request.\"\"\"",
+            "    return process(request)"
+          ]
+        },
+        {
+          "id": "H26_hh011a",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def handle_order_request(data):",
+            "-    return create_order(data)",
+            "+    return place_order(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/order/test_service.py",
+      "hunks": [
+        {
+          "id": "H27_hh011b",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.order.service import create_order",
+            "+from services.order.service import place_order"
+          ]
+        },
+        {
+          "id": "H28_hh011c",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_create_order_success():",
+            "-    result = create_order(valid_request)",
+            "+    result = place_order(valid_request)",
+            "     assert result.status == 'ok'"
+          ]
+        },
+        {
+          "id": "H29_hh011d",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_create_order_failure():",
+            "-    result = create_order(bad_request)",
+            "+    result = place_order(bad_request)",
+            "     assert result.status == 'error'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/billing/client.py",
+      "hunks": [
+        {
+          "id": "H30_hh011e",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.order.service import create_order",
+            "+from services.order.service import place_order"
+          ]
+        },
+        {
+          "id": "H31_hh011f",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def call_order(data):",
+            "-    return create_order(data)",
+            "+    return place_order(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/billing/test_client.py",
+      "hunks": [
+        {
+          "id": "H32_hh0120",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_call_order():",
+            "-    mock_create_order.return_value = ok_response",
+            "+    mock_place_order.return_value = ok_response",
+            "     result = call_order(test_data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/notification/service.py",
+      "hunks": [
+        {
+          "id": "H33_hh0121",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            "-def send(request):",
+            "+def dispatch(request):",
+            "    \"\"\"Handle notification request.\"\"\"",
+            "    return process(request)"
+          ]
+        },
+        {
+          "id": "H34_hh0122",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            " def handle_notification_request(data):",
+            "-    return send(data)",
+            "+    return dispatch(data)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/notification/test_service.py",
+      "hunks": [
+        {
+          "id": "H35_hh0123",
+          "header": "@@ -4,5 +4,8 @@",
+          "lines": [
+            "-from services.notification.service import send",
+            "+from services.notification.service import dispatch"
+          ]
+        },
+        {
+          "id": "H36_hh0124",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_send_success():",
+            "-    result = send(valid_request)",
+            "+    result = dispatch(valid_request)",
+            "     assert result.status == 'ok'"
+          ]
+        },
+        {
+          "id": "H37_hh0125",
+          "header": "@@ -8,5 +8,8 @@",
+          "lines": [
+            " def test_send_failure():",
+            "-    result = send(bad_request)",
+            "+    result = dispatch(bad_request)",
+            "     assert result.status == 'error'"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "shared/logging.py",
+      "hunks": [
+        {
+          "id": "H41_hh0129",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# New utility addition",
+            "+def new_helper():",
+            "+    pass"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "shared/metrics.py",
+      "hunks": [
+        {
+          "id": "H42_hh012a",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# New utility addition",
+            "+def new_helper():",
+            "+    pass"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "shared/errors.py",
+      "hunks": [
+        {
+          "id": "H43_hh012b",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# New utility addition",
+            "+def new_helper():",
+            "+    pass"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "shared/config.py",
+      "hunks": [
+        {
+          "id": "H44_hh012c",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+# New utility addition",
+            "+def new_helper():",
+            "+    pass"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "docs/API.md",
+      "hunks": [
+        {
+          "id": "H45_hh012d",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+## Updated function names",
+            "+- auth: login -> authenticate",
+            "+- billing: charge -> process_payment"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "docs/CHANGELOG.md",
+      "hunks": [
+        {
+          "id": "H46_hh012e",
+          "header": "@@ -6,5 +6,8 @@",
+          "lines": [
+            "+## Updated function names",
+            "+- auth: login -> authenticate",
+            "+- billing: charge -> process_payment"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {
+      "source": "services/auth/test_service.py",
+      "target": "services/auth/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/user/client.py",
+      "target": "services/auth/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/user/test_client.py",
+      "target": "services/user/client.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/user/test_client.py",
+      "target": "services/auth/service.py",
+      "kind": "transitive",
+      "via": "services/user/client.py"
+    },
+    {
+      "source": "services/user/test_service.py",
+      "target": "services/user/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/auth/client.py",
+      "target": "services/user/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/auth/test_client.py",
+      "target": "services/auth/client.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/auth/test_client.py",
+      "target": "services/user/service.py",
+      "kind": "transitive",
+      "via": "services/auth/client.py"
+    },
+    {
+      "source": "services/billing/test_service.py",
+      "target": "services/billing/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/order/client.py",
+      "target": "services/billing/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/order/test_client.py",
+      "target": "services/order/client.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/order/test_client.py",
+      "target": "services/billing/service.py",
+      "kind": "transitive",
+      "via": "services/order/client.py"
+    },
+    {
+      "source": "services/order/test_service.py",
+      "target": "services/order/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/billing/client.py",
+      "target": "services/order/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/billing/test_client.py",
+      "target": "services/billing/client.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/billing/test_client.py",
+      "target": "services/order/service.py",
+      "kind": "transitive",
+      "via": "services/billing/client.py"
+    },
+    {
+      "source": "services/notification/test_service.py",
+      "target": "services/notification/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/user/client.py",
+      "target": "services/notification/service.py",
+      "kind": "direct"
+    },
+    {
+      "source": "services/user/test_client.py",
+      "target": "services/notification/service.py",
+      "kind": "transitive",
+      "via": "services/user/client.py"
+    }
+  ],
+  "must_be_together": [
+    [
+      "services/auth/service.py",
+      "services/auth/test_service.py",
+      "services/user/client.py",
+      "services/user/test_client.py"
+    ],
+    [
+      "services/auth/client.py",
+      "services/auth/test_client.py",
+      "services/user/service.py",
+      "services/user/test_service.py"
+    ],
+    [
+      "services/billing/service.py",
+      "services/billing/test_service.py",
+      "services/order/client.py",
+      "services/order/test_client.py"
+    ],
+    [
+      "services/billing/client.py",
+      "services/billing/test_client.py",
+      "services/order/service.py",
+      "services/order/test_service.py"
+    ],
+    [
+      "services/notification/service.py",
+      "services/notification/test_service.py",
+      "services/user/client.py",
+      "services/user/test_client.py"
+    ]
+  ],
+  "must_be_ordered": [],
+  "hunk_to_file": {
+    "H1_hh0101": "services/auth/service.py",
+    "H2_hh0102": "services/auth/service.py",
+    "H3_hh0103": "services/auth/test_service.py",
+    "H4_hh0104": "services/auth/test_service.py",
+    "H5_hh0105": "services/auth/test_service.py",
+    "H6_hh0106": "services/user/client.py",
+    "H7_hh0107": "services/user/client.py",
+    "H8_hh0108": "services/user/test_client.py",
+    "H9_hh0109": "services/user/service.py",
+    "H10_hh010a": "services/user/service.py",
+    "H11_hh010b": "services/user/test_service.py",
+    "H12_hh010c": "services/user/test_service.py",
+    "H13_hh010d": "services/user/test_service.py",
+    "H14_hh010e": "services/auth/client.py",
+    "H15_hh010f": "services/auth/client.py",
+    "H16_hh0110": "services/auth/test_client.py",
+    "H17_hh0111": "services/billing/service.py",
+    "H18_hh0112": "services/billing/service.py",
+    "H19_hh0113": "services/billing/test_service.py",
+    "H20_hh0114": "services/billing/test_service.py",
+    "H21_hh0115": "services/billing/test_service.py",
+    "H22_hh0116": "services/order/client.py",
+    "H23_hh0117": "services/order/client.py",
+    "H24_hh0118": "services/order/test_client.py",
+    "H25_hh0119": "services/order/service.py",
+    "H26_hh011a": "services/order/service.py",
+    "H27_hh011b": "services/order/test_service.py",
+    "H28_hh011c": "services/order/test_service.py",
+    "H29_hh011d": "services/order/test_service.py",
+    "H30_hh011e": "services/billing/client.py",
+    "H31_hh011f": "services/billing/client.py",
+    "H32_hh0120": "services/billing/test_client.py",
+    "H33_hh0121": "services/notification/service.py",
+    "H34_hh0122": "services/notification/service.py",
+    "H35_hh0123": "services/notification/test_service.py",
+    "H36_hh0124": "services/notification/test_service.py",
+    "H37_hh0125": "services/notification/test_service.py",
+    "H38_hh0126": "services/user/client.py",
+    "H39_hh0127": "services/user/client.py",
+    "H40_hh0128": "services/user/test_client.py",
+    "H41_hh0129": "shared/logging.py",
+    "H42_hh012a": "shared/metrics.py",
+    "H43_hh012b": "shared/errors.py",
+    "H44_hh012c": "shared/config.py",
+    "H45_hh012d": "docs/API.md",
+    "H46_hh012e": "docs/CHANGELOG.md"
+  }
+}
