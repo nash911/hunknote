@@ -456,8 +456,8 @@ def compose_command(
             typer.echo("", err=True)
 
             # File relationships (Strategy 2)
+            typer.echo("File Relationships:", err=True)
             if file_relationships_text:
-                typer.echo("File Relationships:", err=True)
                 # Skip the [FILE RELATIONSHIPS] header line and the description line
                 for line in file_relationships_text.split("\n"):
                     if line.startswith("[FILE RELATIONSHIPS]"):
@@ -466,7 +466,9 @@ def compose_command(
                         continue
                     if line.strip():
                         typer.echo(f"  {line.strip()}", err=True)
-                typer.echo("", err=True)
+            else:
+                typer.echo("  No relationships detected.", err=True)
+            typer.echo("", err=True)
 
             # Warnings
             if parse_warnings:
