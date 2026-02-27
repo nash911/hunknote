@@ -1,0 +1,57 @@
+{
+  "id": "ts_change_interface_barrel",
+  "language": "typescript",
+  "name": "TypeScript: Change interface via index.ts barrel export",
+  "description": "types/user.ts adds an 'email' field to the User interface. components/UserCard.tsx uses the new field. UserCard imports User from types/ (barrel index.ts), not from types/user.ts directly.",
+  "difficulty": "medium",
+  "category": "interface_change_barrel",
+  "num_files": 2,
+  "num_hunks": 2,
+  "file_diffs": [
+    {
+      "file_path": "src/types/user.ts",
+      "hunks": [
+        {
+          "id": "H1_ts01a1",
+          "header": "@@ -3,6 +3,7 @@",
+          "lines": [
+            " export interface User {",
+            "   id: string;",
+            "   name: string;",
+            "+  email: string;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/components/UserCard.tsx",
+      "hunks": [
+        {
+          "id": "H2_ts01b2",
+          "header": "@@ -8,6 +8,7 @@",
+          "lines": [
+            " export const UserCard: React.FC<{ user: User }> = ({ user }) => {",
+            "   return (",
+            "     <div>",
+            "       <h2>{user.name}</h2>",
+            "+      <p>{user.email}</p>",
+            "     </div>",
+            "   );"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/components/UserCard.tsx", "target": "src/types/user.ts", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/types/user.ts", "src/components/UserCard.tsx"]
+  ],
+  "hunk_to_file": {
+    "H1_ts01a1": "src/types/user.ts",
+    "H2_ts01b2": "src/components/UserCard.tsx"
+  }
+}
+

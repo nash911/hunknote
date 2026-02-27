@@ -1,0 +1,76 @@
+{
+  "id": "py_three_file_transitive_chain",
+  "language": "python",
+  "name": "Python: 3-file transitive chain (schema -> serializer -> endpoint)",
+  "description": "models/schema.py adds a 'priority' field to TaskSchema. serializers/task.py serializes the new field. api/tasks.py passes the field from request data. The chain is schema -> serializer -> endpoint, and all three must be in the same commit.",
+  "difficulty": "hard",
+  "category": "transitive_chain",
+  "num_files": 3,
+  "num_hunks": 3,
+  "file_diffs": [
+    {
+      "file_path": "models/schema.py",
+      "hunks": [
+        {
+          "id": "H1_tc01a1",
+          "header": "@@ -10,6 +10,7 @@",
+          "lines": [
+            " class TaskSchema(BaseModel):",
+            "     title: str",
+            "     description: str",
+            "+    priority: int = 2",
+            "     created_at: datetime"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "serializers/task.py",
+      "hunks": [
+        {
+          "id": "H2_tc01b2",
+          "header": "@@ -18,6 +18,7 @@",
+          "lines": [
+            " def serialize_task(task: TaskSchema) -> dict:",
+            "     return {",
+            "         'title': task.title,",
+            "+        'priority': task.priority,",
+            "         'created_at': task.created_at.isoformat(),",
+            "     }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/tasks.py",
+      "hunks": [
+        {
+          "id": "H3_tc01c3",
+          "header": "@@ -30,6 +30,7 @@",
+          "lines": [
+            " def create_task(request):",
+            "     data = request.get_json()",
+            "     task = TaskSchema(",
+            "         title=data['title'],",
+            "+        priority=data.get('priority', 2),",
+            "     )"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "serializers/task.py", "target": "models/schema.py", "kind": "direct"},
+    {"source": "api/tasks.py", "target": "models/schema.py", "kind": "direct"},
+    {"source": "api/tasks.py", "target": "serializers/task.py", "kind": "transitive", "via": "models/schema.py"}
+  ],
+  "must_be_together": [
+    ["models/schema.py", "serializers/task.py", "api/tasks.py"]
+  ],
+  "hunk_to_file": {
+    "H1_tc01a1": "models/schema.py",
+    "H2_tc01b2": "serializers/task.py",
+    "H3_tc01c3": "api/tasks.py"
+  }
+}
+

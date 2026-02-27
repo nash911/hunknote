@@ -1,0 +1,98 @@
+{
+  "id": "py_remove_func_test_import",
+  "language": "python",
+  "name": "Python: Remove function + update test import",
+  "description": "global_config.py removes get_credentials_file_path(). test_global_config.py imports that function. Without grouping, C2 removes the function but C4 removes the test import — C2 and C3 are broken.",
+  "difficulty": "medium",
+  "category": "function_removal",
+  "num_files": 2,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "myapp/global_config.py",
+      "hunks": [
+        {
+          "id": "H1_a1b2c3",
+          "header": "@@ -2,10 +2,12 @@",
+          "lines": [
+            " \"\"\"Global configuration management.\"\"\"",
+            " ",
+            "-import os",
+            "-import stat",
+            " from pathlib import Path",
+            " from typing import Dict, Optional",
+            "+",
+            "+import keyring",
+            " import yaml",
+            "+",
+            "+_KEYRING_SERVICE = \"myapp\""
+          ]
+        },
+        {
+          "id": "H2_d4e5f6",
+          "header": "@@ -52,15 +55,6 @@",
+          "lines": [
+            "     return get_global_config_dir() / \"config.yaml\"",
+            " ",
+            "-def get_credentials_file_path() -> Path:",
+            "-    \"\"\"Get path to credentials file.\"\"\"",
+            "-    return get_global_config_dir() / \"credentials\"",
+            "-",
+            " def load_global_config() -> Dict:"
+          ]
+        },
+        {
+          "id": "H3_g7h8i9",
+          "header": "@@ -97,30 +91,15 @@",
+          "lines": [
+            " def save_credential(provider_key: str, api_key: str) -> None:",
+            "-    \"\"\"Save or update an API key in the credentials file.\"\"\"",
+            "-    credentials_file = get_credentials_file_path()",
+            "-    try:",
+            "-        with open(credentials_file, 'w') as f:",
+            "-            f.write(f\"{provider_key}={api_key}\\n\")",
+            "-        os.chmod(credentials_file, stat.S_IRUSR | stat.S_IWUSR)",
+            "-    except Exception as e:",
+            "-        raise GlobalConfigError(f\"Failed to save credential: {e}\")",
+            "+    \"\"\"Save or update an API key in the system keychain.\"\"\"",
+            "+    try:",
+            "+        keyring.set_password(_KEYRING_SERVICE, provider_key, api_key)",
+            "+    except Exception as e:",
+            "+        raise GlobalConfigError(f\"Failed to save to keychain: {e}\")"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_global_config.py",
+      "hunks": [
+        {
+          "id": "H4_j0k1l2",
+          "header": "@@ -7,7 +7,6 @@",
+          "lines": [
+            " from myapp.global_config import (",
+            "     get_global_config_dir,",
+            "     get_config_file_path,",
+            "-    get_credentials_file_path,",
+            "     load_global_config,",
+            "     save_credential,",
+            " )"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "tests/test_global_config.py", "target": "myapp/global_config.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["myapp/global_config.py", "tests/test_global_config.py"]
+  ],
+  "hunk_to_file": {
+    "H1_a1b2c3": "myapp/global_config.py",
+    "H2_d4e5f6": "myapp/global_config.py",
+    "H3_g7h8i9": "myapp/global_config.py",
+    "H4_j0k1l2": "tests/test_global_config.py"
+  }
+}
+

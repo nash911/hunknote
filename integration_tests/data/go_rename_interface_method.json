@@ -1,0 +1,81 @@
+{
+  "id": "go_rename_interface_method",
+  "language": "go",
+  "name": "Go: Rename interface method + update implementations",
+  "description": "storage/store.go renames the Store interface method Get() to Fetch(). Two implementations (storage/redis.go and storage/memory.go) must update the method name. All three must be in the same commit.",
+  "difficulty": "medium",
+  "category": "interface_method_rename",
+  "num_files": 3,
+  "num_hunks": 3,
+  "file_diffs": [
+    {
+      "file_path": "storage/store.go",
+      "hunks": [
+        {
+          "id": "H1_go01a1",
+          "header": "@@ -8,7 +8,7 @@",
+          "lines": [
+            " type Store interface {",
+            "-\tGet(key string) ([]byte, error)",
+            "+\tFetch(key string) ([]byte, error)",
+            " \tSet(key string, value []byte) error",
+            " \tDelete(key string) error",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "storage/redis.go",
+      "hunks": [
+        {
+          "id": "H2_go01b2",
+          "header": "@@ -20,7 +20,7 @@",
+          "lines": [
+            " type RedisStore struct {",
+            " \tclient *redis.Client",
+            " }",
+            " ",
+            "-func (r *RedisStore) Get(key string) ([]byte, error) {",
+            "+func (r *RedisStore) Fetch(key string) ([]byte, error) {",
+            " \treturn r.client.Get(ctx, key).Bytes()",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "storage/memory.go",
+      "hunks": [
+        {
+          "id": "H3_go01c3",
+          "header": "@@ -12,7 +12,7 @@",
+          "lines": [
+            " type MemoryStore struct {",
+            " \tdata map[string][]byte",
+            " }",
+            " ",
+            "-func (m *MemoryStore) Get(key string) ([]byte, error) {",
+            "+func (m *MemoryStore) Fetch(key string) ([]byte, error) {",
+            " \tv, ok := m.data[key]",
+            " \tif !ok {",
+            " \t\treturn nil, ErrNotFound"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "storage/redis.go", "target": "storage/store.go", "kind": "direct"},
+    {"source": "storage/memory.go", "target": "storage/store.go", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["storage/store.go", "storage/redis.go", "storage/memory.go"]
+  ],
+  "hunk_to_file": {
+    "H1_go01a1": "storage/store.go",
+    "H2_go01b2": "storage/redis.go",
+    "H3_go01c3": "storage/memory.go"
+  }
+}
+

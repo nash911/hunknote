@@ -1,0 +1,181 @@
+{
+  "id": "py_mixed_feature_refactor_docstring",
+  "language": "python",
+  "name": "Python: Mixed feature + refactor + docstrings — 6 files",
+  "description": "A complex realistic changeset with 3 logical concerns: (1) Feature: Add keyring support to config.py + update llm/base.py error message (must be together). (2) Refactor: Update docstrings in 3 LLM provider files (independent). (3) Test: Update test_config.py to remove old import (must be with feature). The LLM must not separate the feature hunks from the test hunks.",
+  "difficulty": "very_hard",
+  "category": "mixed_feature_refactor_test",
+  "num_files": 6,
+  "num_hunks": 10,
+  "file_diffs": [
+    {
+      "file_path": "config.py",
+      "hunks": [
+        {
+          "id": "H1_mx01a1",
+          "header": "@@ -2,8 +2,10 @@",
+          "lines": [
+            "-import os",
+            "-import stat",
+            " from pathlib import Path",
+            "+import keyring",
+            "+",
+            "+_KEYRING_SERVICE = 'myapp'"
+          ]
+        },
+        {
+          "id": "H2_mx01a2",
+          "header": "@@ -50,10 +52,6 @@",
+          "lines": [
+            "-def get_creds_file() -> Path:",
+            "-    return _DIR / 'credentials'",
+            "-",
+            " def load_config():"
+          ]
+        },
+        {
+          "id": "H3_mx01a3",
+          "header": "@@ -80,20 +78,8 @@",
+          "lines": [
+            " def save_credential(key: str, value: str):",
+            "-    creds = get_creds_file()",
+            "-    with open(creds, 'w') as f:",
+            "-        f.write(f'{key}={value}')",
+            "-    os.chmod(creds, stat.S_IRUSR)",
+            "+    keyring.set_password(_KEYRING_SERVICE, key, value)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/base.py",
+      "hunks": [
+        {
+          "id": "H4_mx01b4",
+          "header": "@@ -160,8 +160,7 @@",
+          "lines": [
+            "         raise MissingAPIKeyError(",
+            "             f'{name} key not found. Set it via:\\n'",
+            "-            f'  1. export {env_var}=...\\n'",
+            "-            f'  2. Add to ~/.myapp/credentials'",
+            "+            f'  1. Run: myapp config set-key {name.lower()}'",
+            "         )"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/anthropic.py",
+      "hunks": [
+        {
+          "id": "H5_mx01c5",
+          "header": "@@ -35,7 +35,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get key from keychain or environment.\"\"\"",
+            "         return self._fallback('ANTHROPIC_API_KEY', 'Anthropic')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/openai.py",
+      "hunks": [
+        {
+          "id": "H6_mx01d6",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get key from keychain or environment.\"\"\"",
+            "         return self._fallback('OPENAI_API_KEY', 'OpenAI')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "llm/google.py",
+      "hunks": [
+        {
+          "id": "H7_mx01e7",
+          "header": "@@ -28,7 +28,7 @@",
+          "lines": [
+            "     def get_api_key(self) -> str:",
+            "-        \"\"\"Get key from env or credentials file.\"\"\"",
+            "+        \"\"\"Get key from keychain or environment.\"\"\"",
+            "         return self._fallback('GOOGLE_API_KEY', 'Google')"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_config.py",
+      "hunks": [
+        {
+          "id": "H8_mx01f8",
+          "header": "@@ -7,7 +7,6 @@",
+          "lines": [
+            " from config import (",
+            "     get_config_dir,",
+            "-    get_creds_file,",
+            "     load_config,",
+            "     save_credential,",
+            " )"
+          ]
+        },
+        {
+          "id": "H9_mx01f9",
+          "header": "@@ -55,12 +54,6 @@",
+          "lines": [
+            "-    def test_get_creds_file(self, mocker, tmp):",
+            "-        mocker.patch('config._DIR', tmp)",
+            "-        result = get_creds_file()",
+            "-        assert result.name == 'credentials'",
+            "-"
+          ]
+        },
+        {
+          "id": "H10_mx01fa",
+          "header": "@@ -80,15 +73,10 @@",
+          "lines": [
+            "-    def test_save_cred_creates_file(self, mocker, tmp):",
+            "-        mocker.patch('config._DIR', tmp)",
+            "-        save_credential('KEY', 'val')",
+            "-        assert (tmp / 'credentials').exists()",
+            "+    def test_save_cred_calls_keyring(self, mocker):",
+            "+        mock_set = mocker.patch('config.keyring.set_password')",
+            "+        save_credential('KEY', 'val')",
+            "+        mock_set.assert_called_once_with('myapp', 'KEY', 'val')"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "llm/base.py", "target": "config.py", "kind": "direct"},
+    {"source": "llm/anthropic.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "llm/openai.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "llm/google.py", "target": "llm/base.py", "kind": "direct"},
+    {"source": "tests/test_config.py", "target": "config.py", "kind": "direct"},
+    {"source": "llm/anthropic.py", "target": "config.py", "kind": "transitive", "via": "llm/base.py"},
+    {"source": "llm/openai.py", "target": "config.py", "kind": "transitive", "via": "llm/base.py"},
+    {"source": "llm/google.py", "target": "config.py", "kind": "transitive", "via": "llm/base.py"}
+  ],
+  "must_be_together": [
+    ["config.py", "tests/test_config.py"]
+  ],
+  "hunk_to_file": {
+    "H1_mx01a1": "config.py",
+    "H2_mx01a2": "config.py",
+    "H3_mx01a3": "config.py",
+    "H4_mx01b4": "llm/base.py",
+    "H5_mx01c5": "llm/anthropic.py",
+    "H6_mx01d6": "llm/openai.py",
+    "H7_mx01e7": "llm/google.py",
+    "H8_mx01f8": "tests/test_config.py",
+    "H9_mx01f9": "tests/test_config.py",
+    "H10_mx01fa": "tests/test_config.py"
+  }
+}
+

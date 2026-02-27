@@ -1,0 +1,96 @@
+{
+  "id": "ts_react_context_provider_consumer",
+  "language": "typescript",
+  "name": "TypeScript/React: Change context shape + update provider + consumer",
+  "description": "contexts/ThemeContext.tsx changes the ThemeConfig type to add 'fontSize'. ThemeProvider.tsx initializes the new field. pages/Settings.tsx reads the new field. Context type + provider must be in the same commit (TypeScript type satisfaction). Settings page can come after since it uses optional chaining.",
+  "difficulty": "hard",
+  "category": "react_context_shape_change",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "src/contexts/ThemeContext.tsx",
+      "hunks": [
+        {
+          "id": "H1_rc01a1",
+          "header": "@@ -5,6 +5,7 @@",
+          "lines": [
+            " export interface ThemeConfig {",
+            "   primaryColor: string;",
+            "   darkMode: boolean;",
+            "+  fontSize: number;",
+            " }",
+            " ",
+            " export const ThemeContext = createContext<ThemeConfig | null>(null);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/providers/ThemeProvider.tsx",
+      "hunks": [
+        {
+          "id": "H2_rc01b2",
+          "header": "@@ -12,6 +12,7 @@",
+          "lines": [
+            "   const defaultTheme: ThemeConfig = {",
+            "     primaryColor: '#007bff',",
+            "     darkMode: false,",
+            "+    fontSize: 16,",
+            "   };"
+          ]
+        },
+        {
+          "id": "H3_rc01b3",
+          "header": "@@ -30,6 +31,9 @@",
+          "lines": [
+            "   const updateTheme = (partial: Partial<ThemeConfig>) => {",
+            "     setTheme(prev => ({ ...prev, ...partial }));",
+            "   };",
+            "+  const updateFontSize = (size: number) => {",
+            "+    updateTheme({ fontSize: Math.max(12, Math.min(24, size)) });",
+            "+  };"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/pages/Settings.tsx",
+      "hunks": [
+        {
+          "id": "H4_rc01c4",
+          "header": "@@ -18,6 +18,12 @@",
+          "lines": [
+            "   const theme = useContext(ThemeContext);",
+            "   return (",
+            "     <div>",
+            "+      <label>Font Size: {theme?.fontSize}px</label>",
+            "+      <input",
+            "+        type='range'",
+            "+        min={12} max={24}",
+            "+        value={theme?.fontSize ?? 16}",
+            "+      />",
+            "       <button onClick={() => toggleDark()}>Toggle Dark Mode</button>"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/providers/ThemeProvider.tsx", "target": "src/contexts/ThemeContext.tsx", "kind": "direct"},
+    {"source": "src/pages/Settings.tsx", "target": "src/contexts/ThemeContext.tsx", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/contexts/ThemeContext.tsx", "src/providers/ThemeProvider.tsx"]
+  ],
+  "must_be_ordered": [
+    ["src/contexts/ThemeContext.tsx", "src/pages/Settings.tsx"]
+  ],
+  "hunk_to_file": {
+    "H1_rc01a1": "src/contexts/ThemeContext.tsx",
+    "H2_rc01b2": "src/providers/ThemeProvider.tsx",
+    "H3_rc01b3": "src/providers/ThemeProvider.tsx",
+    "H4_rc01c4": "src/pages/Settings.tsx"
+  }
+}
+

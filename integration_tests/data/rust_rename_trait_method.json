@@ -1,0 +1,82 @@
+{
+  "id": "rust_rename_trait_method",
+  "language": "rust",
+  "name": "Rust: Rename trait method + update impl and caller",
+  "description": "traits/storage.rs renames fn retrieve() to fn fetch(). impl/disk.rs implements the trait and must update. cli/main.rs calls the method and must update. All three must be in the same commit.",
+  "difficulty": "medium",
+  "category": "trait_method_rename",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "src/traits/storage.rs",
+      "hunks": [
+        {
+          "id": "H1_rs01a1",
+          "header": "@@ -5,7 +5,7 @@",
+          "lines": [
+            " pub trait Storage {",
+            "-    fn retrieve(&self, key: &str) -> Result<Vec<u8>, StorageError>;",
+            "+    fn fetch(&self, key: &str) -> Result<Vec<u8>, StorageError>;",
+            "     fn store(&self, key: &str, value: &[u8]) -> Result<(), StorageError>;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/impl/disk.rs",
+      "hunks": [
+        {
+          "id": "H2_rs01b2",
+          "header": "@@ -18,7 +18,7 @@",
+          "lines": [
+            " impl Storage for DiskStorage {",
+            "-    fn retrieve(&self, key: &str) -> Result<Vec<u8>, StorageError> {",
+            "+    fn fetch(&self, key: &str) -> Result<Vec<u8>, StorageError> {",
+            "         let path = self.base_dir.join(key);",
+            "         std::fs::read(&path).map_err(|e| StorageError::Io(e))"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/cli/main.rs",
+      "hunks": [
+        {
+          "id": "H3_rs01c3",
+          "header": "@@ -3,7 +3,7 @@",
+          "lines": [
+            " use crate::traits::storage::Storage;",
+            " use crate::impl::disk::DiskStorage;"
+          ]
+        },
+        {
+          "id": "H4_rs01c4",
+          "header": "@@ -25,7 +25,7 @@",
+          "lines": [
+            "     let storage = DiskStorage::new(\"/data\");",
+            "-    let data = storage.retrieve(\"config.json\")?;",
+            "+    let data = storage.fetch(\"config.json\")?;",
+            "     println!(\"Loaded {} bytes\", data.len());"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/impl/disk.rs", "target": "src/traits/storage.rs", "kind": "direct"},
+    {"source": "src/cli/main.rs", "target": "src/traits/storage.rs", "kind": "direct"},
+    {"source": "src/cli/main.rs", "target": "src/impl/disk.rs", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/traits/storage.rs", "src/impl/disk.rs", "src/cli/main.rs"]
+  ],
+  "hunk_to_file": {
+    "H1_rs01a1": "src/traits/storage.rs",
+    "H2_rs01b2": "src/impl/disk.rs",
+    "H3_rs01c3": "src/cli/main.rs",
+    "H4_rs01c4": "src/cli/main.rs"
+  }
+}
+

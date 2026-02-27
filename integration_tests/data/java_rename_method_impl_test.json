@@ -1,0 +1,85 @@
+{
+  "id": "java_rename_method_impl_test",
+  "language": "java",
+  "name": "Java: Rename method in interface + implementation + test",
+  "description": "UserRepository.java renames findById() to getById(). UserRepositoryImpl.java implements it. UserRepositoryTest.java calls it. All three must be in the same commit.",
+  "difficulty": "medium",
+  "category": "method_rename_impl_test",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "src/main/java/com/app/repo/UserRepository.java",
+      "hunks": [
+        {
+          "id": "H1_jv01a1",
+          "header": "@@ -8,7 +8,7 @@",
+          "lines": [
+            " public interface UserRepository {",
+            "-    Optional<User> findById(Long id);",
+            "+    Optional<User> getById(Long id);",
+            "     List<User> findAll();",
+            "     User save(User user);",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/main/java/com/app/repo/UserRepositoryImpl.java",
+      "hunks": [
+        {
+          "id": "H2_jv01b2",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            " public class UserRepositoryImpl implements UserRepository {",
+            "     @Override",
+            "-    public Optional<User> findById(Long id) {",
+            "+    public Optional<User> getById(Long id) {",
+            "         return entityManager.find(User.class, id);",
+            "     }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/test/java/com/app/repo/UserRepositoryTest.java",
+      "hunks": [
+        {
+          "id": "H3_jv01c3",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            "     @Test",
+            "-    void testFindById() {",
+            "+    void testGetById() {",
+            "         User saved = repo.save(new User(\"Alice\"));"
+          ]
+        },
+        {
+          "id": "H4_jv01c4",
+          "header": "@@ -30,7 +30,7 @@",
+          "lines": [
+            "-        Optional<User> found = repo.findById(saved.getId());",
+            "+        Optional<User> found = repo.getById(saved.getId());",
+            "         assertTrue(found.isPresent());",
+            "         assertEquals(\"Alice\", found.get().getName());"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/main/java/com/app/repo/UserRepositoryImpl.java", "target": "src/main/java/com/app/repo/UserRepository.java", "kind": "direct"},
+    {"source": "src/test/java/com/app/repo/UserRepositoryTest.java", "target": "src/main/java/com/app/repo/UserRepository.java", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["src/main/java/com/app/repo/UserRepository.java", "src/main/java/com/app/repo/UserRepositoryImpl.java", "src/test/java/com/app/repo/UserRepositoryTest.java"]
+  ],
+  "hunk_to_file": {
+    "H1_jv01a1": "src/main/java/com/app/repo/UserRepository.java",
+    "H2_jv01b2": "src/main/java/com/app/repo/UserRepositoryImpl.java",
+    "H3_jv01c3": "src/test/java/com/app/repo/UserRepositoryTest.java",
+    "H4_jv01c4": "src/test/java/com/app/repo/UserRepositoryTest.java"
+  }
+}
+

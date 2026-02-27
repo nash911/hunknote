@@ -1,0 +1,93 @@
+{
+  "id": "c_change_struct_header",
+  "language": "c",
+  "name": "C: Change struct in header + update all source files",
+  "description": "include/config.h adds a 'timeout' field to AppConfig struct. src/server.c and src/client.c both use AppConfig and must initialize the new field. The header change must be committed before or with the source files. With C designated initializers, missing fields are zero-initialized, so ordering is sufficient.",
+  "difficulty": "medium",
+  "category": "struct_change_header",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "include/config.h",
+      "hunks": [
+        {
+          "id": "H1_cc01a1",
+          "header": "@@ -8,6 +8,7 @@",
+          "lines": [
+            " typedef struct {",
+            "     char *host;",
+            "     int port;",
+            "+    int timeout;",
+            "     bool verbose;",
+            " } AppConfig;"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/server.c",
+      "hunks": [
+        {
+          "id": "H2_cc01b2",
+          "header": "@@ -15,6 +15,7 @@",
+          "lines": [
+            " AppConfig default_server_config() {",
+            "     AppConfig cfg = {",
+            "         .host = \"0.0.0.0\",",
+            "         .port = 8080,",
+            "+        .timeout = 30,",
+            "         .verbose = false,",
+            "     };",
+            "     return cfg;"
+          ]
+        },
+        {
+          "id": "H3_cc01b3",
+          "header": "@@ -45,6 +46,7 @@",
+          "lines": [
+            " int start_server(AppConfig *cfg) {",
+            "     int sockfd = create_socket(cfg->host, cfg->port);",
+            "+    set_socket_timeout(sockfd, cfg->timeout);",
+            "     return listen_loop(sockfd, cfg->verbose);"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "src/client.c",
+      "hunks": [
+        {
+          "id": "H4_cc01c4",
+          "header": "@@ -10,6 +10,7 @@",
+          "lines": [
+            " AppConfig default_client_config() {",
+            "     AppConfig cfg = {",
+            "         .host = \"localhost\",",
+            "         .port = 8080,",
+            "+        .timeout = 10,",
+            "         .verbose = false,",
+            "     };",
+            "     return cfg;"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "src/server.c", "target": "include/config.h", "kind": "direct"},
+    {"source": "src/client.c", "target": "include/config.h", "kind": "direct"}
+  ],
+  "must_be_together": [],
+  "must_be_ordered": [
+    ["include/config.h", "src/server.c"],
+    ["include/config.h", "src/client.c"]
+  ],
+  "hunk_to_file": {
+    "H1_cc01a1": "include/config.h",
+    "H2_cc01b2": "src/server.c",
+    "H3_cc01b3": "src/server.c",
+    "H4_cc01c4": "src/client.c"
+  }
+}
+

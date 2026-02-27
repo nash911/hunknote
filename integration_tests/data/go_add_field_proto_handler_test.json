@@ -1,0 +1,112 @@
+{
+  "id": "go_add_field_proto_handler_test",
+  "language": "go",
+  "name": "Go: Add field to struct + update handler + test — 4 files",
+  "description": "models/user.go adds a 'Role' field to User struct. handlers/user.go reads it from request. proto/user.proto adds the field to the protobuf definition. handlers/user_test.go tests the new field. Model and proto must be together (same data shape). Handler must come after model. Test must come after handler.",
+  "difficulty": "very_hard",
+  "category": "struct_field_multi_file",
+  "num_files": 4,
+  "num_hunks": 5,
+  "file_diffs": [
+    {
+      "file_path": "models/user.go",
+      "hunks": [
+        {
+          "id": "H1_gf01a1",
+          "header": "@@ -8,6 +8,7 @@",
+          "lines": [
+            " type User struct {",
+            " \tID    int64  `json:\"id\"`",
+            " \tName  string `json:\"name\"`",
+            " \tEmail string `json:\"email\"`",
+            "+\tRole  string `json:\"role\"`",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "proto/user.proto",
+      "hunks": [
+        {
+          "id": "H2_gf01b2",
+          "header": "@@ -10,6 +10,7 @@",
+          "lines": [
+            " message User {",
+            "   int64 id = 1;",
+            "   string name = 2;",
+            "   string email = 3;",
+            "+  string role = 4;",
+            " }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "handlers/user.go",
+      "hunks": [
+        {
+          "id": "H3_gf01c3",
+          "header": "@@ -30,6 +30,7 @@",
+          "lines": [
+            " func CreateUser(w http.ResponseWriter, r *http.Request) {",
+            " \tvar user models.User",
+            " \tjson.NewDecoder(r.Body).Decode(&user)",
+            "+\tif user.Role == \"\" { user.Role = \"member\" }",
+            " \tdb.Create(&user)"
+          ]
+        },
+        {
+          "id": "H4_gf01c4",
+          "header": "@@ -55,6 +56,7 @@",
+          "lines": [
+            " func UserToProto(u *models.User) *pb.User {",
+            " \treturn &pb.User{",
+            " \t\tId:    u.ID,",
+            " \t\tName:  u.Name,",
+            "+\t\tRole:  u.Role,",
+            " \t}"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "handlers/user_test.go",
+      "hunks": [
+        {
+          "id": "H5_gf01d5",
+          "header": "@@ -20,6 +20,7 @@",
+          "lines": [
+            " func TestCreateUser(t *testing.T) {",
+            " \tbody := `{\"name\":\"Alice\",\"email\":\"a@b.c\"}`",
+            "+\t// Expect default role to be set",
+            " \treq := httptest.NewRequest(\"POST\", \"/users\", strings.NewReader(body))",
+            " \trr := httptest.NewRecorder()",
+            " \tCreateUser(rr, req)",
+            "+\tassert.Equal(t, \"member\", result.Role)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "handlers/user.go", "target": "models/user.go", "kind": "direct"},
+    {"source": "handlers/user_test.go", "target": "handlers/user.go", "kind": "direct"},
+    {"source": "handlers/user_test.go", "target": "models/user.go", "kind": "transitive", "via": "handlers/user.go"}
+  ],
+  "must_be_together": [
+    ["models/user.go", "proto/user.proto"]
+  ],
+  "must_be_ordered": [
+    ["models/user.go", "handlers/user.go"],
+    ["handlers/user.go", "handlers/user_test.go"]
+  ],
+  "hunk_to_file": {
+    "H1_gf01a1": "models/user.go",
+    "H2_gf01b2": "proto/user.proto",
+    "H3_gf01c3": "handlers/user.go",
+    "H4_gf01c4": "handlers/user.go",
+    "H5_gf01d5": "handlers/user_test.go"
+  }
+}
+

@@ -1,0 +1,74 @@
+{
+  "id": "py_add_required_param_reexport",
+  "language": "python",
+  "name": "Python: Add required parameter via __init__.py re-export",
+  "description": "compose/prompt.py adds a required file_relationships parameter to build_compose_prompt(). cli/compose.py passes that argument via the __init__.py re-export. Without re-export tracing, these appear unrelated. This is the exact real-world case that triggered the compose coherence discovery.",
+  "difficulty": "hard",
+  "category": "parameter_addition_reexport",
+  "num_files": 2,
+  "num_hunks": 3,
+  "file_diffs": [
+    {
+      "file_path": "mypackage/core/prompt.py",
+      "hunks": [
+        {
+          "id": "H1_rp01a1",
+          "header": "@@ -8,6 +8,8 @@",
+          "lines": [
+            " def build_compose_prompt(",
+            "     file_diffs: list,",
+            "     branch: str,",
+            "+    file_relationships: list = None,",
+            " ) -> str:",
+            "     inventory = format_inventory(file_diffs)"
+          ]
+        },
+        {
+          "id": "H2_rp01a2",
+          "header": "@@ -25,6 +27,10 @@",
+          "lines": [
+            "     prompt = f\"Split changes into commits.\\n\"",
+            "+    if file_relationships:",
+            "+        rel_text = format_relationships(file_relationships)",
+            "+        prompt += f\"\\n{rel_text}\\n\"",
+            "+",
+            "     prompt += inventory",
+            "     return prompt"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "mypackage/cli/compose.py",
+      "hunks": [
+        {
+          "id": "H3_rp01b3",
+          "header": "@@ -45,6 +45,10 @@",
+          "lines": [
+            "     from mypackage.core import build_compose_prompt",
+            "+    from mypackage.core.relationships import detect_file_relationships",
+            "+",
+            "+    file_rels = detect_file_relationships(file_diffs, repo_root)",
+            "     prompt = build_compose_prompt(",
+            "         file_diffs=file_diffs,",
+            "         branch=branch,",
+            "+        file_relationships=file_rels,",
+            "     )"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "mypackage/cli/compose.py", "target": "mypackage/core/prompt.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["mypackage/core/prompt.py", "mypackage/cli/compose.py"]
+  ],
+  "hunk_to_file": {
+    "H1_rp01a1": "mypackage/core/prompt.py",
+    "H2_rp01a2": "mypackage/core/prompt.py",
+    "H3_rp01b3": "mypackage/cli/compose.py"
+  }
+}
+

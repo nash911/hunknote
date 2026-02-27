@@ -1,0 +1,85 @@
+{
+  "id": "ruby_rename_method_spec",
+  "language": "ruby",
+  "name": "Ruby: Rename method + update spec and caller",
+  "description": "lib/auth/token.rb renames generate_token() to issue_token(). app/controllers/sessions_controller.rb calls it. spec/auth/token_spec.rb tests it. All three must be in the same commit.",
+  "difficulty": "medium",
+  "category": "method_rename_spec",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "lib/auth/token.rb",
+      "hunks": [
+        {
+          "id": "H1_rb01a1",
+          "header": "@@ -10,7 +10,7 @@",
+          "lines": [
+            " module Auth",
+            "   class Token",
+            "-    def generate_token(user)",
+            "+    def issue_token(user)",
+            "       JWT.encode({ user_id: user.id, exp: 1.hour.from_now.to_i }, SECRET)",
+            "     end"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "app/controllers/sessions_controller.rb",
+      "hunks": [
+        {
+          "id": "H2_rb01b2",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            "   def create",
+            "     user = User.authenticate(params[:email], params[:password])",
+            "     if user",
+            "-      token = Auth::Token.new.generate_token(user)",
+            "+      token = Auth::Token.new.issue_token(user)",
+            "       render json: { token: token }"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "spec/auth/token_spec.rb",
+      "hunks": [
+        {
+          "id": "H3_rb01c3",
+          "header": "@@ -8,8 +8,8 @@",
+          "lines": [
+            " RSpec.describe Auth::Token do",
+            "-  describe '#generate_token' do",
+            "+  describe '#issue_token' do",
+            "     it 'returns a valid JWT' do"
+          ]
+        },
+        {
+          "id": "H4_rb01c4",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            "       token_gen = Auth::Token.new",
+            "-      result = token_gen.generate_token(user)",
+            "+      result = token_gen.issue_token(user)",
+            "       expect(result).to be_a(String)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "app/controllers/sessions_controller.rb", "target": "lib/auth/token.rb", "kind": "direct"},
+    {"source": "spec/auth/token_spec.rb", "target": "lib/auth/token.rb", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["lib/auth/token.rb", "app/controllers/sessions_controller.rb", "spec/auth/token_spec.rb"]
+  ],
+  "hunk_to_file": {
+    "H1_rb01a1": "lib/auth/token.rb",
+    "H2_rb01b2": "app/controllers/sessions_controller.rb",
+    "H3_rb01c3": "spec/auth/token_spec.rb",
+    "H4_rb01c4": "spec/auth/token_spec.rb"
+  }
+}
+

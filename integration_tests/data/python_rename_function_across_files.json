@@ -1,0 +1,87 @@
+{
+  "id": "py_rename_func_across_files",
+  "language": "python",
+  "name": "Python: Rename function across 3 files",
+  "description": "core/utils.py renames parse_config() to parse_settings(). api/handler.py and cli/main.py both call parse_config() and must update to parse_settings(). All three must be in the same commit.",
+  "difficulty": "medium",
+  "category": "function_rename",
+  "num_files": 3,
+  "num_hunks": 4,
+  "file_diffs": [
+    {
+      "file_path": "core/utils.py",
+      "hunks": [
+        {
+          "id": "H1_rf01a1",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            " ",
+            "-def parse_config(path: str) -> dict:",
+            "-    \"\"\"Parse a config file and return settings dict.\"\"\"",
+            "+def parse_settings(path: str) -> dict:",
+            "+    \"\"\"Parse a settings file and return settings dict.\"\"\"",
+            "     with open(path) as f:",
+            "         return yaml.safe_load(f)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/handler.py",
+      "hunks": [
+        {
+          "id": "H2_rf01b2",
+          "header": "@@ -3,7 +3,7 @@",
+          "lines": [
+            "-from core.utils import parse_config",
+            "+from core.utils import parse_settings",
+            " ",
+            " def handle_request(req):"
+          ]
+        },
+        {
+          "id": "H3_rf01b3",
+          "header": "@@ -22,7 +22,7 @@",
+          "lines": [
+            "     path = req.args.get('config_path')",
+            "-    settings = parse_config(path)",
+            "+    settings = parse_settings(path)",
+            "     return jsonify(settings)"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "cli/main.py",
+      "hunks": [
+        {
+          "id": "H4_rf01c4",
+          "header": "@@ -8,7 +8,7 @@",
+          "lines": [
+            "-from core.utils import parse_config",
+            "+from core.utils import parse_settings",
+            " ",
+            " def main():",
+            "-    config = parse_config('config.yaml')",
+            "+    config = parse_settings('config.yaml')",
+            "     app.run(config)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "api/handler.py", "target": "core/utils.py", "kind": "direct"},
+    {"source": "cli/main.py", "target": "core/utils.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["core/utils.py", "api/handler.py", "cli/main.py"]
+  ],
+  "hunk_to_file": {
+    "H1_rf01a1": "core/utils.py",
+    "H2_rf01b2": "api/handler.py",
+    "H3_rf01b3": "api/handler.py",
+    "H4_rf01c4": "cli/main.py"
+  }
+}
+

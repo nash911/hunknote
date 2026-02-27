@@ -1,0 +1,118 @@
+{
+  "id": "py_rename_exception_multi_consumer",
+  "language": "python",
+  "name": "Python: Rename exception class across 4 files",
+  "description": "core/exceptions.py renames ValidationError to InputValidationError. Three consumer files (api/users.py, api/orders.py, cli/import_cmd.py) all catch this exception. All four files must be in the same commit.",
+  "difficulty": "hard",
+  "category": "symbol_rename_multi_consumer",
+  "num_files": 4,
+  "num_hunks": 7,
+  "file_diffs": [
+    {
+      "file_path": "core/exceptions.py",
+      "hunks": [
+        {
+          "id": "H1_ex01a1",
+          "header": "@@ -5,7 +5,7 @@",
+          "lines": [
+            "-class ValidationError(Exception):",
+            "+class InputValidationError(Exception):",
+            "     \"\"\"Raised when input validation fails.\"\"\"",
+            "     pass"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/users.py",
+      "hunks": [
+        {
+          "id": "H2_ex01b2",
+          "header": "@@ -1,6 +1,6 @@",
+          "lines": [
+            "-from core import ValidationError",
+            "+from core import InputValidationError"
+          ]
+        },
+        {
+          "id": "H3_ex01b3",
+          "header": "@@ -15,7 +15,7 @@",
+          "lines": [
+            "     try:",
+            "         user = create_user(data)",
+            "-    except ValidationError as e:",
+            "+    except InputValidationError as e:",
+            "         return {'error': str(e)}, 400"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/orders.py",
+      "hunks": [
+        {
+          "id": "H4_ex01c4",
+          "header": "@@ -2,7 +2,7 @@",
+          "lines": [
+            "-from core import ValidationError",
+            "+from core import InputValidationError"
+          ]
+        },
+        {
+          "id": "H5_ex01c5",
+          "header": "@@ -28,7 +28,7 @@",
+          "lines": [
+            "     try:",
+            "         order = process_order(items)",
+            "-    except ValidationError:",
+            "+    except InputValidationError:",
+            "         return {'error': 'Invalid order'}, 400"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "cli/import_cmd.py",
+      "hunks": [
+        {
+          "id": "H6_ex01d6",
+          "header": "@@ -2,7 +2,7 @@",
+          "lines": [
+            "-from core import ValidationError",
+            "+from core import InputValidationError"
+          ]
+        },
+        {
+          "id": "H7_ex01d7",
+          "header": "@@ -48,7 +48,7 @@",
+          "lines": [
+            "     for row in csv_reader:",
+            "         try:",
+            "             validate_and_insert(row)",
+            "-        except ValidationError:",
+            "+        except InputValidationError:",
+            "             errors.append(row)"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "api/users.py", "target": "core/exceptions.py", "kind": "direct"},
+    {"source": "api/orders.py", "target": "core/exceptions.py", "kind": "direct"},
+    {"source": "cli/import_cmd.py", "target": "core/exceptions.py", "kind": "direct"}
+  ],
+  "must_be_together": [
+    ["core/exceptions.py", "api/users.py", "api/orders.py", "cli/import_cmd.py"]
+  ],
+  "hunk_to_file": {
+    "H1_ex01a1": "core/exceptions.py",
+    "H2_ex01b2": "api/users.py",
+    "H3_ex01b3": "api/users.py",
+    "H4_ex01c4": "api/orders.py",
+    "H5_ex01c5": "api/orders.py",
+    "H6_ex01d6": "cli/import_cmd.py",
+    "H7_ex01d7": "cli/import_cmd.py"
+  }
+}
+

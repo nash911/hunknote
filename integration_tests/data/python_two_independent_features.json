@@ -1,0 +1,120 @@
+{
+  "id": "py_two_independent_features",
+  "language": "python",
+  "name": "Python: Two independent features interleaved",
+  "description": "Feature A: Add caching to user service (cache.py + user_service.py). Feature B: Add rate limiting to API (limiter.py + api_router.py). Features are independent but interleaved in the diff. Within each feature, the dependency file (adding new methods) must be committed before or with the consumer file (calling those methods).",
+  "difficulty": "hard",
+  "category": "independent_features_interleaved",
+  "num_files": 4,
+  "num_hunks": 5,
+  "file_diffs": [
+    {
+      "file_path": "infra/cache.py",
+      "hunks": [
+        {
+          "id": "H1_if01a1",
+          "header": "@@ -10,6 +10,12 @@",
+          "lines": [
+            " class CacheBackend:",
+            "     def __init__(self):",
+            "         self._store = {}",
+            "+",
+            "+    def get_user(self, user_id: int):",
+            "+        return self._store.get(f'user:{user_id}')",
+            "+",
+            "+    def set_user(self, user_id: int, data: dict, ttl: int = 300):",
+            "+        self._store[f'user:{user_id}'] = data"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "middleware/limiter.py",
+      "hunks": [
+        {
+          "id": "H2_if01b2",
+          "header": "@@ -1,6 +1,15 @@",
+          "lines": [
+            " from collections import defaultdict",
+            " import time",
+            " ",
+            "+# Rate limit: 100 requests per minute",
+            "+RATE_LIMIT = 100",
+            "+WINDOW_SIZE = 60",
+            "+",
+            "+def check_rate_limit(client_ip: str) -> bool:",
+            "+    now = time.time()",
+            "+    requests = _request_log[client_ip]",
+            "+    requests = [t for t in requests if now - t < WINDOW_SIZE]",
+            "+    return len(requests) < RATE_LIMIT"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "services/user_service.py",
+      "hunks": [
+        {
+          "id": "H3_if01c3",
+          "header": "@@ -5,8 +5,14 @@",
+          "lines": [
+            " from infra.cache import CacheBackend",
+            " ",
+            " def get_user(user_id: int) -> dict:",
+            "-    return db.query(User).get(user_id).to_dict()",
+            "+    cached = cache.get_user(user_id)",
+            "+    if cached:",
+            "+        return cached",
+            "+    user = db.query(User).get(user_id).to_dict()",
+            "+    cache.set_user(user_id, user)",
+            "+    return user"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "api/router.py",
+      "hunks": [
+        {
+          "id": "H4_if01d4",
+          "header": "@@ -2,6 +2,7 @@",
+          "lines": [
+            " from flask import Blueprint, request",
+            "+from middleware.limiter import check_rate_limit",
+            " ",
+            " api = Blueprint('api', __name__)"
+          ]
+        },
+        {
+          "id": "H5_if01d5",
+          "header": "@@ -15,6 +16,9 @@",
+          "lines": [
+            " @api.before_request",
+            " def before_request():",
+            "+    if not check_rate_limit(request.remote_addr):",
+            "+        return {'error': 'Rate limit exceeded'}, 429",
+            "+",
+            "     pass"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {"source": "services/user_service.py", "target": "infra/cache.py", "kind": "direct"},
+    {"source": "api/router.py", "target": "middleware/limiter.py", "kind": "direct"}
+  ],
+  "must_be_together": [],
+  "must_be_ordered": [
+    ["infra/cache.py", "services/user_service.py"],
+    ["middleware/limiter.py", "api/router.py"]
+  ],
+  "hunk_to_file": {
+    "H1_if01a1": "infra/cache.py",
+    "H2_if01b2": "middleware/limiter.py",
+    "H3_if01c3": "services/user_service.py",
+    "H4_if01d4": "api/router.py",
+    "H5_if01d5": "api/router.py"
+  }
+}
+
