@@ -814,9 +814,8 @@ Changes:
 
 Keys are resolved in order:
 
-1. Environment variables (highest priority)
-2. System keychain (via `keyring` library)
-3. Project `.env` file
+1. System keychain (via `keyring` library) — primary storage
+2. Environment variables / `.env` file — fallback
 
 ---
 
