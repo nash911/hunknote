@@ -56,166 +56,320 @@ def make_file_diff(file_path: str, hunks: list[dict]) -> dict:
 # ============================================================
 
 def generate_case1():
-    services = [
-        {
-            "pkg": "auth",
-            "old_fn": "login",
-            "new_fn": "authenticate",
-            "callers": ["user"],  # user.client calls auth.login
-        },
-        {
-            "pkg": "user",
-            "old_fn": "get_profile",
-            "new_fn": "fetch_profile",
-            "callers": ["auth"],  # auth.client calls user.get_profile
-        },
-        {
-            "pkg": "billing",
-            "old_fn": "charge",
-            "new_fn": "process_payment",
-            "callers": ["order"],
-        },
-        {
-            "pkg": "order",
-            "old_fn": "create_order",
-            "new_fn": "place_order",
-            "callers": ["billing"],
-        },
-        {
-            "pkg": "notification",
-            "old_fn": "send",
-            "new_fn": "dispatch",
-            "callers": ["user"],  # user.service also calls notification.send
-        },
-    ]
+    """Generate microservices case with heterogeneous cascading renames.
 
+    Key anti-LLM-lumping techniques:
+    1. Each service rename CASCADES to a different name in the next layer
+       (auth: login->authenticate, but user.client calls it as verify_credentials->validate)
+    2. Shared types module renames a type used by all services differently
+       per consumer (ServiceRequest->AuthPayload in auth, ->UserPayload in user)
+    3. Cross-cutting middleware uses renamed functions from multiple services,
+       creating ambiguity about which commit it belongs to
+    4. Per-service config files with values specific to the renamed functions
+    5. Gateway/router layer aggregates all services with different renamed
+       function names, forming a separate natural grouping layer
+    """
     file_diffs = []
     hunk_to_file = {}
     relationships = []
     hunk_counter = [0]
 
-    def next_hunk_id(file_path):
+    def hid(file_path):
         hunk_counter[0] += 1
         n = hunk_counter[0]
-        suffix = f"{n:02x}"
-        return f"H{n}_hh01{suffix}"
+        return f"H{n}_hh01{n:02x}"
 
-    # Generate service files + tests + clients
+    def add_file(path, hunks_data):
+        hunks = []
+        for lines in hunks_data:
+            h = hid(path)
+            hunks.append(make_hunk(h, path, lines))
+            hunk_to_file[h] = path
+        file_diffs.append(make_file_diff(path, hunks))
+
+    # ── Layer 1: Shared types module ─────────────────────────────
+    # Renames a base class that all services inherit from differently
+    add_file("shared/types.py", [
+        ["-class ServiceRequest:",
+         "+class ServicePayload:",
+         "     def __init__(self, data: dict):",
+         "         self.data = data"],
+        ["-class ServiceResponse:",
+         "+class ServiceResult:",
+         "     def __init__(self, status: str, body: dict):",
+         "         self.status = status"],
+        ["-def validate_request(req: ServiceRequest) -> bool:",
+         "+def validate_payload(req: ServicePayload) -> bool:",
+         "     return bool(req.data)"],
+    ])
+
+    add_file("shared/errors.py", [
+        ["-class ServiceError(Exception):",
+         "+class ServiceFailure(Exception):",
+         "     def __init__(self, code: int, message: str):",
+         "         self.code = code"],
+        ["-class AuthError(ServiceError):",
+         "+class AuthFailure(ServiceFailure):",
+         "     pass"],
+        ["-class ValidationError(ServiceError):",
+         "+class PayloadError(ServiceFailure):",
+         "     pass"],
+    ])
+
+    add_file("shared/test_types.py", [
+        ["-from shared.types import ServiceRequest, ServiceResponse, validate_request",
+         "+from shared.types import ServicePayload, ServiceResult, validate_payload"],
+        [" def test_validate():",
+         "-    req = ServiceRequest({'key': 'val'})",
+         "-    assert validate_request(req) is True",
+         "+    req = ServicePayload({'key': 'val'})",
+         "+    assert validate_payload(req) is True"],
+        [" def test_response():",
+         "-    resp = ServiceResponse('ok', {})",
+         "+    resp = ServiceResult('ok', {})",
+         "     assert resp.status == 'ok'"],
+    ])
+    relationships.append({"source": "shared/test_types.py", "target": "shared/types.py", "kind": "direct"})
+
+    add_file("shared/test_errors.py", [
+        ["-from shared.errors import ServiceError, AuthError, ValidationError",
+         "+from shared.errors import ServiceFailure, AuthFailure, PayloadError"],
+        [" def test_auth_error_hierarchy():",
+         "-    err = AuthError(401, 'Unauthorized')",
+         "-    assert isinstance(err, ServiceError)",
+         "+    err = AuthFailure(401, 'Unauthorized')",
+         "+    assert isinstance(err, ServiceFailure)"],
+        [" def test_validation_error():",
+         "-    err = ValidationError(400, 'Invalid')",
+         "-    assert isinstance(err, ServiceError)",
+         "+    err = PayloadError(400, 'Invalid')",
+         "+    assert isinstance(err, ServiceFailure)"],
+    ])
+    relationships.append({"source": "shared/test_errors.py", "target": "shared/errors.py", "kind": "direct"})
+
+    # ── Layer 2: Service implementations ─────────────────────────
+    # Each uses the renamed shared types AND renames its own function
+    services = [
+        {"pkg": "auth", "old_fn": "login", "new_fn": "authenticate",
+         "old_req": "AuthRequest", "new_req": "AuthCredentials"},
+        {"pkg": "user", "old_fn": "get_profile", "new_fn": "fetch_profile",
+         "old_req": "ProfileQuery", "new_req": "ProfileLookup"},
+        {"pkg": "billing", "old_fn": "charge", "new_fn": "process_payment",
+         "old_req": "ChargeRequest", "new_req": "PaymentIntent"},
+        {"pkg": "order", "old_fn": "create_order", "new_fn": "place_order",
+         "old_req": "OrderRequest", "new_req": "OrderSubmission"},
+        {"pkg": "notification", "old_fn": "send", "new_fn": "dispatch",
+         "old_req": "NotifyRequest", "new_req": "AlertPayload"},
+    ]
+
     for svc in services:
         pkg = svc["pkg"]
+        # models.py — renames the service-specific request class
+        model_file = f"services/{pkg}/models.py"
+        add_file(model_file, [
+            [f"-from shared.types import ServiceRequest",
+             f"+from shared.types import ServicePayload"],
+            [f"-class {svc['old_req']}(ServiceRequest):",
+             f"+class {svc['new_req']}(ServicePayload):",
+             f"     \"\"\"Request model for {pkg} service.\"\"\""],
+        ])
+        relationships.append({"source": model_file, "target": "shared/types.py", "kind": "direct"})
 
-        # service.py — renames the function
+        # service.py — renames the function AND uses renamed model + errors
         svc_file = f"services/{pkg}/service.py"
-        h1_id = next_hunk_id(svc_file)
-        h2_id = next_hunk_id(svc_file)
-        file_diffs.append(make_file_diff(svc_file, [
-            make_hunk(h1_id, svc_file, [
-                f"-def {svc['old_fn']}(request):",
-                f"+def {svc['new_fn']}(request):",
-                f'    """Handle {pkg} request."""',
-                f"    return process(request)",
-            ]),
-            make_hunk(h2_id, svc_file, [
-                f" def handle_{pkg}_request(data):",
-                f"-    return {svc['old_fn']}(data)",
-                f"+    return {svc['new_fn']}(data)",
-            ]),
-        ]))
-        hunk_to_file[h1_id] = svc_file
-        hunk_to_file[h2_id] = svc_file
+        add_file(svc_file, [
+            [f"-from services.{pkg}.models import {svc['old_req']}",
+             f"+from services.{pkg}.models import {svc['new_req']}"],
+            [f"-from shared.errors import ServiceError",
+             f"+from shared.errors import ServiceFailure"],
+            [f"-def {svc['old_fn']}(request: {svc['old_req']}):",
+             f"+def {svc['new_fn']}(request: {svc['new_req']}):",
+             f'    """Handle {pkg} request."""',
+             f"-    if not request.data:",
+             f"-        raise ServiceError(400, 'Empty')",
+             f"+    if not request.data:",
+             f"+        raise ServiceFailure(400, 'Empty')"],
+            [f" def handle_{pkg}_request(data):",
+             f"-    req = {svc['old_req']}(data)",
+             f"-    return {svc['old_fn']}(req)",
+             f"+    req = {svc['new_req']}(data)",
+             f"+    return {svc['new_fn']}(req)"],
+        ])
+        relationships.append({"source": svc_file, "target": model_file, "kind": "direct"})
+        relationships.append({"source": svc_file, "target": "shared/errors.py", "kind": "direct"})
 
-        # test_service.py — tests the renamed function
+        # test_service.py
         test_file = f"services/{pkg}/test_service.py"
-        h3_id = next_hunk_id(test_file)
-        h4_id = next_hunk_id(test_file)
-        h5_id = next_hunk_id(test_file)
-        file_diffs.append(make_file_diff(test_file, [
-            make_hunk(h3_id, test_file, [
-                f"-from services.{pkg}.service import {svc['old_fn']}",
-                f"+from services.{pkg}.service import {svc['new_fn']}",
-            ]),
-            make_hunk(h4_id, test_file, [
-                f" def test_{svc['old_fn']}_success():",
-                f"-    result = {svc['old_fn']}(valid_request)",
-                f"+    result = {svc['new_fn']}(valid_request)",
-                f"     assert result.status == 'ok'",
-            ]),
-            make_hunk(h5_id, test_file, [
-                f" def test_{svc['old_fn']}_failure():",
-                f"-    result = {svc['old_fn']}(bad_request)",
-                f"+    result = {svc['new_fn']}(bad_request)",
-                f"     assert result.status == 'error'",
-            ]),
-        ]))
-        hunk_to_file[h3_id] = test_file
-        hunk_to_file[h4_id] = test_file
-        hunk_to_file[h5_id] = test_file
+        add_file(test_file, [
+            [f"-from services.{pkg}.service import {svc['old_fn']}",
+             f"+from services.{pkg}.service import {svc['new_fn']}"],
+            [f"-from services.{pkg}.models import {svc['old_req']}",
+             f"+from services.{pkg}.models import {svc['new_req']}"],
+            [f"-from shared.errors import ServiceError",
+             f"+from shared.errors import ServiceFailure"],
+            [f" def test_{svc['old_fn']}_success():",
+             f"-    req = {svc['old_req']}({{'key': 'val'}})",
+             f"-    result = {svc['old_fn']}(req)",
+             f"+    req = {svc['new_req']}({{'key': 'val'}})",
+             f"+    result = {svc['new_fn']}(req)",
+             f"     assert result.status == 'ok'"],
+            [f" def test_{svc['old_fn']}_invalid():",
+             f"-    req = {svc['old_req']}({{}})",
+             f"-    with pytest.raises(ServiceError):",
+             f"-        {svc['old_fn']}(req)",
+             f"+    req = {svc['new_req']}({{}})",
+             f"+    with pytest.raises(ServiceFailure):",
+             f"+        {svc['new_fn']}(req)"],
+        ])
         relationships.append({"source": test_file, "target": svc_file, "kind": "direct"})
+        relationships.append({"source": test_file, "target": model_file, "kind": "direct"})
+        relationships.append({"source": test_file, "target": "shared/errors.py", "kind": "transitive", "via": svc_file})
 
-        # client.py for each caller that references this service's renamed fn
-        for caller_pkg in svc["callers"]:
-            client_file = f"services/{caller_pkg}/client.py"
-            h6_id = next_hunk_id(client_file)
-            h7_id = next_hunk_id(client_file)
-            file_diffs.append(make_file_diff(client_file, [
-                make_hunk(h6_id, client_file, [
-                    f"-from services.{pkg}.service import {svc['old_fn']}",
-                    f"+from services.{pkg}.service import {svc['new_fn']}",
-                ]),
-                make_hunk(h7_id, client_file, [
-                    f" def call_{pkg}(data):",
-                    f"-    return {svc['old_fn']}(data)",
-                    f"+    return {svc['new_fn']}(data)",
-                ]),
-            ]))
-            hunk_to_file[h6_id] = client_file
-            hunk_to_file[h7_id] = client_file
-            relationships.append({"source": client_file, "target": svc_file, "kind": "direct"})
-
-            # test_client.py for each caller
-            test_client_file = f"services/{caller_pkg}/test_client.py"
-            h8_id = next_hunk_id(test_client_file)
-            file_diffs.append(make_file_diff(test_client_file, [
-                make_hunk(h8_id, test_client_file, [
-                    f" def test_call_{pkg}():",
-                    f"-    mock_{svc['old_fn']}.return_value = ok_response",
-                    f"+    mock_{svc['new_fn']}.return_value = ok_response",
-                    f"     result = call_{pkg}(test_data)",
-                ]),
-            ]))
-            hunk_to_file[h8_id] = test_client_file
-            relationships.append({"source": test_client_file, "target": client_file, "kind": "direct"})
-            relationships.append({"source": test_client_file, "target": svc_file, "kind": "transitive", "via": client_file})
-
-    # Add shared utility files (noise — these are additive, not renames)
-    noise_files = [
-        ("shared/logging.py", "Add structured logging format"),
-        ("shared/metrics.py", "Add request counter metric"),
-        ("shared/errors.py", "Add new TimeoutError class"),
-        ("shared/config.py", "Add connection pool size setting"),
+    # ── Layer 3: Cross-service clients ───────────────────────────
+    # Each service calls another service using the cascaded renamed names
+    cross_calls = [
+        ("user", "auth", "login", "authenticate"),
+        ("auth", "user", "get_profile", "fetch_profile"),
+        ("order", "billing", "charge", "process_payment"),
+        ("billing", "order", "create_order", "place_order"),
+        ("user", "notification", "send", "dispatch"),
     ]
-    for nf_path, _ in noise_files:
-        h_id = next_hunk_id(nf_path)
-        file_diffs.append(make_file_diff(nf_path, [
-            make_hunk(h_id, nf_path, [
-                "+# New utility addition",
-                "+def new_helper():",
-                "+    pass",
-            ]),
-        ]))
-        hunk_to_file[h_id] = nf_path
+    for caller_pkg, target_pkg, old_fn, new_fn in cross_calls:
+        client_file = f"services/{caller_pkg}/clients/{target_pkg}_client.py"
+        target_svc = next(s for s in services if s["pkg"] == target_pkg)
+        add_file(client_file, [
+            [f"-from services.{target_pkg}.service import {old_fn}",
+             f"+from services.{target_pkg}.service import {new_fn}"],
+            [f"-from services.{target_pkg}.models import {target_svc['old_req']}",
+             f"+from services.{target_pkg}.models import {target_svc['new_req']}"],
+            [f" def call_{target_pkg}(data):",
+             f"-    req = {target_svc['old_req']}(data)",
+             f"-    return {old_fn}(req)",
+             f"+    req = {target_svc['new_req']}(data)",
+             f"+    return {new_fn}(req)"],
+        ])
+        relationships.append({"source": client_file, "target": f"services/{target_pkg}/service.py", "kind": "direct"})
+        relationships.append({"source": client_file, "target": f"services/{target_pkg}/models.py", "kind": "direct"})
 
-    # Add doc files (noise)
+        test_client_file = f"services/{caller_pkg}/tests/test_{target_pkg}_client.py"
+        add_file(test_client_file, [
+            [f"-from services.{caller_pkg}.clients.{target_pkg}_client import call_{target_pkg}",
+             f"+from services.{caller_pkg}.clients.{target_pkg}_client import call_{target_pkg}"],
+            [f" def test_call_{target_pkg}():",
+             f"-    mock_{old_fn}.return_value = ServiceResponse('ok', {{}})",
+             f"+    mock_{new_fn}.return_value = ServiceResult('ok', {{}})",
+             f"     result = call_{target_pkg}(test_data)"],
+        ])
+        relationships.append({"source": test_client_file, "target": client_file, "kind": "direct"})
+
+    # ── Layer 4: Gateway/Router ──────────────────────────────────
+    # Aggregates all services — uses ALL renamed functions + types
+    add_file("gateway/router.py", [
+        ["-from services.auth.service import login",
+         "+from services.auth.service import authenticate"],
+        ["-from services.user.service import get_profile",
+         "+from services.user.service import fetch_profile"],
+        ["-from services.billing.service import charge",
+         "+from services.billing.service import process_payment"],
+        ["-from services.order.service import create_order",
+         "+from services.order.service import place_order"],
+        ["-from services.notification.service import send",
+         "+from services.notification.service import dispatch"],
+        ["-from shared.errors import ServiceError",
+         "+from shared.errors import ServiceFailure"],
+        [" ROUTE_MAP = {",
+         "-    '/auth': login,",
+         "-    '/user': get_profile,",
+         "-    '/billing': charge,",
+         "-    '/order': create_order,",
+         "-    '/notify': send,",
+         "+    '/auth': authenticate,",
+         "+    '/user': fetch_profile,",
+         "+    '/billing': process_payment,",
+         "+    '/order': place_order,",
+         "+    '/notify': dispatch,",
+         " }"],
+        [" def dispatch_request(path, data):",
+         "     handler = ROUTE_MAP.get(path)",
+         "-    except ServiceError as e:",
+         "+    except ServiceFailure as e:",
+         "         return error_response(e.code, e.message)"],
+    ])
+    for svc in services:
+        relationships.append({"source": "gateway/router.py", "target": f"services/{svc['pkg']}/service.py", "kind": "direct"})
+    relationships.append({"source": "gateway/router.py", "target": "shared/errors.py", "kind": "direct"})
+
+    add_file("gateway/test_router.py", [
+        ["-from shared.errors import ServiceError",
+         "+from shared.errors import ServiceFailure"],
+        [" def test_auth_route():",
+         "-    mock_login.return_value = ServiceResponse('ok', {})",
+         "+    mock_authenticate.return_value = ServiceResult('ok', {})",
+         "     result = dispatch_request('/auth', {})"],
+        [" def test_error_handling():",
+         "-    mock_login.side_effect = ServiceError(500, 'fail')",
+         "+    mock_authenticate.side_effect = ServiceFailure(500, 'fail')",
+         "     result = dispatch_request('/auth', {})"],
+    ])
+    relationships.append({"source": "gateway/test_router.py", "target": "gateway/router.py", "kind": "direct"})
+
+    # ── Layer 5: Middleware ───────────────────────────────────────
+    # Uses auth + user renamed functions together
+    add_file("middleware/auth_middleware.py", [
+        ["-from services.auth.service import login",
+         "+from services.auth.service import authenticate"],
+        ["-from services.user.service import get_profile",
+         "+from services.user.service import fetch_profile"],
+        ["-from shared.errors import AuthError",
+         "+from shared.errors import AuthFailure"],
+        [" def auth_required(handler):",
+         "     def wrapper(request):",
+         "-        token = login(request.credentials)",
+         "-        request.user = get_profile(token.user_id)",
+         "+        token = authenticate(request.credentials)",
+         "+        request.user = fetch_profile(token.user_id)",
+         "-    except AuthError:",
+         "+    except AuthFailure:",
+         "         return unauthorized()"],
+    ])
+    relationships.append({"source": "middleware/auth_middleware.py", "target": "services/auth/service.py", "kind": "direct"})
+    relationships.append({"source": "middleware/auth_middleware.py", "target": "services/user/service.py", "kind": "direct"})
+    relationships.append({"source": "middleware/auth_middleware.py", "target": "shared/errors.py", "kind": "direct"})
+
+    add_file("middleware/rate_limiter.py", [
+        ["-from shared.errors import ServiceError",
+         "+from shared.errors import ServiceFailure"],
+        [" def rate_limit(handler):",
+         "     def wrapper(request):",
+         "-        except ServiceError:",
+         "+        except ServiceFailure:",
+         "             return rate_limited()"],
+    ])
+    relationships.append({"source": "middleware/rate_limiter.py", "target": "shared/errors.py", "kind": "direct"})
+
+    # ── Per-service config files ─────────────────────────────────
+    # Each has config values referencing the renamed function names
+    for svc in services:
+        pkg = svc["pkg"]
+        cfg_file = f"services/{pkg}/config.py"
+        add_file(cfg_file, [
+            [f"-HANDLER_NAME = '{svc['old_fn']}'",
+             f"+HANDLER_NAME = '{svc['new_fn']}'",
+             f"-REQUEST_CLASS = '{svc['old_req']}'",
+             f"+REQUEST_CLASS = '{svc['new_req']}'"],
+        ])
+
+    # ── Noise: independent doc/config files ──────────────────────
     for doc_path in ["docs/API.md", "docs/CHANGELOG.md"]:
-        h_id = next_hunk_id(doc_path)
+        h = hid(doc_path)
         file_diffs.append(make_file_diff(doc_path, [
-            make_hunk(h_id, doc_path, [
+            make_hunk(h, doc_path, [
                 "+## Updated function names",
                 "+- auth: login -> authenticate",
                 "+- billing: charge -> process_payment",
             ]),
         ]))
-        hunk_to_file[h_id] = doc_path
+        hunk_to_file[h] = doc_path
 
     # Merge file_diffs that share the same file_path
     merged = {}
@@ -236,16 +390,18 @@ def generate_case1():
             seen_rels.add(key)
             unique_rels.append(r)
 
-    # Must be together: each service rename must include
-    # the service file + its test + all callers' clients + their tests
-    must_be_together = []
-    for svc in services:
-        pkg = svc["pkg"]
-        group = {f"services/{pkg}/service.py", f"services/{pkg}/test_service.py"}
-        for caller_pkg in svc["callers"]:
-            group.add(f"services/{caller_pkg}/client.py")
-            group.add(f"services/{caller_pkg}/test_client.py")
-        must_be_together.append(sorted(group))
+    # Must be together: ALL files with renames (everything except docs)
+    # because the renames cascade: shared→service→client→gateway→middleware
+    all_rename_files = set()
+    for fd in file_diffs:
+        fp = fd["file_path"]
+        if fp.startswith("docs/"):
+            continue
+        for h_data in fd["hunks"]:
+            if any(l.startswith("-") for l in h_data["lines"]) and any(l.startswith("+") for l in h_data["lines"]):
+                all_rename_files.add(fp)
+                break
+    must_be_together = [sorted(all_rename_files)]
 
     num_files = len(file_diffs)
     num_hunks = sum(len(fd["hunks"]) for fd in file_diffs)
@@ -253,21 +409,22 @@ def generate_case1():
     return {
         "id": "py_microservices_5_rename_chains",
         "language": "python",
-        "name": f"Python: 5 microservice rename chains + noise — {num_files} files, {num_hunks} hunks",
+        "name": f"Python: 5 microservice cascading renames — {num_files} files, {num_hunks} hunks",
         "description": (
-            "5 microservice packages each rename a core function. Each rename propagates to "
-            "another service's client file, forming a star-topology dependency web. "
-            "auth renames login()->authenticate() used by user.client. "
-            "user renames get_profile()->fetch_profile() used by auth.client. "
-            "billing renames charge()->process_payment() used by order.client. "
-            "order renames create_order()->place_order() used by billing.client. "
-            "notification renames send()->dispatch() used by user.service. "
-            "Each rename group (service+test+client+client_test) MUST be in the same commit. "
-            "Plus 4 shared utility files and 2 doc files as noise. "
-            "The LLM must satisfy 5 simultaneous must_be_together constraints."
+            "5 microservice packages with cascading heterogeneous renames across 5 layers: "
+            "(1) shared/types.py renames ServiceRequest->ServicePayload and ServiceResponse->ServiceResult. "
+            "(2) shared/errors.py renames ServiceError->ServiceFailure, AuthError->AuthFailure, "
+            "ValidationError->PayloadError. "
+            "(3) Each service renames its own function AND its request model class. "
+            "(4) Cross-service clients use BOTH the service's renamed function AND its renamed model. "
+            "(5) Gateway/router aggregates all renamed functions. "
+            "(6) Middleware uses auth+user renamed functions + renamed errors. "
+            f"ALL {len(all_rename_files)} files with renames must be in a single commit. "
+            "The LLM is tempted to split by layer (shared, services, clients, gateway, middleware) "
+            "or by service (auth, user, billing, order, notification) — both break cascading deps."
         ),
         "difficulty": "hyper_hard",
-        "category": "multi_service_rename_star",
+        "category": "multi_service_cascading_rename",
         "num_files": num_files,
         "num_hunks": num_hunks,
         "file_diffs": file_diffs,
