@@ -112,12 +112,11 @@ class BaseLLMProvider(ABC):
 
     @abstractmethod
     def get_api_key(self) -> str:
-        """Get the API key from environment or system keychain.
+        """Get the API key from system keychain or environment.
 
         Checks in order:
-        1. Environment variable
-        2. System keychain (via keyring library)
-        3. Repo-level .env file (if loaded)
+        1. System keychain (via keyring library)
+        2. Environment variable / .env file
 
         Returns:
             The API key string.
@@ -128,7 +127,11 @@ class BaseLLMProvider(ABC):
         pass
 
     def _get_api_key_with_fallback(self, env_var_name: str, provider_name: str) -> str:
-        """Helper to get API key with fallback to system keychain.
+        """Helper to get API key with fallback to environment variable.
+
+        Resolution order:
+        1. System keychain (via keyring) — primary storage
+        2. Environment variable / .env file — fallback/override
 
         Args:
             env_var_name: Environment variable name to check.
@@ -142,26 +145,25 @@ class BaseLLMProvider(ABC):
         """
         import os
 
-        # First check environment variable
-        api_key = os.getenv(env_var_name)
-        if api_key:
-            return api_key
-
-        # Then check system keychain
+        # First check system keychain (primary storage)
         try:
             from hunknote.global_config import get_credential
             api_key = get_credential(env_var_name)
             if api_key:
                 return api_key
         except Exception:
-            # If global_config isn't available, continue to error
             pass
+
+        # Then check environment variable / .env fallback
+        api_key = os.getenv(env_var_name)
+        if api_key:
+            return api_key
 
         # Not found anywhere
         raise MissingAPIKeyError(
             f"{provider_name} API key not found. Set it using:\n"
-            f"  1. Environment variable: export {env_var_name}=your_key_here\n"
-            f"  2. Run: hunknote config set-key {provider_name.lower()}"
+            f"  1. Run: hunknote config set-key {provider_name.lower()}\n"
+            f"  2. Environment variable: export {env_var_name}=your_key_here"
         )
 
     def build_user_prompt(self, context_bundle: str) -> str:
