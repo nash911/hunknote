@@ -39,6 +39,7 @@ class ComposeCacheMetadata(BaseModel):
     model: str
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int = 0
     changed_files: list[str]
     total_hunks: int
     num_commits: int

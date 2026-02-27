@@ -54,6 +54,7 @@ class LLMResult:
     input_chars: int = 0  # Characters in context bundle
     prompt_chars: int = 0  # Characters in full prompt (system + user)
     output_chars: int = 0  # Characters in LLM response
+    thinking_tokens: int = 0  # Internal reasoning tokens (thinking models)
 
 
 @dataclass
@@ -64,6 +65,7 @@ class RawLLMResult:
     model: str
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int = 0
 
 
 class BaseLLMProvider(ABC):
