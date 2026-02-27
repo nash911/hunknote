@@ -488,6 +488,27 @@ def compose_command(
         # Try to auto-correct hallucinated hunk IDs before validation
         corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
 
+        # If corrections were made and this is a freshly generated plan,
+        # re-save the cache and hunk IDs with the corrected plan
+        if corrections_made > 0 and not plan_from_cache and not from_plan:
+            changed_files = [f.file_path for f in file_diffs if not f.is_binary]
+            save_compose_cache(
+                repo_root=repo_root,
+                context_hash=current_hash,
+                plan_json=json.dumps(plan.model_dump(), indent=2),
+                model=llm_model,
+                input_tokens=llm_input_tokens,
+                output_tokens=llm_output_tokens,
+                changed_files=changed_files,
+                total_hunks=len(inventory),
+                num_commits=len(plan.commits),
+                style=effective_profile.value,
+                max_commits=max_commits,
+                file_relationships_text=file_relationships_text or None,
+            )
+            hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
+            save_compose_hunk_ids(repo_root, hunk_ids_data)
+
         # Validate plan with silent retry logic
         validation_errors = validate_plan(plan, inventory, max_commits)
         retry_count = 0
