@@ -81,6 +81,7 @@ class TestResult:
     model: str
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int
     latency_seconds: float
     coherence_details: str
     plan_summary: list[dict]
@@ -101,6 +102,7 @@ class EvalSummary:
     pass_rate: float
     total_input_tokens: int
     total_output_tokens: int
+    total_thinking_tokens: int
     total_latency_seconds: float
     results_by_language: dict = field(default_factory=dict)
     results_by_difficulty: dict = field(default_factory=dict)
@@ -390,6 +392,7 @@ def run_single_test(case: TestCaseData, provider) -> TestResult:
             model=result.model,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
+            thinking_tokens=result.thinking_tokens,
             latency_seconds=round(latency, 2),
             coherence_details=details,
             plan_summary=plan_summary,
@@ -410,6 +413,7 @@ def run_single_test(case: TestCaseData, provider) -> TestResult:
             model=getattr(provider, "model", "unknown"),
             input_tokens=0,
             output_tokens=0,
+            thinking_tokens=0,
             latency_seconds=round(latency, 2),
             coherence_details="",
             plan_summary=[],
@@ -451,6 +455,7 @@ def save_results(
             "model": result.model,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
+            "thinking_tokens": result.thinking_tokens,
             "latency_seconds": result.latency_seconds,
             "coherence_details": result.coherence_details,
             "plan_summary": result.plan_summary,
@@ -471,6 +476,7 @@ def save_results(
         "pass_rate": summary.pass_rate,
         "total_input_tokens": summary.total_input_tokens,
         "total_output_tokens": summary.total_output_tokens,
+        "total_thinking_tokens": summary.total_thinking_tokens,
         "total_latency_seconds": summary.total_latency_seconds,
         "results_by_language": summary.results_by_language,
         "results_by_difficulty": summary.results_by_difficulty,
@@ -559,6 +565,7 @@ def build_summary(
         pass_rate=round(passed / total * 100, 1) if total > 0 else 0.0,
         total_input_tokens=sum(r.input_tokens for r in results),
         total_output_tokens=sum(r.output_tokens for r in results),
+        total_thinking_tokens=sum(r.thinking_tokens for r in results),
         total_latency_seconds=round(sum(r.latency_seconds for r in results), 2),
         results_by_language=by_lang,
         results_by_difficulty=by_diff,
@@ -617,6 +624,9 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
     # Token usage
     print(f"  Tokens:  {summary.total_input_tokens:,} input / "
           f"{summary.total_output_tokens:,} output")
+    if summary.total_thinking_tokens > 0:
+        print(f"           {summary.total_thinking_tokens:,} thinking "
+              f"(internal reasoning, not billed as output)")
     print(f"  Latency: {summary.total_latency_seconds:.1f}s total "
           f"({summary.total_latency_seconds / max(summary.total_cases, 1):.1f}s avg)")
     print()
@@ -745,12 +755,17 @@ def main():
         if result.error:
             print(f"  Result: \u26a0\ufe0f  ERROR — {result.error}")
         elif result.passed:
+            token_str = f"{result.input_tokens}+{result.output_tokens} tokens"
+            if result.thinking_tokens > 0:
+                token_str += f" (+{result.thinking_tokens} thinking)"
             print(f"  Result: \u2705 PASSED ({result.num_commits_generated} commits, "
-                  f"{result.latency_seconds}s, "
-                  f"{result.input_tokens}+{result.output_tokens} tokens)")
+                  f"{result.latency_seconds}s, {token_str})")
         else:
+            token_str = f"{result.input_tokens}+{result.output_tokens} tokens"
+            if result.thinking_tokens > 0:
+                token_str += f" (+{result.thinking_tokens} thinking)"
             print(f"  Result: \u274c FAILED ({result.num_commits_generated} commits, "
-                  f"{result.latency_seconds}s)")
+                  f"{result.latency_seconds}s, {token_str})")
 
         # Print coherence details
         if result.coherence_details:
