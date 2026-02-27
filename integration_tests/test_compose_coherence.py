@@ -184,7 +184,7 @@ def load_all_test_cases() -> list[TestCaseData]:
     Returns:
         List of TestCaseData sorted by language, then difficulty.
     """
-    difficulty_order = {"easy": 0, "medium": 1, "hard": 2, "very_hard": 3}
+    difficulty_order = {"easy": 0, "medium": 1, "hard": 2, "very_hard": 3, "super_hard": 4, "hyper_hard": 5}
     cases = []
     for json_file in sorted(DATA_DIR.glob("*.json")):
         try:
@@ -609,7 +609,7 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
     # By difficulty
     print("  By Difficulty:")
     for diff, stats in sorted(summary.results_by_difficulty.items(),
-                               key=lambda x: {"easy": 0, "medium": 1, "hard": 2, "very_hard": 3}.get(x[0], 99)):
+                               key=lambda x: {"easy": 0, "medium": 1, "hard": 2, "very_hard": 3, "super_hard": 4, "hyper_hard": 5}.get(x[0], 99)):
         rate = round(stats["passed"] / stats["total"] * 100) if stats["total"] > 0 else 0
         print(f"    {diff:<12}  {stats['passed']}/{stats['total']} ({rate}%)")
     print()
@@ -644,7 +644,7 @@ def main():
         help="Run only a specific test case by ID",
     )
     parser.add_argument(
-        '--diff_level', choices=['easy', 'medium', 'hard', 'very_hard'],
+        '--diff_level', choices=['easy', 'medium', 'hard', 'very_hard', 'super_hard', 'hyper_hard'],
         default=None, help='Difference level (default: all levels)'
     )
     parser.add_argument(
