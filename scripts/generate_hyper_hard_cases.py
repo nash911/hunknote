@@ -755,6 +755,26 @@ def generate_case2():
 # ============================================================
 
 def generate_case3():
+    """Generate large refactor case with heterogeneous cascading renames.
+
+    Key anti-LLM-lumping techniques (breaking the uniform rename pattern):
+    1. Layer 1 (models/base.py): Renames BaseModel->Entity AND to_dict()->serialize()
+    2. Layer 2 (models/user.py etc): DIFFERENT rename per model:
+       User.get_name()->User.display_name(), Product.get_price()->Product.unit_price(),
+       Order.get_total()->Order.compute_total()
+    3. Layer 3 (serializers/): NEW layer — each serializer renames its format method:
+       UserSerializer.format()->UserSerializer.render(),
+       ProductSerializer.format()->ProductSerializer.render()
+    4. Layer 4 (api/views/): Renames decorator @api_view->@endpoint PLUS
+       each view updates calls to the model's renamed method
+    5. Layer 5 (services/): Each service renames its own helper AND uses
+       the model's renamed method, creating cross-layer deps
+    6. Layer 6 (tests/): Tests reference ALL of the above — model class,
+       model method, serializer method, service helper
+
+    This means each layer has DIFFERENT rename patterns, so the LLM
+    cannot lump them as "one refactor". It will try to split by layer.
+    """
     file_diffs = []
     hunk_to_file = {}
     relationships = []
@@ -773,90 +793,291 @@ def generate_case3():
             hunk_to_file[h] = path
         file_diffs.append(make_file_diff(path, hunks))
 
-    # Core model files — the rename happens here
+    # ── Layer 1: Base class renames ──────────────────────────────
     add_file("models/base.py", [
         ["-class BaseModel:", "+class Entity:",
          "     id = Column(Integer, primary_key=True)",
          "     created_at = Column(DateTime, default=datetime.utcnow)"],
         ["-    def to_dict(self):", "+    def serialize(self):",
          "         return {c.name: getattr(self, c.name) for c in self.__table__.columns}"],
+        ["-    @classmethod",
+         "-    def find_by_id(cls, id):",
+         "+    @classmethod",
+         "+    def get_by_id(cls, id):",
+         "         return cls.query.get(id)"],
     ])
 
+    add_file("models/mixins.py", [
+        ["-class TimestampMixin:",
+         "+class AuditMixin:",
+         "     updated_at = Column(DateTime, onupdate=datetime.utcnow)"],
+        ["-    def touch(self):",
+         "+    def mark_updated(self):",
+         "         self.updated_at = datetime.utcnow()"],
+    ])
+
+    # ── Layer 2: Model files — each has a DIFFERENT method rename ─
     add_file("models/user.py", [
         ["-from models.base import BaseModel", "+from models.base import Entity"],
-        ["-class User(BaseModel):", "+class User(Entity):",
+        ["-from models.mixins import TimestampMixin",
+         "+from models.mixins import AuditMixin"],
+        ["-class User(BaseModel, TimestampMixin):",
+         "+class User(Entity, AuditMixin):",
          "     email = Column(String, unique=True)"],
+        ["-    def get_name(self):", "+    def display_name(self):",
+         "         return f'{self.first_name} {self.last_name}'"],
     ])
 
     add_file("models/product.py", [
         ["-from models.base import BaseModel", "+from models.base import Entity"],
         ["-class Product(BaseModel):", "+class Product(Entity):",
          "     name = Column(String)", "     price = Column(Float)"],
+        ["-    def get_price(self, currency='USD'):",
+         "+    def unit_price(self, currency='USD'):",
+         "         return convert(self.price, currency)"],
     ])
 
     add_file("models/order.py", [
         ["-from models.base import BaseModel", "+from models.base import Entity"],
-        ["-class Order(BaseModel):", "+class Order(Entity):",
+        ["-from models.mixins import TimestampMixin",
+         "+from models.mixins import AuditMixin"],
+        ["-class Order(BaseModel, TimestampMixin):",
+         "+class Order(Entity, AuditMixin):",
          "     user_id = Column(Integer, ForeignKey('user.id'))"],
-        ["-    def summary(self):", "-        return self.to_dict()",
-         "+    def summary(self):", "+        return self.serialize()"],
+        ["-    def get_total(self):", "+    def compute_total(self):",
+         "         return sum(item.subtotal for item in self.items)"],
+        ["-    def summary(self):",
+         "-        return {'total': self.get_total(), **self.to_dict()}",
+         "+    def summary(self):",
+         "+        return {'total': self.compute_total(), **self.serialize()}"],
+    ])
+
+    add_file("models/category.py", [
+        ["-from models.base import BaseModel", "+from models.base import Entity"],
+        ["-class Category(BaseModel):", "+class Category(Entity):",
+         "     name = Column(String)"],
+        ["-    def get_path(self):", "+    def full_path(self):",
+         "         parts = []",
+         "         node = self",
+         "         while node:",
+         "             parts.append(node.name)",
+         "             node = node.parent",
+         "         return '/'.join(reversed(parts))"],
     ])
 
     add_file("models/__init__.py", [
         ["-from models.base import BaseModel", "+from models.base import Entity"],
-        ["-__all__ = ['BaseModel', 'User', 'Product', 'Order']",
-         "+__all__ = ['Entity', 'User', 'Product', 'Order']"],
+        ["-from models.mixins import TimestampMixin",
+         "+from models.mixins import AuditMixin"],
+        ["-__all__ = ['BaseModel', 'TimestampMixin', 'User', 'Product', 'Order', 'Category']",
+         "+__all__ = ['Entity', 'AuditMixin', 'User', 'Product', 'Order', 'Category']"],
     ])
 
-    # Consumer files — 12 files that import and use BaseModel
-    consumer_modules = [
-        "api/views/users", "api/views/products", "api/views/orders",
-        "api/views/admin", "api/views/search", "api/views/reports",
-        "services/auth", "services/billing", "services/shipping",
-        "services/analytics", "services/notifications", "cli/import_cmd",
+    # ── Layer 3: Serializers — different method rename per model ──
+    serializers = [
+        ("user", "User", "get_name", "display_name"),
+        ("product", "Product", "get_price", "unit_price"),
+        ("order", "Order", "get_total", "compute_total"),
+        ("category", "Category", "get_path", "full_path"),
     ]
-    for mod in consumer_modules:
-        path = f"{mod}.py"
+    for ser_name, model_cls, old_method, new_method in serializers:
+        path = f"serializers/{ser_name}_serializer.py"
         add_file(path, [
-            ["-from models import BaseModel", "+from models import Entity"],
-            [f" def process(obj):",
+            [f"-from models import BaseModel", f"+from models import Entity"],
+            [f"-class {model_cls}Serializer:",
+             f"+class {model_cls}Serializer:",
+             f"-    def format(self, obj: BaseModel) -> dict:",
+             f"+    def render(self, obj: Entity) -> dict:",
+             f"-        data = obj.to_dict()",
+             f"+        data = obj.serialize()"],
+            [f"-        data['{ser_name}_label'] = obj.{old_method}()",
+             f"+        data['{ser_name}_label'] = obj.{new_method}()"],
+        ])
+        relationships.append({"source": path, "target": "models/base.py", "kind": "direct"})
+        relationships.append({"source": path, "target": f"models/{ser_name}.py", "kind": "direct"})
+
+    add_file("serializers/__init__.py", [
+        ["-from serializers.user_serializer import UserSerializer",
+         "+from serializers.user_serializer import UserSerializer"],
+    ])
+
+    # ── Layer 4: API views — decorator + model method renames ────
+    api_views = [
+        ("users", "User", "get_name", "display_name"),
+        ("products", "Product", "get_price", "unit_price"),
+        ("orders", "Order", "get_total", "compute_total"),
+        ("admin", "User", "get_name", "display_name"),
+        ("search", "Product", "get_price", "unit_price"),
+        ("reports", "Order", "get_total", "compute_total"),
+    ]
+    for view_name, model_cls, old_method, new_method in api_views:
+        path = f"api/views/{view_name}.py"
+        add_file(path, [
+            [f"-from models import BaseModel", f"+from models import Entity"],
+            [f"-from api.decorators import api_view",
+             f"+from api.decorators import endpoint"],
+            [f"-@api_view", f"+@endpoint",
+             f" def list_{view_name}(request):"],
+            [f"-    obj = {model_cls}.find_by_id(request.id)",
+             f"+    obj = {model_cls}.get_by_id(request.id)",
+             f"-    return obj.to_dict()",
+             f"+    return obj.serialize()"],
+        ])
+        relationships.append({"source": path, "target": "models/base.py", "kind": "direct"})
+        relationships.append({"source": path, "target": "api/decorators.py", "kind": "direct"})
+
+    add_file("api/decorators.py", [
+        ["-def api_view(func):", "+def endpoint(func):",
+         "     @wraps(func)",
+         "     def wrapper(*args, **kwargs):",
+         "         return func(*args, **kwargs)"],
+    ])
+
+    # ── Layer 5: Services — each renames its own helper ──────────
+    service_configs = [
+        ("auth", "validate_session", "verify_session", "User", "get_name", "display_name"),
+        ("billing", "calculate_invoice", "generate_invoice", "Order", "get_total", "compute_total"),
+        ("shipping", "estimate_cost", "calculate_shipping", "Order", "get_total", "compute_total"),
+        ("analytics", "track_event", "record_event", "User", "get_name", "display_name"),
+        ("notifications", "send_alert", "dispatch_alert", "User", "get_name", "display_name"),
+    ]
+    for svc_name, old_helper, new_helper, model_cls, old_method, new_method in service_configs:
+        path = f"services/{svc_name}.py"
+        add_file(path, [
+            [f"-from models import BaseModel, {model_cls}",
+             f"+from models import Entity, {model_cls}"],
+            [f"-def {old_helper}(obj):", f"+def {new_helper}(obj):",
              f"-    if isinstance(obj, BaseModel):",
              f"+    if isinstance(obj, Entity):",
-             f"-        return obj.to_dict()",
-             f"+        return obj.serialize()"],
+             f"-        label = obj.{old_method}() if hasattr(obj, '{old_method}') else str(obj)",
+             f"+        label = obj.{new_method}() if hasattr(obj, '{new_method}') else str(obj)"],
+            [f"-    data = obj.to_dict()",
+             f"+    data = obj.serialize()"],
         ])
         relationships.append({"source": path, "target": "models/base.py", "kind": "direct"})
 
-    # Test files
-    test_modules = [
-        "tests/test_user", "tests/test_product", "tests/test_order",
-        "tests/test_api_views", "tests/test_services",
+    add_file("cli/import_cmd.py", [
+        ["-from models import BaseModel", "+from models import Entity"],
+        ["-from models.mixins import TimestampMixin",
+         "+from models.mixins import AuditMixin"],
+        [" def import_data(path):",
+         "-    for cls in BaseModel.__subclasses__():",
+         "+    for cls in Entity.__subclasses__():",
+         "-        if issubclass(cls, TimestampMixin):",
+         "-            obj.touch()",
+         "+        if issubclass(cls, AuditMixin):",
+         "+            obj.mark_updated()"],
+    ])
+    relationships.append({"source": "cli/import_cmd.py", "target": "models/base.py", "kind": "direct"})
+    relationships.append({"source": "cli/import_cmd.py", "target": "models/mixins.py", "kind": "direct"})
+
+    # ── Layer 6: Tests — reference MULTIPLE layers ───────────────
+    test_configs = [
+        ("test_user", "User", "get_name", "display_name", "validate_session", "verify_session"),
+        ("test_product", "Product", "get_price", "unit_price", None, None),
+        ("test_order", "Order", "get_total", "compute_total", "calculate_invoice", "generate_invoice"),
+        ("test_category", "Category", "get_path", "full_path", None, None),
     ]
-    for mod in test_modules:
-        path = f"{mod}.py"
-        add_file(path, [
-            ["-from models import BaseModel", "+from models import Entity"],
+    for test_name, model_cls, old_method, new_method, old_svc, new_svc in test_configs:
+        path = f"tests/{test_name}.py"
+        hunks = [
+            [f"-from models import BaseModel, {model_cls}",
+             f"+from models import Entity, {model_cls}"],
             [f" def test_model_creation():",
              f"-    assert isinstance(obj, BaseModel)",
              f"+    assert isinstance(obj, Entity)"],
             [f" def test_serialization():",
              f"-    data = obj.to_dict()",
-             f"+    data = obj.serialize()",
-             f"     assert 'id' in data"],
-        ])
+             f"+    data = obj.serialize()"],
+            [f" def test_{model_cls.lower()}_method():",
+             f"-    result = obj.{old_method}()",
+             f"+    result = obj.{new_method}()"],
+            [f" def test_find():",
+             f"-    obj = {model_cls}.find_by_id(1)",
+             f"+    obj = {model_cls}.get_by_id(1)"],
+        ]
+        if old_svc:
+            hunks.append(
+                [f"-from services.{test_name.replace('test_', '')} import {old_svc}",
+                 f"+from services.{test_name.replace('test_', '')} import {new_svc}"]
+            )
+        add_file(path, hunks)
         relationships.append({"source": path, "target": "models/base.py", "kind": "direct"})
+        relationships.append({"source": path, "target": f"models/{model_cls.lower()}.py", "kind": "direct"})
 
-    # Migration files
-    for i, mig_name in enumerate(["rename_basemodel_table", "update_constraints", "add_audit_columns"]):
-        path = f"migrations/{mig_name}.py"
+    # Cross-layer tests
+    add_file("tests/test_api_views.py", [
+        ["-from models import BaseModel", "+from models import Entity"],
+        ["-from api.decorators import api_view",
+         "+from api.decorators import endpoint"],
+        [" def test_view_decorator():",
+         "-    assert hasattr(list_users, '_api_view')",
+         "+    assert hasattr(list_users, '_endpoint')"],
+        [" def test_view_response():",
+         "-    obj = User.find_by_id(1)",
+         "-    data = obj.to_dict()",
+         "+    obj = User.get_by_id(1)",
+         "+    data = obj.serialize()"],
+    ])
+    relationships.append({"source": "tests/test_api_views.py", "target": "models/base.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_api_views.py", "target": "api/decorators.py", "kind": "direct"})
+
+    add_file("tests/test_services.py", [
+        ["-from models import BaseModel", "+from models import Entity"],
+        ["-from services.auth import validate_session",
+         "+from services.auth import verify_session"],
+        ["-from services.billing import calculate_invoice",
+         "+from services.billing import generate_invoice"],
+        [" def test_auth_service():",
+         "-    validate_session(user)",
+         "+    verify_session(user)"],
+        [" def test_billing_service():",
+         "-    calculate_invoice(order)",
+         "+    generate_invoice(order)"],
+    ])
+    relationships.append({"source": "tests/test_services.py", "target": "services/auth.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_services.py", "target": "services/billing.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_services.py", "target": "models/base.py", "kind": "direct"})
+
+    add_file("tests/test_serializers.py", [
+        ["-from models import BaseModel", "+from models import Entity"],
+        [" def test_user_serializer():",
+         "-    result = serializer.format(user)",
+         "+    result = serializer.render(user)"],
+        [" def test_product_serializer():",
+         "-    result = serializer.format(product)",
+         "+    result = serializer.render(product)"],
+        [" def test_serializer_base_type():",
+         "-    assert serializer.accepts(BaseModel)",
+         "+    assert serializer.accepts(Entity)"],
+    ])
+    relationships.append({"source": "tests/test_serializers.py", "target": "models/base.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_serializers.py", "target": "serializers/user_serializer.py", "kind": "direct"})
+
+    add_file("tests/test_cli.py", [
+        ["-from models import BaseModel", "+from models import Entity"],
+        ["-from models.mixins import TimestampMixin",
+         "+from models.mixins import AuditMixin"],
+        [" def test_import_touches_timestamps():",
+         "-    assert issubclass(Order, TimestampMixin)",
+         "+    assert issubclass(Order, AuditMixin)"],
+        [" def test_import_subclasses():",
+         "-    subs = BaseModel.__subclasses__()",
+         "+    subs = Entity.__subclasses__()"],
+    ])
+    relationships.append({"source": "tests/test_cli.py", "target": "models/base.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_cli.py", "target": "models/mixins.py", "kind": "direct"})
+    relationships.append({"source": "tests/test_cli.py", "target": "cli/import_cmd.py", "kind": "direct"})
+
+    # ── Noise: migrations, features, docs ────────────────────────
+    for i, mig in enumerate(["rename_basemodel_table", "update_constraints", "add_audit_columns"]):
+        path = f"migrations/{mig}.py"
         add_file(path, [
-            [f"+# Migration {i+1}: {mig_name}",
+            [f"+# Migration {i+1}: {mig}",
              f"+def upgrade():",
-             f"+    op.rename_table('basemodel', 'entity')" if i == 0 else f"+    op.alter_column('entity', 'updated')",
-             ],
+             f"+    op.rename_table('basemodel', 'entity')" if i == 0 else f"+    op.alter_column('entity', 'updated')"],
         ])
 
-    # New feature files that depend on refactored models
     add_file("features/export.py", [
         ["+from models import Entity",
          "+",
@@ -875,7 +1096,6 @@ def generate_case3():
     ])
     relationships.append({"source": "features/bulk_import.py", "target": "models/base.py", "kind": "direct"})
 
-    # Noise
     add_file("docs/models.md", [
         ["+## Entity Base Class",
          "+All models now inherit from `Entity` instead of `BaseModel`."],
@@ -885,19 +1105,23 @@ def generate_case3():
          '+testpaths = ["tests"]'],
     ])
 
-    # All files that reference the renamed class/method MUST be together
-    rename_files = set()
-    rename_files.add("models/base.py")
-    rename_files.add("models/user.py")
-    rename_files.add("models/product.py")
-    rename_files.add("models/order.py")
-    rename_files.add("models/__init__.py")
-    for mod in consumer_modules:
-        rename_files.add(f"{mod}.py")
-    for mod in test_modules:
-        rename_files.add(f"{mod}.py")
+    # ── Must-be-together: ALL files with renames ─────────────────
+    # Every layer depends on the layer below it via rename cascading
+    all_rename_files = set()
+    for fd in file_diffs:
+        fp = fd["file_path"]
+        if fp.startswith(("docs/", "migrations/", "features/", "pyproject")):
+            continue
+        if fp == "serializers/__init__.py":
+            continue
+        for h_data in fd["hunks"]:
+            has_minus = any(l.startswith("-") for l in h_data["lines"])
+            has_plus = any(l.startswith("+") for l in h_data["lines"])
+            if has_minus and has_plus:
+                all_rename_files.add(fp)
+                break
 
-    must_be_together = [sorted(rename_files)]
+    must_be_together = [sorted(all_rename_files)]
 
     num_files = len(file_diffs)
     num_hunks = sum(len(fd["hunks"]) for fd in file_diffs)
@@ -905,19 +1129,23 @@ def generate_case3():
     return {
         "id": "py_large_refactor_class_rename_20_consumers",
         "language": "python",
-        "name": f"Python: Class rename BaseModel->Entity across {num_files} files, {num_hunks} hunks",
+        "name": f"Python: Cascading multi-layer refactor — {num_files} files, {num_hunks} hunks",
         "description": (
-            "models/base.py renames BaseModel to Entity and to_dict() to serialize(). "
-            "4 model files + __init__.py update inheritance. "
-            "12 consumer files (6 API views, 4 services, 1 CLI) update imports and isinstance checks. "
-            "5 test files update imports and assertions. "
-            "3 migration files, 2 new feature files, docs, and config as noise. "
-            f"ALL {len(rename_files)} renamed-reference files must be in the same commit. "
-            "The LLM is strongly tempted to split into: models commit, consumers commit, tests commit, "
-            "migrations commit — each of which breaks the codebase."
+            "A 6-layer cascading refactor where each layer has DIFFERENT rename patterns: "
+            "(1) models/base.py: BaseModel->Entity, to_dict()->serialize(), find_by_id()->get_by_id(). "
+            "(2) models/mixins.py: TimestampMixin->AuditMixin, touch()->mark_updated(). "
+            "(3) Each model file: User.get_name()->display_name(), Product.get_price()->unit_price(), "
+            "Order.get_total()->compute_total(), Category.get_path()->full_path(). "
+            "(4) Serializers: format()->render() on each model serializer. "
+            "(5) API decorators: @api_view->@endpoint. "
+            "(6) Services: each renames its own helper (validate_session->verify_session, etc.). "
+            "(7) Tests reference ALL layers. "
+            f"ALL {len(all_rename_files)} files with renames must be in a single commit. "
+            "The LLM is tempted to split by layer (models, serializers, views, services, tests) "
+            "because each layer has distinct rename patterns. But every split breaks cascading deps."
         ),
         "difficulty": "hyper_hard",
-        "category": "class_rename_mass_consumer",
+        "category": "cascading_multi_layer_refactor",
         "num_files": num_files,
         "num_hunks": num_hunks,
         "file_diffs": file_diffs,
