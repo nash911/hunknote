@@ -247,6 +247,7 @@ def compose_command(
         llm_model = ""
         llm_input_tokens = 0
         llm_output_tokens = 0
+        llm_thinking_tokens = 0
         cached_metadata = None
         file_relationships_text = ""
 
@@ -279,6 +280,7 @@ def compose_command(
                         llm_model = cached_metadata.model
                         llm_input_tokens = cached_metadata.input_tokens
                         llm_output_tokens = cached_metadata.output_tokens
+                        llm_thinking_tokens = getattr(cached_metadata, 'thinking_tokens', 0)
                         file_relationships_text = cached_metadata.file_relationships_text or ""
                 except Exception as e:
                     typer.echo(f"Failed to load cached plan: {e}", err=True)
@@ -328,6 +330,7 @@ def compose_command(
                 llm_model = result.model
                 llm_input_tokens = result.input_tokens
                 llm_output_tokens = result.output_tokens
+                llm_thinking_tokens = result.thinking_tokens
 
                 if debug:
                     typer.echo(f"LLM Response ({result.input_tokens} in, {result.output_tokens} out):", err=True)
@@ -353,6 +356,7 @@ def compose_command(
                     style=effective_profile.value,
                     max_commits=max_commits,
                     file_relationships_text=file_relationships_text or None,
+                    thinking_tokens=llm_thinking_tokens,
                 )
 
                 # Build and save hunk IDs file
@@ -405,6 +409,8 @@ def compose_command(
             typer.echo("Usage Statistics:", err=True)
             if llm_input_tokens > 0 or llm_output_tokens > 0:
                 typer.echo(f"  Tokens: {llm_input_tokens:,} input / {llm_output_tokens:,} output", err=True)
+                if llm_thinking_tokens > 0:
+                    typer.echo(f"  Thinking: {llm_thinking_tokens:,} tokens (internal reasoning)", err=True)
             else:
                 typer.echo("  Tokens: N/A (loaded from file)", err=True)
             typer.echo("", err=True)
@@ -507,6 +513,7 @@ def compose_command(
                 style=effective_profile.value,
                 max_commits=max_commits,
                 file_relationships_text=file_relationships_text or None,
+                thinking_tokens=llm_thinking_tokens,
             )
             hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
             save_compose_hunk_ids(repo_root, hunk_ids_data)
@@ -545,12 +552,14 @@ def compose_command(
                     "retry_number": retry_count,
                     "input_tokens": result.input_tokens,
                     "output_tokens": result.output_tokens,
+                    "thinking_tokens": result.thinking_tokens,
                     "errors_before": validation_errors.copy(),
                     "success": False,  # Will be updated if successful
                 }
 
                 llm_input_tokens += result.input_tokens
                 llm_output_tokens += result.output_tokens
+                llm_thinking_tokens += result.thinking_tokens
 
                 # Parse the new plan
                 plan_data = parse_json_response(result.raw_response)
@@ -583,6 +592,7 @@ def compose_command(
                         file_relationships_text=file_relationships_text or None,
                         retry_count=retry_count,
                         retry_stats=retry_stats,
+                        thinking_tokens=llm_thinking_tokens,
                     )
 
                     # Update hunk IDs cache
