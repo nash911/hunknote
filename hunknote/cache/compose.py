@@ -59,6 +59,7 @@ def save_compose_cache(
     file_relationships_text: Optional[str] = None,
     retry_count: int = 0,
     retry_stats: list[dict] | None = None,
+    thinking_tokens: int = 0,
 ) -> None:
     """Save the generated compose plan and its metadata to cache.
 
@@ -77,6 +78,7 @@ def save_compose_cache(
         file_relationships_text: Formatted file relationships text from Strategy 2.
         retry_count: Number of LLM retries performed (0 if none).
         retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].
+        thinking_tokens: Number of internal thinking tokens used (thinking models).
     """
     # Save hash
     get_compose_hash_file(repo_root).write_text(context_hash)
@@ -91,6 +93,7 @@ def save_compose_cache(
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        thinking_tokens=thinking_tokens,
         changed_files=changed_files,
         total_hunks=total_hunks,
         num_commits=num_commits,
