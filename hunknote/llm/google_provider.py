@@ -131,21 +131,15 @@ class GoogleProvider(BaseLLMProvider):
             # Get token counts from usage metadata
             input_tokens = 0
             output_tokens = 0
-            thoughts_tokens = 0
+            thinking_tokens = 0
 
             if hasattr(response, "usage_metadata") and response.usage_metadata:
                 if hasattr(response.usage_metadata, "prompt_token_count"):
                     input_tokens = response.usage_metadata.prompt_token_count or 0
                 if hasattr(response.usage_metadata, "candidates_token_count"):
                     output_tokens = response.usage_metadata.candidates_token_count or 0
-                # Track thinking tokens separately (these consume max_output_tokens budget)
                 if hasattr(response.usage_metadata, "thoughts_token_count"):
-                    thoughts_tokens = response.usage_metadata.thoughts_token_count or 0
-
-            # For thinking models, add thoughts to output count for accurate budget tracking
-            # since thoughts consume from max_output_tokens
-            if thoughts_tokens > 0:
-                output_tokens = output_tokens + thoughts_tokens
+                    thinking_tokens = response.usage_metadata.thoughts_token_count or 0
 
             # Fallback estimation if no token counts available
             if input_tokens == 0:
@@ -178,6 +172,7 @@ class GoogleProvider(BaseLLMProvider):
             input_chars=input_chars,
             prompt_chars=prompt_chars,
             output_chars=output_chars,
+            thinking_tokens=thinking_tokens,
         )
 
     def _generate_with_fallback(self, client, full_prompt: str, base_config_kwargs: dict):
@@ -264,6 +259,7 @@ class GoogleProvider(BaseLLMProvider):
             # Get token counts
             input_tokens = 0
             output_tokens = 0
+            thinking_tokens = 0
 
             if hasattr(response, "usage_metadata") and response.usage_metadata:
                 if hasattr(response.usage_metadata, "prompt_token_count"):
@@ -271,8 +267,7 @@ class GoogleProvider(BaseLLMProvider):
                 if hasattr(response.usage_metadata, "candidates_token_count"):
                     output_tokens = response.usage_metadata.candidates_token_count or 0
                 if hasattr(response.usage_metadata, "thoughts_token_count"):
-                    thoughts_tokens = response.usage_metadata.thoughts_token_count or 0
-                    output_tokens = output_tokens + thoughts_tokens
+                    thinking_tokens = response.usage_metadata.thoughts_token_count or 0
 
             if input_tokens == 0:
                 input_tokens = len(full_prompt) // 4
@@ -291,5 +286,6 @@ class GoogleProvider(BaseLLMProvider):
             model=self.model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            thinking_tokens=thinking_tokens,
         )
 
