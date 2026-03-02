@@ -89,6 +89,21 @@ def compose_command(
         "--show",
         help="Show the full diff for a compose commit ID (e.g., --show C1)",
     ),
+    agent: Optional[bool] = typer.Option(
+        None,
+        "--agent/--no-agent",
+        help="Force agent mode (hunk-level grouping) on or off. Default: auto-detect.",
+    ),
+    show_graph: bool = typer.Option(
+        False,
+        "--graph",
+        help="Render the hunk dependency graph on the terminal.",
+    ),
+    show_trace: bool = typer.Option(
+        False,
+        "--trace",
+        help="Render the agent/sub-agent tracing logs on the terminal.",
+    ),
 ) -> None:
     """Split staged changes into a clean commit stack.
 
