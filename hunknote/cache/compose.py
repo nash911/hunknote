@@ -83,6 +83,7 @@ def save_compose_cache(
         retry_count: Number of LLM retries performed (0 if none).
         retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].
         thinking_tokens: Number of internal thinking tokens used (thinking models).
+        agent_metadata: Agent metadata dict (when compose agent was used).
     """
     # Save hash
     get_compose_hash_file(repo_root).write_text(context_hash)
