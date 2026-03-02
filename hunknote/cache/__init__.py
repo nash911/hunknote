@@ -100,10 +100,16 @@ __all__ = [
     # Compose cache operations
     "invalidate_compose_cache",
     "is_compose_cache_valid",
+    "load_compose_agent_trace",
+    "load_compose_hunk_graph",
     "load_compose_hunk_ids",
+    "load_compose_hunk_symbols",
     "load_compose_metadata",
     "load_compose_plan",
+    "save_compose_agent_trace",
     "save_compose_cache",
+    "save_compose_hunk_graph",
     "save_compose_hunk_ids",
+    "save_compose_hunk_symbols",
 ]
 
