@@ -173,5 +173,35 @@ __all__ = [
     "execute_commit",
     # Cleanup
     "cleanup_temp_files",
+    # Agent: Models
+    "HunkSymbols",
+    "LargeHunkAnnotation",
+    "Rename",
+    "CheckpointResult",
+    "Violation",
+    "CommitGroup",
+    "SymbolSet",
+    # Agent: Symbols
+    "extract_symbols_from_hunk",
+    "extract_all_symbols",
+    "annotate_large_hunks",
+    # Agent: Graph
+    "build_hunk_dependency_graph",
+    "compute_connected_components",
+    "detect_renames",
+    "find_related_hunks",
+    "topological_sort_groups",
+    # Agent: Checkpoint
+    "validate_commit_checkpoint",
+    "validate_plan_checkpoints",
+    # Agent: Grouping
+    "group_hunks_programmatic",
+    "should_use_agent",
+    # Agent: Messenger
+    "COMPOSE_MESSAGE_SYSTEM_PROMPT",
+    "build_message_prompt",
+    "create_plan_from_groups",
+    # Agent: Orchestrator
+    "ComposeAgentResult",
+    "run_compose_agent",
 ]
-
