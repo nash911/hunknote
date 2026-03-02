@@ -187,3 +187,110 @@ def load_compose_hunk_ids(repo_root: Path) -> Optional[list[dict]]:
     except (json.JSONDecodeError, Exception):
         return None
 
+
+def save_compose_hunk_graph(
+    repo_root: Path,
+    graph_data: dict,
+) -> None:
+    """Save the hunk dependency graph to a JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        graph_data: Dictionary with graph edges, renames, components, etc.
+    """
+    get_compose_hunk_graph_file(repo_root).write_text(
+        json.dumps(graph_data, indent=2, default=_set_to_list)
+    )
+
+
+def load_compose_hunk_graph(repo_root: Path) -> Optional[dict]:
+    """Load the compose hunk dependency graph JSON.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Dictionary with graph data, or None if not found.
+    """
+    graph_file = get_compose_hunk_graph_file(repo_root)
+    if not graph_file.exists():
+        return None
+    try:
+        return json.loads(graph_file.read_text())
+    except (json.JSONDecodeError, Exception):
+        return None
+
+
+def save_compose_hunk_symbols(
+    repo_root: Path,
+    symbols_data: dict,
+) -> None:
+    """Save the hunk symbol analyses to a JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        symbols_data: Dictionary mapping hunk ID to symbol info.
+    """
+    get_compose_hunk_symbols_file(repo_root).write_text(
+        json.dumps(symbols_data, indent=2, default=_set_to_list)
+    )
+
+
+def load_compose_hunk_symbols(repo_root: Path) -> Optional[dict]:
+    """Load the compose hunk symbols JSON.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Dictionary with symbol data, or None if not found.
+    """
+    symbols_file = get_compose_hunk_symbols_file(repo_root)
+    if not symbols_file.exists():
+        return None
+    try:
+        return json.loads(symbols_file.read_text())
+    except (json.JSONDecodeError, Exception):
+        return None
+
+
+def save_compose_agent_trace(
+    repo_root: Path,
+    trace_data: dict,
+) -> None:
+    """Save the agent execution trace to a JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+        trace_data: Dictionary with agent trace steps, timings, and results.
+    """
+    get_compose_agent_trace_file(repo_root).write_text(
+        json.dumps(trace_data, indent=2, default=_set_to_list)
+    )
+
+
+def load_compose_agent_trace(repo_root: Path) -> Optional[dict]:
+    """Load the compose agent trace JSON.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Dictionary with trace data, or None if not found.
+    """
+    trace_file = get_compose_agent_trace_file(repo_root)
+    if not trace_file.exists():
+        return None
+    try:
+        return json.loads(trace_file.read_text())
+    except (json.JSONDecodeError, Exception):
+        return None
+
+
+def _set_to_list(obj):
+    """JSON serializer helper: convert sets to sorted lists."""
+    if isinstance(obj, set):
+        return sorted(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+

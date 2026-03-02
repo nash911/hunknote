@@ -99,3 +99,96 @@ class ComposePlan(BaseModel):
     warnings: list[str] = []
     commits: list[PlannedCommit] = []
 
+
+# ============================================================
+# Compose Agent Data Models
+# ============================================================
+
+@dataclass
+class SymbolSet:
+    """Symbols extracted from a code fragment (added or removed lines)."""
+
+    definitions: set[str] = field(default_factory=set)
+    references: set[str] = field(default_factory=set)
+    imports: set[str] = field(default_factory=set)
+    exports: set[str] = field(default_factory=set)
+
+
+@dataclass
+class HunkSymbols:
+    """Extracted module-scope symbols from a single hunk.
+
+    Only contains module-scope symbols (functions, classes, types, constants).
+    Local variables (idx, err, i, result, etc.) are excluded to prevent
+    false dependency edges.
+    """
+
+    file_path: str
+    language: str  # Detected language based on file extension
+    defines: set[str] = field(default_factory=set)   # Module-scope symbols added
+    removes: set[str] = field(default_factory=set)    # Module-scope symbols removed
+    modifies: set[str] = field(default_factory=set)   # Symbols changed (in both + and -)
+    references: set[str] = field(default_factory=set)  # Module-scope symbols referenced
+    imports_added: set[str] = field(default_factory=set)
+    imports_removed: set[str] = field(default_factory=set)
+    exports_added: set[str] = field(default_factory=set)
+    exports_removed: set[str] = field(default_factory=set)
+
+
+@dataclass
+class LargeHunkAnnotation:
+    """Metadata annotation for large new-file hunks.
+
+    When a new file is added with hundreds of lines, Git treats the
+    entire file as a single hunk. This annotation provides metadata
+    about the hunk's internal structure for downstream agents.
+    """
+
+    is_new_file: bool = False
+    is_large_hunk: bool = False
+    line_count: int = 0
+    definitions_count: int = 0
+    definitions: list[str] = field(default_factory=list)
+    has_multiple_logical_sections: bool = False
+    estimated_sections: int = 1
+
+
+@dataclass
+class Rename:
+    """A detected rename pair: old_name was replaced by new_name."""
+
+    old_name: str
+    new_name: str
+    defining_hunk: str  # Hunk ID where the rename occurs
+
+
+@dataclass
+class Violation:
+    """A specific violation found during checkpoint validation."""
+
+    hunk: str                    # The hunk ID causing the issue
+    in_commit: bool              # Whether the hunk is in the current commit
+    references: list[str]        # Symbols referenced
+    defined_in: str              # Hunk ID that defines the symbol
+    defined_in_committed: bool   # Whether the defining hunk is committed
+    issue: str                   # Human-readable description
+
+
+@dataclass
+class CheckpointResult:
+    """Result of validating a commit checkpoint."""
+
+    valid: bool
+    violations: list[Violation] = field(default_factory=list)
+
+
+@dataclass
+class CommitGroup:
+    """A group of hunks forming an atomic commit."""
+
+    hunk_ids: list[str]
+    reason: str = ""           # Why these hunks are grouped together
+    commit_type: str = ""      # Suggested conventional commit type
+    scope: str = ""            # Suggested scope
+    files: list[str] = field(default_factory=list)  # Files touched by this group
+

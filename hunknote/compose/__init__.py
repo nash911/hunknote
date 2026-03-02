@@ -11,6 +11,13 @@ This package provides modular compose handling with:
 - executor: ComposeSnapshot, ComposeExecutionError, create_snapshot,
             restore_from_snapshot, execute_commit
 - cleanup: cleanup_temp_files
+- extractors: Language-specific symbol extractors (agent)
+- symbols: extract_symbols_from_hunk, extract_all_symbols, annotate_large_hunks (agent)
+- graph: build_hunk_dependency_graph, compute_connected_components (agent)
+- checkpoint: validate_commit_checkpoint, validate_plan_checkpoints (agent)
+- grouping: should_use_agent, group_hunks_programmatic (agent)
+- messenger: build_message_prompt, COMPOSE_MESSAGE_SYSTEM_PROMPT (agent)
+- agent: run_compose_agent, ComposeAgentResult (agent orchestrator)
 """
 
 # Models
@@ -73,6 +80,58 @@ from hunknote.compose.executor import (
 # Cleanup
 from hunknote.compose.cleanup import (
     cleanup_temp_files,
+)
+
+# Agent: Symbol Extraction
+from hunknote.compose.symbols import (
+    extract_all_symbols,
+    extract_symbols_from_hunk,
+    annotate_large_hunks,
+)
+
+# Agent: Models
+from hunknote.compose.models import (
+    HunkSymbols,
+    LargeHunkAnnotation,
+    Rename,
+    CheckpointResult,
+    Violation,
+    CommitGroup,
+    SymbolSet,
+)
+
+# Agent: Dependency Graph
+from hunknote.compose.graph import (
+    build_hunk_dependency_graph,
+    compute_connected_components,
+    detect_renames,
+    find_related_hunks,
+    topological_sort_groups,
+)
+
+# Agent: Checkpoint Validation
+from hunknote.compose.checkpoint import (
+    validate_commit_checkpoint,
+    validate_plan_checkpoints,
+)
+
+# Agent: Grouping
+from hunknote.compose.grouping import (
+    group_hunks_programmatic,
+    should_use_agent,
+)
+
+# Agent: Messenger
+from hunknote.compose.messenger import (
+    COMPOSE_MESSAGE_SYSTEM_PROMPT,
+    build_message_prompt,
+    create_plan_from_groups,
+)
+
+# Agent: Orchestrator
+from hunknote.compose.agent import (
+    ComposeAgentResult,
+    run_compose_agent,
 )
 
 

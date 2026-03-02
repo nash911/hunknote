@@ -25,6 +25,13 @@ from hunknote.cli.utils import (
     show_in_pager,
 )
 from hunknote.compose.relationships import detect_file_relationships, format_relationships_for_llm
+from hunknote.cache import (
+    save_compose_agent_trace,
+    save_compose_hunk_graph,
+    save_compose_hunk_symbols,
+    load_compose_agent_trace,
+    load_compose_hunk_graph,
+)
 
 
 def compose_command(
@@ -174,6 +181,17 @@ def compose_command(
             _compose_show_diff(repo_root, show)
             raise typer.Exit(0)
 
+        # Handle --graph standalone: render cached graph and exit
+        if show_graph and not regenerate and not do_commit and not debug:
+            _render_graph(repo_root)
+            if not show_trace:
+                raise typer.Exit(0)
+
+        # Handle --trace standalone: render cached trace and exit
+        if show_trace and not regenerate and not do_commit and not debug:
+            _render_trace(repo_root)
+            raise typer.Exit(0)
+
         # Get branch and recent commits for context
         branch = get_branch()
         recent_commits_result = subprocess.run(
@@ -295,7 +313,113 @@ def compose_command(
             file_relationships = detect_file_relationships(file_diffs, repo_root)
             file_relationships_text = format_relationships_for_llm(file_relationships)
 
-            # Build prompt
+            # Determine whether to use compose agent (hunk-level grouping)
+            from hunknote.compose.agent import run_compose_agent
+            from hunknote.compose.grouping import should_use_agent as _should_use_agent
+
+            use_agent = False
+            if agent is True:
+                use_agent = True
+            elif agent is False:
+                use_agent = False
+            else:
+                # Auto-detect: use agent for complex diffs
+                use_agent = _should_use_agent(inventory, file_diffs)
+
+            if use_agent:
+                # ── Agent Path: Programmatic grouping + LLM messaging ──
+                try:
+                    from hunknote.llm import get_provider
+                    provider = get_provider()
+
+                    agent_result = run_compose_agent(
+                        file_diffs=file_diffs,
+                        inventory=inventory,
+                        style=effective_profile.value,
+                        max_commits=max_commits,
+                        branch=branch,
+                        recent_commits=recent_commits,
+                        force_agent=True,
+                        provider=provider,
+                    )
+
+                    if agent_result.used_agent and len(agent_result.plan.commits) > 0:
+                        plan = agent_result.plan
+                        llm_model = agent_result.llm_model
+                        llm_input_tokens = agent_result.input_tokens
+                        llm_output_tokens = agent_result.output_tokens
+                        llm_thinking_tokens = agent_result.thinking_tokens
+
+                        # Build agent metadata for cache
+                        agent_meta = _build_agent_metadata(agent_result)
+
+                        if debug:
+                            typer.echo("", err=True)
+                            typer.echo("Agent Mode: ON (hunk-level grouping)", err=True)
+                            typer.echo(f"  Symbols extracted: {len(agent_result.symbol_analyses)}", err=True)
+                            typer.echo(f"  Graph edges: {sum(len(v) for v in agent_result.graph.values())}", err=True)
+                            typer.echo(f"  Groups formed: {len(agent_result.groups)}", err=True)
+                            typer.echo(f"  Renames detected: {len(agent_result.renames)}", err=True)
+                            typer.echo(f"  Large hunk annotations: {len(agent_result.large_hunk_annotations)}", err=True)
+                            # Checkpoint validation results
+                            for commit_id, cp_result in agent_result.checkpoint_results:
+                                status = "VALID" if cp_result.valid else f"INVALID ({len(cp_result.violations)} violations)"
+                                typer.echo(f"  Checkpoint {commit_id}: {status}", err=True)
+                            typer.echo("", err=True)
+
+                        # Save graph JSON
+                        graph_data = _build_graph_data(agent_result)
+                        save_compose_hunk_graph(repo_root, graph_data)
+
+                        # Save symbols JSON
+                        symbols_data = _build_symbols_data(agent_result)
+                        save_compose_hunk_symbols(repo_root, symbols_data)
+
+                        # Save agent trace JSON
+                        trace_data = _build_trace_data(agent_result)
+                        save_compose_agent_trace(repo_root, trace_data)
+
+                        # Save to cache
+                        changed_files = [f.file_path for f in file_diffs if not f.is_binary]
+                        save_compose_cache(
+                            repo_root=repo_root,
+                            context_hash=current_hash,
+                            plan_json=json.dumps(plan.model_dump(), indent=2),
+                            model=llm_model,
+                            input_tokens=llm_input_tokens,
+                            output_tokens=llm_output_tokens,
+                            changed_files=changed_files,
+                            total_hunks=len(inventory),
+                            num_commits=len(plan.commits),
+                            style=effective_profile.value,
+                            max_commits=max_commits,
+                            file_relationships_text=file_relationships_text or None,
+                            thinking_tokens=llm_thinking_tokens,
+                            agent_metadata=agent_meta,
+                        )
+                        hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
+                        save_compose_hunk_ids(repo_root, hunk_ids_data)
+                    else:
+                        # Agent didn't produce results; fall through to single-shot
+                        plan = None
+                        if debug:
+                            typer.echo("Agent Mode: skipped (threshold not met)", err=True)
+
+                except Exception as e:
+                    # Agent failed; fall through to single-shot
+                    plan = None
+                    if debug:
+                        typer.echo(f"Agent Mode: failed ({e}), falling back to single-shot LLM", err=True)
+
+        if plan is None:
+            # ── Single-shot LLM Path (fallback or default for small diffs) ──
+            if not file_relationships_text:
+                file_relationships = detect_file_relationships(file_diffs, repo_root)
+                file_relationships_text = format_relationships_for_llm(file_relationships)
+            else:
+                # file_relationships already computed by agent path
+                file_relationships = detect_file_relationships(file_diffs, repo_root)
+
             prompt = build_compose_prompt(
                 file_diffs=file_diffs,
                 branch=branch,
@@ -490,8 +614,46 @@ def compose_command(
             typer.echo(f"  Hunks assigned: {total_hunks_in_plan}/{len(inventory)}", err=True)
             typer.echo("", err=True)
 
+            # Agent info (from cached metadata or live result)
+            agent_meta: dict | None = None
+            if cached_metadata and isinstance(cached_metadata.agent, dict):
+                agent_meta = cached_metadata.agent
+
+            if agent_meta:
+                typer.echo("Agent Info:", err=True)
+                typer.echo(f"  Mode: {agent_meta.get('mode', 'N/A')}", err=True)
+                typer.echo(f"  Symbols extracted: {agent_meta.get('symbols_extracted', 'N/A')}", err=True)
+                typer.echo(f"  Graph edges: {agent_meta.get('graph_edges', 'N/A')}", err=True)
+                typer.echo(f"  Renames detected: {agent_meta.get('renames_detected', 'N/A')}", err=True)
+                typer.echo(f"  Groups formed: {agent_meta.get('groups_formed', 'N/A')}", err=True)
+                typer.echo(f"  Large hunks: {agent_meta.get('large_hunks', 'N/A')}", err=True)
+                langs = agent_meta.get("languages", [])
+                if langs:
+                    typer.echo(f"  Languages: {', '.join(langs)}", err=True)
+                cp_summary = agent_meta.get("checkpoints", {})
+                if cp_summary:
+                    typer.echo(f"  Checkpoints: {cp_summary.get('total', 0)} checked, "
+                               f"{cp_summary.get('valid', 0)} valid, "
+                               f"{cp_summary.get('invalid', 0)} invalid", err=True)
+                duration = agent_meta.get("total_duration_s")
+                if duration:
+                    typer.echo(f"  Agent duration: {duration}s", err=True)
+                typer.echo("", err=True)
+
             typer.echo("=" * 60, err=True)
             typer.echo("", err=True)
+
+        # ── --graph: Render the hunk dependency graph ──
+        if show_graph:
+            _render_graph(repo_root)
+
+        # ── --trace: Render the agent trace logs ──
+        if show_trace:
+            _render_trace(repo_root)
+
+        # If --graph or --trace was the only purpose, exit early
+        if (show_graph or show_trace) and not do_commit and not debug and not show_json and not show:
+            raise typer.Exit()
 
         # Try to auto-correct hallucinated hunk IDs before validation
         corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)
@@ -992,4 +1154,312 @@ def _build_hunk_ids_data(
     hunk_ids_data.sort(key=sort_key)
 
     return hunk_ids_data
+
+
+def _build_agent_metadata(agent_result) -> dict:
+    """Build agent metadata dict for ComposeCacheMetadata.
+
+    Args:
+        agent_result: ComposeAgentResult from the agent pipeline.
+
+    Returns:
+        Dictionary with agent info for the metadata JSON.
+    """
+    total_edges = sum(len(v) for v in agent_result.graph.values())
+    languages = list(set(
+        s.language for s in agent_result.symbol_analyses.values()
+    ))
+
+    cp_valid = sum(1 for _, r in agent_result.checkpoint_results if r.valid)
+    cp_invalid = sum(1 for _, r in agent_result.checkpoint_results if not r.valid)
+
+    # Find total duration from trace log
+    total_duration = None
+    for entry in reversed(agent_result.trace_log):
+        if entry.get("phase") == "agent_complete":
+            total_duration = entry.get("duration_s")
+            break
+
+    return {
+        "mode": "agent",
+        "symbols_extracted": len(agent_result.symbol_analyses),
+        "graph_edges": total_edges,
+        "renames_detected": len(agent_result.renames),
+        "groups_formed": len(agent_result.groups),
+        "large_hunks": len(agent_result.large_hunk_annotations),
+        "languages": languages,
+        "checkpoints": {
+            "total": len(agent_result.checkpoint_results),
+            "valid": cp_valid,
+            "invalid": cp_invalid,
+        },
+        "total_duration_s": total_duration,
+    }
+
+
+def _build_graph_data(agent_result) -> dict:
+    """Build graph data dict for hunknote_hunk_graph.json.
+
+    Args:
+        agent_result: ComposeAgentResult from the agent pipeline.
+
+    Returns:
+        Dictionary with graph edges, components, and renames.
+    """
+    # Edges: convert set values to sorted lists for JSON
+    edges = {}
+    for source, targets in agent_result.graph.items():
+        edges[source] = sorted(targets)
+
+    # Build nodes with file info
+    nodes = {}
+    for hunk_id, symbols in agent_result.symbol_analyses.items():
+        nodes[hunk_id] = {
+            "file": symbols.file_path,
+            "language": symbols.language,
+            "defines": sorted(symbols.defines),
+            "references": sorted(symbols.references),
+        }
+
+    # Groups (connected components after merge)
+    groups = []
+    for i, g in enumerate(agent_result.groups):
+        groups.append({
+            "group_id": i + 1,
+            "hunks": g.hunk_ids,
+            "files": g.files,
+        })
+
+    # Renames
+    renames = [
+        {"old": r.old_name, "new": r.new_name, "hunk": r.defining_hunk}
+        for r in agent_result.renames
+    ]
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "groups": groups,
+        "renames": renames,
+        "total_edges": sum(len(v) for v in agent_result.graph.values()),
+        "total_nodes": len(nodes),
+    }
+
+
+def _build_symbols_data(agent_result) -> dict:
+    """Build symbols data dict for hunknote_hunk_symbols.json.
+
+    Args:
+        agent_result: ComposeAgentResult from the agent pipeline.
+
+    Returns:
+        Dictionary mapping hunk ID to symbol details.
+    """
+    symbols = {}
+    for hunk_id, s in agent_result.symbol_analyses.items():
+        symbols[hunk_id] = {
+            "file_path": s.file_path,
+            "language": s.language,
+            "defines": sorted(s.defines),
+            "removes": sorted(s.removes),
+            "modifies": sorted(s.modifies),
+            "references": sorted(s.references),
+            "imports_added": sorted(s.imports_added),
+            "imports_removed": sorted(s.imports_removed),
+            "exports_added": sorted(s.exports_added),
+            "exports_removed": sorted(s.exports_removed),
+        }
+
+    # Add large hunk annotations
+    large_hunks = {}
+    for hunk_id, ann in agent_result.large_hunk_annotations.items():
+        large_hunks[hunk_id] = {
+            "is_new_file": ann.is_new_file,
+            "is_large_hunk": ann.is_large_hunk,
+            "line_count": ann.line_count,
+            "definitions_count": ann.definitions_count,
+            "definitions": ann.definitions,
+            "has_multiple_logical_sections": ann.has_multiple_logical_sections,
+            "estimated_sections": ann.estimated_sections,
+        }
+
+    return {
+        "symbols": symbols,
+        "large_hunks": large_hunks,
+    }
+
+
+def _build_trace_data(agent_result) -> dict:
+    """Build trace data dict for hunknote_agent_trace.json.
+
+    Args:
+        agent_result: ComposeAgentResult from the agent pipeline.
+
+    Returns:
+        Dictionary with the full agent execution trace.
+    """
+    return {
+        "agent": "compose_agent",
+        "used_agent": agent_result.used_agent,
+        "phases": agent_result.trace_log,
+    }
+
+
+def _render_graph(repo_root: Path) -> None:
+    """Render the hunk dependency graph on the terminal.
+
+    Reads from .hunknote/hunknote_hunk_graph.json and renders an
+    ASCII-art graph with nodes, edges, and groups.
+
+    Args:
+        repo_root: The root directory of the git repository.
+    """
+    graph_data = load_compose_hunk_graph(repo_root)
+    if not graph_data:
+        typer.echo("\nNo hunk dependency graph found.", err=True)
+        typer.echo("Run 'hunknote compose --agent' to generate it.\n", err=True)
+        return
+
+    nodes = graph_data.get("nodes", {})
+    edges = graph_data.get("edges", {})
+    groups = graph_data.get("groups", [])
+    renames = graph_data.get("renames", [])
+    total_edges = graph_data.get("total_edges", 0)
+
+    typer.echo("")
+    typer.echo("=" * 64)
+    typer.echo("              HUNK DEPENDENCY GRAPH")
+    typer.echo("=" * 64)
+    typer.echo("")
+
+    # Summary
+    typer.echo(f"  Nodes: {len(nodes)}    Edges: {total_edges}    "
+               f"Groups: {len(groups)}    Renames: {len(renames)}")
+    typer.echo("")
+
+    # Render groups with their hunks and dependencies
+    for group in groups:
+        gid = group.get("group_id", "?")
+        g_hunks = group.get("hunks", [])
+        g_files = group.get("files", [])
+
+        typer.echo(f"  ┌─ Group {gid}  ({len(g_hunks)} hunks, {len(g_files)} files)")
+
+        for hid in g_hunks:
+            node = nodes.get(hid, {})
+            file_path = node.get("file", "?")
+            lang = node.get("language", "?")
+            defines = node.get("defines", [])
+            refs = node.get("references", [])
+
+            # Node line
+            deps = edges.get(hid, [])
+            dep_str = ""
+            if deps:
+                dep_str = f"  → {', '.join(deps)}"
+
+            defs_str = ""
+            if defines:
+                defs_str = f"  [def: {', '.join(defines[:3])}{'...' if len(defines) > 3 else ''}]"
+
+            typer.echo(f"  │  {hid}  {file_path} ({lang}){defs_str}{dep_str}")
+
+        typer.echo(f"  │  Files: {', '.join(g_files)}")
+        typer.echo(f"  └{'─' * 60}")
+        typer.echo("")
+
+    # Renames
+    if renames:
+        typer.echo("  Renames detected:")
+        for r in renames:
+            typer.echo(f"    {r.get('old', '?')} → {r.get('new', '?')}  (in {r.get('hunk', '?')})")
+        typer.echo("")
+
+    # Edge list (compact)
+    if edges:
+        typer.echo("  Dependency edges:")
+        for source, targets in sorted(edges.items()):
+            for target in targets:
+                src_file = nodes.get(source, {}).get("file", "?")
+                tgt_file = nodes.get(target, {}).get("file", "?")
+                typer.echo(f"    {source} ({src_file})  →  {target} ({tgt_file})")
+        typer.echo("")
+
+    typer.echo("=" * 64)
+    typer.echo("")
+
+
+def _render_trace(repo_root: Path) -> None:
+    """Render the agent trace logs on the terminal.
+
+    Reads from .hunknote/hunknote_agent_trace.json and renders a
+    user-friendly timeline of agent execution phases.
+
+    Args:
+        repo_root: The root directory of the git repository.
+    """
+    trace_data = load_compose_agent_trace(repo_root)
+    if not trace_data:
+        typer.echo("\nNo agent trace found.", err=True)
+        typer.echo("Run 'hunknote compose --agent' to generate it.\n", err=True)
+        return
+
+    phases = trace_data.get("phases", [])
+    if not phases:
+        typer.echo("\nAgent trace is empty.\n", err=True)
+        return
+
+    typer.echo("")
+    typer.echo("=" * 64)
+    typer.echo("              AGENT EXECUTION TRACE")
+    typer.echo("=" * 64)
+    typer.echo("")
+
+    # Status icons
+    status_icons = {
+        "completed": "✓",
+        "skipped": "○",
+        "activated": "●",
+        "fallback": "⚠",
+    }
+
+    for i, entry in enumerate(phases):
+        phase = entry.get("phase", "unknown")
+        status = entry.get("status", "unknown")
+        duration = entry.get("duration_s", 0)
+        timestamp = entry.get("timestamp", "")
+        details = entry.get("details", {})
+
+        icon = status_icons.get(status, "?")
+        phase_label = phase.replace("_", " ").title()
+
+        # Duration display
+        dur_str = f"  ({duration:.3f}s)" if duration > 0 else ""
+
+        # Phase header
+        typer.echo(f"  {icon}  {phase_label}  [{status}]{dur_str}")
+
+        # Phase details (indented)
+        if details:
+            for key, value in details.items():
+                if isinstance(value, list):
+                    if len(value) <= 5:
+                        typer.echo(f"     │  {key}: {value}")
+                    else:
+                        typer.echo(f"     │  {key}: [{len(value)} items]")
+                elif isinstance(value, dict):
+                    typer.echo(f"     │  {key}:")
+                    for k2, v2 in value.items():
+                        typer.echo(f"     │    {k2}: {v2}")
+                else:
+                    typer.echo(f"     │  {key}: {value}")
+
+        # Separator between phases (except last)
+        if i < len(phases) - 1:
+            typer.echo(f"     │")
+
+    typer.echo("")
+    typer.echo("=" * 64)
+    typer.echo("")
+
 

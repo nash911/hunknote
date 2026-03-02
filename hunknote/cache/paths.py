@@ -129,3 +129,40 @@ def get_compose_hunk_ids_file(repo_root: Path) -> Path:
     """
     return get_cache_dir(repo_root) / "hunknote_hunk_ids.json"
 
+
+def get_compose_hunk_graph_file(repo_root: Path) -> Path:
+    """Return path to the compose hunk dependency graph JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Path to hunknote_hunk_graph.json.
+    """
+    return get_cache_dir(repo_root) / "hunknote_hunk_graph.json"
+
+
+def get_compose_hunk_symbols_file(repo_root: Path) -> Path:
+    """Return path to the compose hunk symbols JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Path to hunknote_hunk_symbols.json.
+    """
+    return get_cache_dir(repo_root) / "hunknote_hunk_symbols.json"
+
+
+def get_compose_agent_trace_file(repo_root: Path) -> Path:
+    """Return path to the compose agent trace JSON file.
+
+    Args:
+        repo_root: The root directory of the git repository.
+
+    Returns:
+        Path to hunknote_agent_trace.json.
+    """
+    return get_cache_dir(repo_root) / "hunknote_agent_trace.json"
+
+
