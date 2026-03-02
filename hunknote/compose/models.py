@@ -6,6 +6,11 @@ Contains:
 - BlueprintSection: Section in a blueprint-style commit message
 - PlannedCommit: A single commit in the compose plan
 - ComposePlan: The full compose plan containing multiple commits
+- HunkSymbols: Extracted symbols from a single hunk (agent)
+- LargeHunkAnnotation: Metadata for large new-file hunks (agent)
+- Rename: Detected rename pair across hunks (agent)
+- CheckpointResult / Violation: Checkpoint validation results (agent)
+- CommitGroup: A group of hunks forming an atomic commit (agent)
 """
 
 import re
