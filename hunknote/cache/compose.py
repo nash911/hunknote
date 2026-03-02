@@ -107,6 +107,7 @@ def save_compose_cache(
         file_relationships_text=file_relationships_text,
         retry_count=retry_count,
         retry_stats=retry_stats,
+        agent=agent_metadata,
     )
     get_compose_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
 
