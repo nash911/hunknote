@@ -63,6 +63,7 @@ def save_compose_cache(
     retry_count: int = 0,
     retry_stats: list[dict] | None = None,
     thinking_tokens: int = 0,
+    agent_metadata: Optional[dict] = None,
 ) -> None:
     """Save the generated compose plan and its metadata to cache.
 
