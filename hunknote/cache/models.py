@@ -50,4 +50,6 @@ class ComposeCacheMetadata(BaseModel):
     # Retry statistics (for debugging purposes)
     retry_count: int = 0
     retry_stats: Optional[list[dict]] = None  # Per-retry token usage
+    # Agent metadata (compose agent mode)
+    agent: Optional[dict] = None  # Agent info when compose agent was used
 
