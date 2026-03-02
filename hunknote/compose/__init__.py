@@ -1,7 +1,9 @@
 """Compose feature for Hunknote - split changes into atomic commits.
 
 This package provides modular compose handling with:
-- models: HunkRef, FileDiff, PlannedCommit, ComposePlan, BlueprintSection
+- models: HunkRef, FileDiff, PlannedCommit, ComposePlan, BlueprintSection,
+          HunkSymbols, LargeHunkAnnotation, Rename, CheckpointResult,
+          Violation, CommitGroup
 - parser: parse_unified_diff and related functions
 - inventory: build_hunk_inventory, format_inventory_for_llm
 - validation: validate_plan, PlanValidationError
