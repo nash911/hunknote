@@ -155,7 +155,15 @@ def invalidate_compose_cache(repo_root: Path) -> None:
     Args:
         repo_root: The root directory of the git repository.
     """
-    for file_getter in [get_compose_hash_file, get_compose_plan_file, get_compose_metadata_file, get_compose_hunk_ids_file]:
+    for file_getter in [
+        get_compose_hash_file,
+        get_compose_plan_file,
+        get_compose_metadata_file,
+        get_compose_hunk_ids_file,
+        get_compose_hunk_graph_file,
+        get_compose_hunk_symbols_file,
+        get_compose_agent_trace_file,
+    ]:
         file_path = file_getter(repo_root)
         if file_path.exists():
             file_path.unlink()
