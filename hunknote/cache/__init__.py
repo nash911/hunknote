@@ -17,8 +17,11 @@ from hunknote.cache.models import (
 # Path utilities
 from hunknote.cache.paths import (
     get_cache_dir,
+    get_compose_agent_trace_file,
     get_compose_hash_file,
+    get_compose_hunk_graph_file,
     get_compose_hunk_ids_file,
+    get_compose_hunk_symbols_file,
     get_compose_metadata_file,
     get_compose_plan_file,
     get_hash_file,
