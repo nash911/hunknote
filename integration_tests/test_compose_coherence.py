@@ -4,6 +4,10 @@ Tests that the LLM correctly groups causally dependent hunks into the same
 commit when provided with [FILE RELATIONSHIPS] in the prompt. Uses real
 LLM API calls with synthetic diffs loaded from JSON test case files.
 
+By default, the test runner auto-detects whether to use the compose agent
+(hunk-level grouping) or single-shot LLM based on the diff complexity
+(same logic as the CLI). Use --agent or --no-agent to override.
+
 Test cases cover: Python, TypeScript, Go, Rust, Java, C/C++, Ruby.
 Scenarios include: function removal, rename, parameter addition, transitive
 chains, interleaved features, multi-consumer renames, and mixed changesets.
@@ -12,6 +16,8 @@ Run:
     python integration_tests/test_compose_coherence.py
     python integration_tests/test_compose_coherence.py --provider google --model gemini-2.5-flash
     python integration_tests/test_compose_coherence.py --provider anthropic --model claude-sonnet-4-20250514
+    python integration_tests/test_compose_coherence.py --agent                  # force agent mode
+    python integration_tests/test_compose_coherence.py --no-agent               # force single-shot LLM
     python integration_tests/test_compose_coherence.py --case py_remove_func_test_import
     python integration_tests/test_compose_coherence.py --list
 

@@ -69,17 +69,34 @@
     }
   ],
   "file_relationships": [
-    {"source": "app/controllers/sessions_controller.rb", "target": "lib/auth/token.rb", "kind": "direct"},
-    {"source": "spec/auth/token_spec.rb", "target": "lib/auth/token.rb", "kind": "direct"}
+    {
+      "source": "app/controllers/sessions_controller.rb",
+      "target": "lib/auth/token.rb",
+      "kind": "direct"
+    },
+    {
+      "source": "spec/auth/token_spec.rb",
+      "target": "lib/auth/token.rb",
+      "kind": "direct"
+    }
   ],
   "must_be_together": [
-    ["lib/auth/token.rb", "app/controllers/sessions_controller.rb", "spec/auth/token_spec.rb"]
+    [
+      "lib/auth/token.rb",
+      "app/controllers/sessions_controller.rb",
+      "spec/auth/token_spec.rb"
+    ]
   ],
   "hunk_to_file": {
     "H1_rb01a1": "lib/auth/token.rb",
     "H2_rb01b2": "app/controllers/sessions_controller.rb",
     "H3_rb01c3": "spec/auth/token_spec.rb",
     "H4_rb01c4": "spec/auth/token_spec.rb"
-  }
+  },
+  "nice_if_together": [
+    [
+      "lib/auth/token.rb",
+      "spec/auth/token_spec.rb"
+    ]
+  ]
 }
-
