@@ -203,6 +203,13 @@ class TestGoogleProvider:
         provider = GoogleProvider(model="gemini-2.5-flash")
         assert provider._is_thinking_model() is True
 
+        # Gemini 3 thinking models
+        provider = GoogleProvider(model="gemini-3-flash-preview")
+        assert provider._is_thinking_model() is True
+
+        provider = GoogleProvider(model="gemini-3-pro")
+        assert provider._is_thinking_model() is True
+
         # Non-thinking model
         provider = GoogleProvider(model="gemini-2.0-flash")
         assert provider._is_thinking_model() is False

@@ -1,7 +1,7 @@
 {
   "id": "py_three_coupled_groups_with_noise",
   "language": "python",
-  "name": "Python: 3 coupled feature groups + noise docs — 8 files, 13 hunks",
+  "name": "Python: 3 coupled feature groups + noise docs \u2014 8 files, 13 hunks",
   "description": "Three independent features, each requiring source+test co-location, interleaved with 2 independent doc-only files. Feature A: auth/token.py renames verify_token() to validate_token() + auth/test_token.py updates calls. Feature B: db/models.py removes deprecated field + db/test_models.py removes assertion. Feature C: api/views.py changes return type + api/serializers.py updates serialization. Docs: README.md and CHANGELOG.md are independent. The LLM is tempted to group by type (all source, all tests, all docs) which breaks 3 constraints.",
   "difficulty": "super_hard",
   "category": "multi_coupled_groups_with_noise",
@@ -191,15 +191,40 @@
     }
   ],
   "file_relationships": [
-    {"source": "tests/test_token.py", "target": "auth/token.py", "kind": "direct"},
-    {"source": "tests/test_models.py", "target": "db/models.py", "kind": "direct"},
-    {"source": "api/views.py", "target": "api/serializers.py", "kind": "direct"},
-    {"source": "api/views.py", "target": "db/models.py", "kind": "direct"}
+    {
+      "source": "tests/test_token.py",
+      "target": "auth/token.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_models.py",
+      "target": "db/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views.py",
+      "target": "api/serializers.py",
+      "kind": "direct"
+    },
+    {
+      "source": "api/views.py",
+      "target": "db/models.py",
+      "kind": "direct"
+    }
   ],
   "must_be_together": [
-    ["auth/token.py", "tests/test_token.py"],
-    ["db/models.py", "tests/test_models.py"],
-    ["api/views.py", "api/serializers.py"]
+    [
+      "auth/token.py",
+      "tests/test_token.py"
+    ],
+    [
+      "db/models.py",
+      "tests/test_models.py"
+    ],
+    [
+      "api/views.py",
+      "api/serializers.py"
+    ]
   ],
   "must_be_ordered": [],
   "hunk_to_file": {
@@ -216,6 +241,15 @@
     "H11_sh01fb": "tests/test_token.py",
     "H12_sh01gc": "tests/test_models.py",
     "H13_sh01gd": "tests/test_models.py"
-  }
+  },
+  "nice_if_together": [
+    [
+      "CHANGELOG.md",
+      "db/models.py"
+    ],
+    [
+      "README.md",
+      "api/views.py"
+    ]
+  ]
 }
-

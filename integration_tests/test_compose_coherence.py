@@ -4,6 +4,10 @@ Tests that the LLM correctly groups causally dependent hunks into the same
 commit when provided with [FILE RELATIONSHIPS] in the prompt. Uses real
 LLM API calls with synthetic diffs loaded from JSON test case files.
 
+By default, the test runner auto-detects whether to use the compose agent
+(hunk-level grouping) or single-shot LLM based on the diff complexity
+(same logic as the CLI). Use --agent or --no-agent to override.
+
 Test cases cover: Python, TypeScript, Go, Rust, Java, C/C++, Ruby.
 Scenarios include: function removal, rename, parameter addition, transitive
 chains, interleaved features, multi-consumer renames, and mixed changesets.
@@ -12,6 +16,8 @@ Run:
     python integration_tests/test_compose_coherence.py
     python integration_tests/test_compose_coherence.py --provider google --model gemini-2.5-flash
     python integration_tests/test_compose_coherence.py --provider anthropic --model claude-sonnet-4-20250514
+    python integration_tests/test_compose_coherence.py --agent                  # force agent mode
+    python integration_tests/test_compose_coherence.py --no-agent               # force single-shot LLM
     python integration_tests/test_compose_coherence.py --case py_remove_func_test_import
     python integration_tests/test_compose_coherence.py --list
 
@@ -34,6 +40,9 @@ sys.path.insert(0, str(project_root))
 from hunknote.compose.models import ComposePlan, FileDiff, HunkRef
 from hunknote.compose.prompt import COMPOSE_SYSTEM_PROMPT, build_compose_prompt
 from hunknote.compose.relationships import FileRelationship
+from hunknote.compose.inventory import build_hunk_inventory
+from hunknote.compose.grouping import should_use_agent
+from hunknote.compose.agent import run_compose_agent
 from hunknote.llm.base import parse_json_response
 
 # Directories
@@ -63,6 +72,9 @@ class TestCaseData:
     must_be_ordered: list[list[str]]  # [[A, B]] means A's commit must come before B's
     hunk_to_file: dict[str, str]
     source_file: str  # Path to the JSON file
+    # Soft constraints (nice-to-have, do not affect pass/fail)
+    nice_if_together: list[set[str]] = field(default_factory=list)
+    nice_if_ordered: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -74,7 +86,7 @@ class TestResult:
     language: str
     difficulty: str
     category: str
-    passed: bool
+    passed: bool  # True only if ALL hard constraints pass
     num_files: int
     num_hunks: int
     num_commits_generated: int
@@ -86,6 +98,12 @@ class TestResult:
     coherence_details: str
     plan_summary: list[dict]
     error: Optional[str] = None
+    # Soft constraint results
+    soft_total: int = 0
+    soft_passed: int = 0
+    soft_details: str = ""
+    # Mode: "agent" or "single-shot"
+    mode: str = "single-shot"
 
 
 @dataclass
@@ -107,6 +125,8 @@ class EvalSummary:
     results_by_language: dict = field(default_factory=dict)
     results_by_difficulty: dict = field(default_factory=dict)
     results_by_category: dict = field(default_factory=dict)
+    total_soft_constraints: int = 0
+    total_soft_passed: int = 0
 
 
 # ============================================================
@@ -162,6 +182,10 @@ def load_test_case(json_path: Path) -> TestCaseData:
     # Build must_be_ordered pairs: [[A, B]] means A must be committed before B
     must_be_ordered = data.get("must_be_ordered", [])
 
+    # Build soft constraints
+    nice_if_together = [set(group) for group in data.get("nice_if_together", [])]
+    nice_if_ordered = data.get("nice_if_ordered", [])
+
     return TestCaseData(
         id=data["id"],
         language=data["language"],
@@ -177,6 +201,8 @@ def load_test_case(json_path: Path) -> TestCaseData:
         must_be_ordered=must_be_ordered,
         hunk_to_file=data["hunk_to_file"],
         source_file=str(json_path),
+        nice_if_together=nice_if_together,
+        nice_if_ordered=nice_if_ordered,
     )
 
 
@@ -206,23 +232,32 @@ def check_coherence(
     must_be_together: list[set[str]],
     must_be_ordered: list[list[str]],
     file_diffs: list[FileDiff],
-) -> tuple[bool, str, list[dict]]:
+    nice_if_together: list[set[str]] | None = None,
+    nice_if_ordered: list[list[str]] | None = None,
+) -> tuple[bool, str, list[dict], int, int, str]:
     """Check if a plan satisfies coherence constraints.
 
-    Two types of constraints:
-    - must_be_together: Files that must share at least one common commit.
-    - must_be_ordered: [[A, B]] means A must appear in an equal or earlier
-      commit than B (A's commit index <= B's commit index).
+    Two tiers of constraints:
+    - HARD (must_be_together, must_be_ordered): Failure means the test fails.
+    - SOFT (nice_if_together, nice_if_ordered): Tracked but do not affect pass/fail.
 
     Args:
         plan: The compose plan from the LLM.
         must_be_together: List of sets of file paths that must share a commit.
         must_be_ordered: List of [dependency, consumer] pairs.
         file_diffs: The file diffs to map hunk IDs to file paths.
+        nice_if_together: Soft co-location constraints (source+test, docs, etc.).
+        nice_if_ordered: Soft ordering constraints.
 
     Returns:
-        Tuple of (passed, details_string, plan_summary).
+        Tuple of (hard_passed, hard_details, plan_summary,
+                  soft_total, soft_passed, soft_details).
     """
+    if nice_if_together is None:
+        nice_if_together = []
+    if nice_if_ordered is None:
+        nice_if_ordered = []
+
     # Build hunk_id -> file_path mapping
     hunk_to_file: dict[str, str] = {}
     for fd in file_diffs:
@@ -243,12 +278,11 @@ def check_coherence(
     for i, commit in enumerate(plan.commits):
         commit_order[commit.id] = i
 
-    # Check each must-be-together group
+    # ── Hard constraints ──
     all_passed = True
     details_lines = []
 
     for group in must_be_together:
-        # For each file in the group, collect which commits contain it
         file_to_commits: dict[str, set[str]] = {}
         for f in group:
             file_to_commits[f] = set()
@@ -257,8 +291,6 @@ def check_coherence(
                 if f in group:
                     file_to_commits[f].add(cid)
 
-        # The group is coherent if there exists at least one commit
-        # that contains ALL files in the group
         all_commit_sets = [file_to_commits[f] for f in group if file_to_commits[f]]
         if all_commit_sets:
             common_commits = set.intersection(*all_commit_sets)
@@ -276,13 +308,11 @@ def check_coherence(
                 cids = sorted(file_to_commits.get(f, set()))
                 details_lines.append(f"    {f} -> {cids}")
 
-    # Check each must-be-ordered pair
     for pair in must_be_ordered:
         if len(pair) != 2:
             continue
         dep_file, consumer_file = pair[0], pair[1]
 
-        # Find the earliest commit index for the dependency file
         dep_commits = set()
         consumer_commits = set()
         for cid, cfiles in commit_files.items():
@@ -297,9 +327,6 @@ def check_coherence(
             )
             continue
 
-        # Dependency is satisfied if the earliest commit containing the
-        # dependency file comes at or before the earliest commit containing
-        # the consumer file (or they share a commit)
         dep_min_idx = min(commit_order.get(c, 999) for c in dep_commits)
         consumer_min_idx = min(commit_order.get(c, 999) for c in consumer_commits)
 
@@ -314,6 +341,73 @@ def check_coherence(
                 f"  BAD ORDER: {dep_file} (idx {dep_min_idx}) > "
                 f"{consumer_file} (idx {consumer_min_idx}) — "
                 f"consumer committed before its dependency"
+            )
+
+    # ── Soft constraints ──
+    soft_total = 0
+    soft_passed_count = 0
+    soft_lines = []
+
+    for group in nice_if_together:
+        soft_total += 1
+        file_to_commits: dict[str, set[str]] = {}
+        for f in group:
+            file_to_commits[f] = set()
+        for cid, cfiles in commit_files.items():
+            for f in cfiles:
+                if f in group:
+                    file_to_commits[f].add(cid)
+
+        all_commit_sets = [file_to_commits[f] for f in group if file_to_commits[f]]
+        if all_commit_sets:
+            common_commits = set.intersection(*all_commit_sets)
+        else:
+            common_commits = set()
+
+        if common_commits:
+            soft_passed_count += 1
+            soft_lines.append(
+                f"  \u2713 NICE: {sorted(group)} share commit(s) {sorted(common_commits)}"
+            )
+        else:
+            soft_lines.append(f"  \u2717 NICE: {sorted(group)} in separate commits")
+            for f in sorted(group):
+                cids = sorted(file_to_commits.get(f, set()))
+                soft_lines.append(f"      {f} -> {cids}")
+
+    for pair in nice_if_ordered:
+        if len(pair) != 2:
+            continue
+        soft_total += 1
+        dep_file, consumer_file = pair[0], pair[1]
+
+        dep_commits = set()
+        consumer_commits = set()
+        for cid, cfiles in commit_files.items():
+            if dep_file in cfiles:
+                dep_commits.add(cid)
+            if consumer_file in cfiles:
+                consumer_commits.add(cid)
+
+        if not dep_commits or not consumer_commits:
+            soft_lines.append(
+                f"  - NICE (order): skipped — {dep_file} or {consumer_file} not in plan"
+            )
+            continue
+
+        dep_min_idx = min(commit_order.get(c, 999) for c in dep_commits)
+        consumer_min_idx = min(commit_order.get(c, 999) for c in consumer_commits)
+
+        if dep_min_idx <= consumer_min_idx:
+            soft_passed_count += 1
+            soft_lines.append(
+                f"  \u2713 NICE (order): {dep_file} (idx {dep_min_idx}) <= "
+                f"{consumer_file} (idx {consumer_min_idx})"
+            )
+        else:
+            soft_lines.append(
+                f"  \u2717 NICE (order): {dep_file} (idx {dep_min_idx}) > "
+                f"{consumer_file} (idx {consumer_min_idx})"
             )
 
     # Build plan summary
@@ -336,67 +430,161 @@ def check_coherence(
         details_lines.append(f"         files: {ps['files']}")
         details_lines.append(f"         hunks: {ps['hunks']}")
 
-    return all_passed, "\n".join(details_lines), plan_summary
+    soft_details = "\n".join(soft_lines)
+    return (all_passed, "\n".join(details_lines), plan_summary,
+            soft_total, soft_passed_count, soft_details)
 
 
 # ============================================================
 # Single Test Runner
 # ============================================================
 
-def run_single_test(case: TestCaseData, provider) -> TestResult:
+def run_single_test(case: TestCaseData, provider, agent_mode: Optional[bool] = None) -> TestResult:
     """Run a single test case against the LLM.
 
     Args:
         case: The test case data.
         provider: The LLM provider instance.
+        agent_mode: None = auto-detect, True = force agent, False = force single-shot.
 
     Returns:
         A TestResult object.
     """
-    # Build prompt WITH file relationships
-    prompt = build_compose_prompt(
-        file_diffs=case.file_diffs,
-        branch="feature/update",
-        recent_commits=["Previous commit 1", "Previous commit 2"],
-        style="blueprint",
-        max_commits=6,
-        file_relationships=case.file_relationships,
-    )
+    # Build inventory from file_diffs
+    inventory = build_hunk_inventory(case.file_diffs)
+
+    # Decide whether to use agent mode
+    if agent_mode is True:
+        use_agent = True
+    elif agent_mode is False:
+        use_agent = False
+    else:
+        # Auto-detect based on current heuristics
+        use_agent = should_use_agent(inventory, case.file_diffs)
 
     start_time = time.time()
 
     try:
-        result = provider.generate_raw(
-            system_prompt=COMPOSE_SYSTEM_PROMPT,
-            user_prompt=prompt,
-        )
-        latency = time.time() - start_time
+        if use_agent:
+            # ── Agent Path ──
+            agent_result = run_compose_agent(
+                file_diffs=case.file_diffs,
+                inventory=inventory,
+                style="blueprint",
+                max_commits=16,
+                branch="feature/update",
+                recent_commits=["Previous commit 1", "Previous commit 2"],
+                force_agent=True,
+                provider=provider,
+            )
+            latency = time.time() - start_time
 
-        plan_data = parse_json_response(result.raw_response)
-        plan = ComposePlan(**plan_data)
+            plan = agent_result.plan
 
-        passed, details, plan_summary = check_coherence(
-            plan, case.must_be_together, case.must_be_ordered, case.file_diffs,
-        )
+            if not agent_result.used_agent or len(plan.commits) == 0:
+                # Agent didn't produce results; this is unexpected when force_agent=True
+                return TestResult(
+                    case_id=case.id,
+                    case_name=case.name,
+                    language=case.language,
+                    difficulty=case.difficulty,
+                    category=case.category,
+                    passed=False,
+                    num_files=case.num_files,
+                    num_hunks=case.num_hunks,
+                    num_commits_generated=0,
+                    model=agent_result.llm_model or getattr(provider, "model", "unknown"),
+                    input_tokens=agent_result.input_tokens,
+                    output_tokens=agent_result.output_tokens,
+                    thinking_tokens=agent_result.thinking_tokens,
+                    latency_seconds=round(latency, 2),
+                    coherence_details="",
+                    plan_summary=[],
+                    error="Agent mode activated but produced no commits",
+                    mode="agent",
+                )
 
-        return TestResult(
-            case_id=case.id,
-            case_name=case.name,
-            language=case.language,
-            difficulty=case.difficulty,
-            category=case.category,
-            passed=passed,
-            num_files=case.num_files,
-            num_hunks=case.num_hunks,
-            num_commits_generated=len(plan.commits),
-            model=result.model,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            thinking_tokens=result.thinking_tokens,
-            latency_seconds=round(latency, 2),
-            coherence_details=details,
-            plan_summary=plan_summary,
-        )
+            passed, details, plan_summary, soft_total, soft_passed, soft_details = (
+                check_coherence(
+                    plan, case.must_be_together, case.must_be_ordered, case.file_diffs,
+                    nice_if_together=case.nice_if_together,
+                    nice_if_ordered=case.nice_if_ordered,
+                )
+            )
+
+            return TestResult(
+                case_id=case.id,
+                case_name=case.name,
+                language=case.language,
+                difficulty=case.difficulty,
+                category=case.category,
+                passed=passed,
+                num_files=case.num_files,
+                num_hunks=case.num_hunks,
+                num_commits_generated=len(plan.commits),
+                model=agent_result.llm_model or getattr(provider, "model", "unknown"),
+                input_tokens=agent_result.input_tokens,
+                output_tokens=agent_result.output_tokens,
+                thinking_tokens=agent_result.thinking_tokens,
+                latency_seconds=round(latency, 2),
+                coherence_details=details,
+                plan_summary=plan_summary,
+                soft_total=soft_total,
+                soft_passed=soft_passed,
+                soft_details=soft_details,
+                mode="agent",
+            )
+
+        else:
+            # ── Single-shot LLM Path ──
+            prompt = build_compose_prompt(
+                file_diffs=case.file_diffs,
+                branch="feature/update",
+                recent_commits=["Previous commit 1", "Previous commit 2"],
+                style="blueprint",
+                max_commits=16,
+                file_relationships=case.file_relationships,
+            )
+
+            result = provider.generate_raw(
+                system_prompt=COMPOSE_SYSTEM_PROMPT,
+                user_prompt=prompt,
+            )
+            latency = time.time() - start_time
+
+            plan_data = parse_json_response(result.raw_response)
+            plan = ComposePlan(**plan_data)
+
+            passed, details, plan_summary, soft_total, soft_passed, soft_details = (
+                check_coherence(
+                    plan, case.must_be_together, case.must_be_ordered, case.file_diffs,
+                    nice_if_together=case.nice_if_together,
+                    nice_if_ordered=case.nice_if_ordered,
+                )
+            )
+
+            return TestResult(
+                case_id=case.id,
+                case_name=case.name,
+                language=case.language,
+                difficulty=case.difficulty,
+                category=case.category,
+                passed=passed,
+                num_files=case.num_files,
+                num_hunks=case.num_hunks,
+                num_commits_generated=len(plan.commits),
+                model=result.model,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                thinking_tokens=result.thinking_tokens,
+                latency_seconds=round(latency, 2),
+                coherence_details=details,
+                plan_summary=plan_summary,
+                soft_total=soft_total,
+                soft_passed=soft_passed,
+                soft_details=soft_details,
+                mode="single-shot",
+            )
 
     except Exception as e:
         latency = time.time() - start_time
@@ -418,6 +606,7 @@ def run_single_test(case: TestCaseData, provider) -> TestResult:
             coherence_details="",
             plan_summary=[],
             error=str(e),
+            mode="agent" if use_agent else "single-shot",
         )
 
 
@@ -460,6 +649,10 @@ def save_results(
             "coherence_details": result.coherence_details,
             "plan_summary": result.plan_summary,
             "error": result.error,
+            "soft_total": result.soft_total,
+            "soft_passed": result.soft_passed,
+            "soft_details": result.soft_details,
+            "mode": result.mode,
         }
         result_file.write_text(json.dumps(result_dict, indent=2))
 
@@ -481,6 +674,8 @@ def save_results(
         "results_by_language": summary.results_by_language,
         "results_by_difficulty": summary.results_by_difficulty,
         "results_by_category": summary.results_by_category,
+        "total_soft_constraints": summary.total_soft_constraints,
+        "total_soft_passed": summary.total_soft_passed,
         "results": [
             {
                 "case_id": r.case_id,
@@ -488,7 +683,10 @@ def save_results(
                 "language": r.language,
                 "difficulty": r.difficulty,
                 "passed": r.passed,
+                "soft_passed": r.soft_passed,
+                "soft_total": r.soft_total,
                 "error": r.error,
+                "mode": r.mode,
             }
             for r in results
         ],
@@ -570,6 +768,8 @@ def build_summary(
         results_by_language=by_lang,
         results_by_difficulty=by_diff,
         results_by_category=by_cat,
+        total_soft_constraints=sum(r.soft_total for r in results),
+        total_soft_passed=sum(r.soft_passed for r in results),
     )
 
 
@@ -591,12 +791,13 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
     print()
 
     # Results table
-    print(f"  {'Status':<6}  {'Lang':<12}  {'Diff':<10}  {'Name'}")
-    print(f"  {'------':<6}  {'----':<12}  {'----':<10}  {'----'}")
+    print(f"  {'Status':<6}  {'Mode':<12}  {'Lang':<12}  {'Diff':<10}  {'Soft':<8}  {'Name'}")
+    print(f"  {'------':<6}  {'----':<12}  {'----':<12}  {'----':<10}  {'----':<8}  {'----'}")
     for r in results:
         status = "PASS" if r.passed else ("ERR" if r.error else "FAIL")
         icon = "\u2705" if r.passed else ("\u26a0\ufe0f " if r.error else "\u274c")
-        print(f"  {icon} {status:<4}  {r.language:<12}  {r.difficulty:<10}  {r.case_name}")
+        soft_str = f"{r.soft_passed}/{r.soft_total}" if r.soft_total > 0 else "-"
+        print(f"  {icon} {status:<4}  {r.mode:<12}  {r.language:<12}  {r.difficulty:<10}  {soft_str:<8}  {r.case_name}")
     print()
 
     # Overall
@@ -604,6 +805,13 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
           f"({summary.pass_rate}%)")
     if summary.errors > 0:
         print(f"  Errors:  {summary.errors}")
+
+    # Aggregate soft constraint score
+    total_soft = sum(r.soft_total for r in results)
+    passed_soft = sum(r.soft_passed for r in results)
+    if total_soft > 0:
+        soft_rate = round(passed_soft / total_soft * 100, 1)
+        print(f"  Soft:    {passed_soft}/{total_soft} ({soft_rate}%)")
     print()
 
     # By language
@@ -665,6 +873,14 @@ def main():
         "--list", action="store_true",
         help="List available test cases and exit",
     )
+    parser.add_argument(
+        "--agent", dest="agent_mode", action="store_true", default=None,
+        help="Force agent mode (hunk-level grouping) for all test cases",
+    )
+    parser.add_argument(
+        "--no-agent", dest="agent_mode", action="store_false",
+        help="Force single-shot LLM mode for all test cases",
+    )
     args = parser.parse_args()
 
     # Load all test cases
@@ -722,10 +938,12 @@ def main():
     eval_dir = EVALS_DIR / timestamp
 
     # Print header
+    agent_label = {True: "agent (forced)", False: "single-shot (forced)", None: "auto-detect"}[args.agent_mode]
     print()
     print("=" * 72)
     print("  COMPOSE COHERENCE EVALUATION")
     print(f"  Provider: {args.provider} / {args.model}")
+    print(f"  Mode:     {agent_label}")
     print(f"  Cases:    {len(cases)}")
     print(f"  Eval dir: {eval_dir}")
     print("=" * 72)
@@ -748,28 +966,41 @@ def main():
                 else:
                     print(f"    {rel.source} -> {rel.target} (via {rel.via})")
 
-        result = run_single_test(case, provider)
+        result = run_single_test(case, provider, agent_mode=args.agent_mode)
         results.append(result)
 
         # Print result
+        mode_tag = f"[{result.mode}] "
         if result.error:
-            print(f"  Result: \u26a0\ufe0f  ERROR — {result.error}")
+            print(f"  Result: \u26a0\ufe0f  {mode_tag}ERROR — {result.error}")
         elif result.passed:
             token_str = f"{result.input_tokens}+{result.output_tokens} tokens"
             if result.thinking_tokens > 0:
                 token_str += f" (+{result.thinking_tokens} thinking)"
-            print(f"  Result: \u2705 PASSED ({result.num_commits_generated} commits, "
-                  f"{result.latency_seconds}s, {token_str})")
+            soft_str = ""
+            if result.soft_total > 0:
+                soft_str = f", soft: {result.soft_passed}/{result.soft_total}"
+            print(f"  Result: \u2705 {mode_tag}PASSED ({result.num_commits_generated} commits, "
+                  f"{result.latency_seconds}s, {token_str}{soft_str})")
         else:
             token_str = f"{result.input_tokens}+{result.output_tokens} tokens"
             if result.thinking_tokens > 0:
                 token_str += f" (+{result.thinking_tokens} thinking)"
-            print(f"  Result: \u274c FAILED ({result.num_commits_generated} commits, "
-                  f"{result.latency_seconds}s, {token_str})")
+            soft_str = ""
+            if result.soft_total > 0:
+                soft_str = f", soft: {result.soft_passed}/{result.soft_total}"
+            print(f"  Result: \u274c {mode_tag}FAILED ({result.num_commits_generated} commits, "
+                  f"{result.latency_seconds}s, {token_str}{soft_str})")
 
-        # Print coherence details
+        # Print hard constraint details
         if result.coherence_details:
             for line in result.coherence_details.split("\n"):
+                print(f"  {line}")
+
+        # Print soft constraint details
+        if result.soft_details:
+            print(f"  Soft constraints ({result.soft_passed}/{result.soft_total}):")
+            for line in result.soft_details.split("\n"):
                 print(f"  {line}")
         print()
         print("-" * 72)

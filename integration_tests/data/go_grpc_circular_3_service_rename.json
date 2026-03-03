@@ -711,5 +711,19 @@
     "H43_hh042b": "tests/integration_test.go",
     "H44_hh042c": "Makefile",
     "H45_hh042d": "docs/rpc-reference.md"
-  }
+  },
+  "nice_if_together": [
+    [
+      "internal/user/server.go",
+      "internal/user/server_test.go"
+    ],
+    [
+      "internal/auth/server.go",
+      "internal/auth/server_test.go"
+    ],
+    [
+      "internal/payment/server.go",
+      "internal/payment/server_test.go"
+    ]
+  ]
 }

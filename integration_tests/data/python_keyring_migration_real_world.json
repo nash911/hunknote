@@ -1,7 +1,7 @@
 {
   "id": "py_keyring_migration_real_world",
   "language": "python",
-  "name": "Python: Keyring migration — source + test + 4 docstring updates — 7 files, 12 hunks",
+  "name": "Python: Keyring migration \u2014 source + test + 4 docstring updates \u2014 7 files, 12 hunks",
   "description": "Mirrors the real-world hunknote keyring migration that broke. config.py removes get_creds_file() and switches to keyring. tests/test_config.py removes old import + updates assertions. llm/base.py updates error message. 3 LLM provider files update docstrings. The LLM is strongly tempted to: (1) split config.py from test_config.py into feat+test commits, (2) group all LLM files together. But config.py + test_config.py MUST be together (function removal), and config.py + llm/base.py MUST be together (error message references the removed function).",
   "difficulty": "super_hard",
   "category": "real_world_migration_multi_constraint",
@@ -193,16 +193,46 @@
     }
   ],
   "file_relationships": [
-    {"source": "llm/base.py", "target": "core/config.py", "kind": "direct"},
-    {"source": "llm/anthropic_provider.py", "target": "llm/base.py", "kind": "direct"},
-    {"source": "llm/openai_provider.py", "target": "llm/base.py", "kind": "direct"},
-    {"source": "llm/google_provider.py", "target": "llm/base.py", "kind": "direct"},
-    {"source": "tests/test_config.py", "target": "core/config.py", "kind": "direct"},
-    {"source": "cli/main.py", "target": "core/config.py", "kind": "direct"}
+    {
+      "source": "llm/base.py",
+      "target": "core/config.py",
+      "kind": "direct"
+    },
+    {
+      "source": "llm/anthropic_provider.py",
+      "target": "llm/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "llm/openai_provider.py",
+      "target": "llm/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "llm/google_provider.py",
+      "target": "llm/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_config.py",
+      "target": "core/config.py",
+      "kind": "direct"
+    },
+    {
+      "source": "cli/main.py",
+      "target": "core/config.py",
+      "kind": "direct"
+    }
   ],
   "must_be_together": [
-    ["core/config.py", "tests/test_config.py"],
-    ["core/config.py", "llm/base.py"]
+    [
+      "core/config.py",
+      "tests/test_config.py"
+    ],
+    [
+      "core/config.py",
+      "llm/base.py"
+    ]
   ],
   "must_be_ordered": [],
   "hunk_to_file": {
@@ -218,6 +248,16 @@
     "H10_sh03ga": "tests/test_config.py",
     "H11_sh03gb": "tests/test_config.py",
     "H12_sh03gc": "tests/test_config.py"
-  }
+  },
+  "nice_if_together": [
+    [
+      "llm/anthropic_provider.py",
+      "llm/openai_provider.py",
+      "llm/google_provider.py"
+    ],
+    [
+      "core/config.py",
+      "cli/main.py"
+    ]
+  ]
 }
-

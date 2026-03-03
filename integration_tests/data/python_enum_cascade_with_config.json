@@ -1,7 +1,7 @@
 {
   "id": "py_enum_change_cascade_with_config",
   "language": "python",
-  "name": "Python: Enum rename cascading through 5 consumers + unrelated config — 8 files, 16 hunks",
+  "name": "Python: Enum rename cascading through 5 consumers + unrelated config \u2014 8 files, 16 hunks",
   "description": "core/status.py renames Status.IN_PROGRESS to Status.ACTIVE. Five consumer files (api/views.py, workers/processor.py, cli/report.py, db/queries.py, notifications/email.py) all reference the old enum value. Additionally, core/settings.py has an unrelated change (adding a new config key) that is independent. The LLM is tempted to: (1) split the enum definition from consumers, (2) group consumers by type rather than by dependency, (3) put settings.py with the enum change since both are in core/. All 6 enum-related files MUST be together. Settings is independent.",
   "difficulty": "super_hard",
   "category": "enum_cascade_multi_consumer",
@@ -225,16 +225,52 @@
     }
   ],
   "file_relationships": [
-    {"source": "api/views.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "workers/processor.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "cli/report.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "db/queries.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "notifications/email.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "tests/test_status_transitions.py", "target": "core/status.py", "kind": "direct"},
-    {"source": "tests/test_status_transitions.py", "target": "db/queries.py", "kind": "direct"}
+    {
+      "source": "api/views.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "workers/processor.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "cli/report.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "db/queries.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "notifications/email.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_status_transitions.py",
+      "target": "core/status.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_status_transitions.py",
+      "target": "db/queries.py",
+      "kind": "direct"
+    }
   ],
   "must_be_together": [
-    ["core/status.py", "api/views.py", "workers/processor.py", "cli/report.py", "db/queries.py", "notifications/email.py", "tests/test_status_transitions.py"]
+    [
+      "core/status.py",
+      "api/views.py",
+      "workers/processor.py",
+      "cli/report.py",
+      "db/queries.py",
+      "notifications/email.py",
+      "tests/test_status_transitions.py"
+    ]
   ],
   "must_be_ordered": [],
   "hunk_to_file": {
@@ -254,6 +290,11 @@
     "H14_sh05he": "tests/test_status_transitions.py",
     "H15_sh05hf": "tests/test_status_transitions.py",
     "H16_sh05hg": "tests/test_status_transitions.py"
-  }
+  },
+  "nice_if_together": [
+    [
+      "core/settings.py",
+      "core/status.py"
+    ]
+  ]
 }
-

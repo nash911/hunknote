@@ -818,5 +818,19 @@
     "H51_hh0233": "packages/ui/tests/PermissionGate.test.tsx",
     "H52_hh0234": ".github/workflows/ci.yml",
     "H53_hh0235": "tsconfig.base.json"
-  }
+  },
+  "nice_if_together": [
+    [
+      "tsconfig.base.json",
+      "packages/core/src/types.ts"
+    ],
+    [
+      ".github/workflows/ci.yml",
+      "packages/core/src/types.ts"
+    ],
+    [
+      "packages/ui/src/components/AdminPanel.tsx",
+      "packages/ui/src/components/PermissionGate.tsx"
+    ]
+  ]
 }
