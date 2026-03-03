@@ -1,8 +1,8 @@
 {
   "id": "py_base_class_change_subclasses_tests",
   "language": "python",
-  "name": "Python: Base class constructor change + 3 subclasses + 2 tests — 6 files, 11 hunks",
-  "description": "core/base.py adds a required 'logger' parameter to BaseProcessor.__init__(). Three subclasses (processors/csv.py, processors/json.py, processors/xml.py) must pass the new parameter to super().__init__(). Two test files (tests/test_csv.py, tests/test_json.py) instantiate processors and must pass the logger. All must be together — any subclass without the parameter raises TypeError on instantiation.",
+  "name": "Python: Base class constructor change + 3 subclasses + 2 tests \u2014 6 files, 11 hunks",
+  "description": "core/base.py adds a required 'logger' parameter to BaseProcessor.__init__(). Three subclasses (processors/csv.py, processors/json.py, processors/xml.py) must pass the new parameter to super().__init__(). Two test files (tests/test_csv.py, tests/test_json.py) instantiate processors and must pass the logger. All must be together \u2014 any subclass without the parameter raises TypeError on instantiation.",
   "difficulty": "super_hard",
   "category": "base_class_constructor_change",
   "num_files": 6,
@@ -163,16 +163,53 @@
     }
   ],
   "file_relationships": [
-    {"source": "processors/csv_processor.py", "target": "core/base.py", "kind": "direct"},
-    {"source": "processors/json_processor.py", "target": "core/base.py", "kind": "direct"},
-    {"source": "processors/xml_processor.py", "target": "core/base.py", "kind": "direct"},
-    {"source": "tests/test_csv_processor.py", "target": "processors/csv_processor.py", "kind": "direct"},
-    {"source": "tests/test_json_processor.py", "target": "processors/json_processor.py", "kind": "direct"},
-    {"source": "tests/test_csv_processor.py", "target": "core/base.py", "kind": "transitive", "via": "processors/csv_processor.py"},
-    {"source": "tests/test_json_processor.py", "target": "core/base.py", "kind": "transitive", "via": "processors/json_processor.py"}
+    {
+      "source": "processors/csv_processor.py",
+      "target": "core/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "processors/json_processor.py",
+      "target": "core/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "processors/xml_processor.py",
+      "target": "core/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_csv_processor.py",
+      "target": "processors/csv_processor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_json_processor.py",
+      "target": "processors/json_processor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_csv_processor.py",
+      "target": "core/base.py",
+      "kind": "transitive",
+      "via": "processors/csv_processor.py"
+    },
+    {
+      "source": "tests/test_json_processor.py",
+      "target": "core/base.py",
+      "kind": "transitive",
+      "via": "processors/json_processor.py"
+    }
   ],
   "must_be_together": [
-    ["core/base.py", "processors/csv_processor.py", "processors/json_processor.py", "processors/xml_processor.py", "tests/test_csv_processor.py", "tests/test_json_processor.py"]
+    [
+      "core/base.py",
+      "processors/csv_processor.py",
+      "processors/json_processor.py",
+      "processors/xml_processor.py",
+      "tests/test_csv_processor.py",
+      "tests/test_json_processor.py"
+    ]
   ],
   "must_be_ordered": [],
   "hunk_to_file": {

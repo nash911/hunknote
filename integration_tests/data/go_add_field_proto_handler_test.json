@@ -129,6 +129,11 @@
     "H3_gf01c3": "handlers/user.go",
     "H4_gf01c4": "handlers/user.go",
     "H5_gf01d5": "handlers/user_test.go"
-  }
+  },
+  "nice_if_together": [
+    [
+      "handlers/user.go",
+      "handlers/user_test.go"
+    ]
+  ]
 }
-

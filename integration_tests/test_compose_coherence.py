@@ -873,6 +873,14 @@ def main():
         "--list", action="store_true",
         help="List available test cases and exit",
     )
+    parser.add_argument(
+        "--agent", dest="agent_mode", action="store_true", default=None,
+        help="Force agent mode (hunk-level grouping) for all test cases",
+    )
+    parser.add_argument(
+        "--no-agent", dest="agent_mode", action="store_false",
+        help="Force single-shot LLM mode for all test cases",
+    )
     args = parser.parse_args()
 
     # Load all test cases
@@ -930,10 +938,12 @@ def main():
     eval_dir = EVALS_DIR / timestamp
 
     # Print header
+    agent_label = {True: "agent (forced)", False: "single-shot (forced)", None: "auto-detect"}[args.agent_mode]
     print()
     print("=" * 72)
     print("  COMPOSE COHERENCE EVALUATION")
     print(f"  Provider: {args.provider} / {args.model}")
+    print(f"  Mode:     {agent_label}")
     print(f"  Cases:    {len(cases)}")
     print(f"  Eval dir: {eval_dir}")
     print("=" * 72)

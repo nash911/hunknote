@@ -1740,5 +1740,23 @@
     "H123_hh037b": "features/bulk_import.py",
     "H124_hh037c": "docs/models.md",
     "H125_hh037d": "pyproject.toml"
-  }
+  },
+  "nice_if_together": [
+    [
+      "models/category.py",
+      "tests/test_category.py"
+    ],
+    [
+      "models/order.py",
+      "tests/test_order.py"
+    ],
+    [
+      "models/user.py",
+      "tests/test_user.py"
+    ],
+    [
+      "models/product.py",
+      "tests/test_product.py"
+    ]
+  ]
 }
