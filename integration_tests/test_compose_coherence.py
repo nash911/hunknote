@@ -40,6 +40,9 @@ sys.path.insert(0, str(project_root))
 from hunknote.compose.models import ComposePlan, FileDiff, HunkRef
 from hunknote.compose.prompt import COMPOSE_SYSTEM_PROMPT, build_compose_prompt
 from hunknote.compose.relationships import FileRelationship
+from hunknote.compose.inventory import build_hunk_inventory
+from hunknote.compose.grouping import should_use_agent
+from hunknote.compose.agent import run_compose_agent
 from hunknote.llm.base import parse_json_response
 
 # Directories
@@ -69,6 +72,9 @@ class TestCaseData:
     must_be_ordered: list[list[str]]  # [[A, B]] means A's commit must come before B's
     hunk_to_file: dict[str, str]
     source_file: str  # Path to the JSON file
+    # Soft constraints (nice-to-have, do not affect pass/fail)
+    nice_if_together: list[set[str]] = field(default_factory=list)
+    nice_if_ordered: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -80,7 +86,7 @@ class TestResult:
     language: str
     difficulty: str
     category: str
-    passed: bool
+    passed: bool  # True only if ALL hard constraints pass
     num_files: int
     num_hunks: int
     num_commits_generated: int
@@ -92,6 +98,12 @@ class TestResult:
     coherence_details: str
     plan_summary: list[dict]
     error: Optional[str] = None
+    # Soft constraint results
+    soft_total: int = 0
+    soft_passed: int = 0
+    soft_details: str = ""
+    # Mode: "agent" or "single-shot"
+    mode: str = "single-shot"
 
 
 @dataclass
@@ -113,6 +125,8 @@ class EvalSummary:
     results_by_language: dict = field(default_factory=dict)
     results_by_difficulty: dict = field(default_factory=dict)
     results_by_category: dict = field(default_factory=dict)
+    total_soft_constraints: int = 0
+    total_soft_passed: int = 0
 
 
 # ============================================================
@@ -168,6 +182,10 @@ def load_test_case(json_path: Path) -> TestCaseData:
     # Build must_be_ordered pairs: [[A, B]] means A must be committed before B
     must_be_ordered = data.get("must_be_ordered", [])
 
+    # Build soft constraints
+    nice_if_together = [set(group) for group in data.get("nice_if_together", [])]
+    nice_if_ordered = data.get("nice_if_ordered", [])
+
     return TestCaseData(
         id=data["id"],
         language=data["language"],
@@ -183,6 +201,8 @@ def load_test_case(json_path: Path) -> TestCaseData:
         must_be_ordered=must_be_ordered,
         hunk_to_file=data["hunk_to_file"],
         source_file=str(json_path),
+        nice_if_together=nice_if_together,
+        nice_if_ordered=nice_if_ordered,
     )
 
 
