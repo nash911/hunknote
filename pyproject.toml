@@ -41,6 +41,7 @@ google-genai = "^1.63.0"
 mistralai = "^1.12.2"
 cohere = "^5.20.5"
 groq = "^1.0.0"
+litellm = "^1.82.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
