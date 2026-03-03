@@ -90,16 +90,38 @@
     }
   ],
   "file_relationships": [
-    {"source": "handlers/user.go", "target": "models/user.go", "kind": "direct"},
-    {"source": "handlers/user_test.go", "target": "handlers/user.go", "kind": "direct"},
-    {"source": "handlers/user_test.go", "target": "models/user.go", "kind": "transitive", "via": "handlers/user.go"}
+    {
+      "source": "handlers/user.go",
+      "target": "models/user.go",
+      "kind": "direct"
+    },
+    {
+      "source": "handlers/user_test.go",
+      "target": "handlers/user.go",
+      "kind": "direct"
+    },
+    {
+      "source": "handlers/user_test.go",
+      "target": "models/user.go",
+      "kind": "transitive",
+      "via": "handlers/user.go"
+    }
   ],
   "must_be_together": [
-    ["models/user.go", "proto/user.proto"]
+    [
+      "models/user.go",
+      "proto/user.proto"
+    ]
   ],
   "must_be_ordered": [
-    ["models/user.go", "handlers/user.go"],
-    ["handlers/user.go", "handlers/user_test.go"]
+    [
+      "models/user.go",
+      "handlers/user.go"
+    ],
+    [
+      "handlers/user.go",
+      "handlers/user_test.go"
+    ]
   ],
   "hunk_to_file": {
     "H1_gf01a1": "models/user.go",

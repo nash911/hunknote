@@ -606,6 +606,7 @@ def run_single_test(case: TestCaseData, provider, agent_mode: Optional[bool] = N
             coherence_details="",
             plan_summary=[],
             error=str(e),
+            mode="agent" if use_agent else "single-shot",
         )
 
 
@@ -648,6 +649,10 @@ def save_results(
             "coherence_details": result.coherence_details,
             "plan_summary": result.plan_summary,
             "error": result.error,
+            "soft_total": result.soft_total,
+            "soft_passed": result.soft_passed,
+            "soft_details": result.soft_details,
+            "mode": result.mode,
         }
         result_file.write_text(json.dumps(result_dict, indent=2))
 
@@ -669,6 +674,8 @@ def save_results(
         "results_by_language": summary.results_by_language,
         "results_by_difficulty": summary.results_by_difficulty,
         "results_by_category": summary.results_by_category,
+        "total_soft_constraints": summary.total_soft_constraints,
+        "total_soft_passed": summary.total_soft_passed,
         "results": [
             {
                 "case_id": r.case_id,
@@ -676,7 +683,10 @@ def save_results(
                 "language": r.language,
                 "difficulty": r.difficulty,
                 "passed": r.passed,
+                "soft_passed": r.soft_passed,
+                "soft_total": r.soft_total,
                 "error": r.error,
+                "mode": r.mode,
             }
             for r in results
         ],
@@ -758,6 +768,8 @@ def build_summary(
         results_by_language=by_lang,
         results_by_difficulty=by_diff,
         results_by_category=by_cat,
+        total_soft_constraints=sum(r.soft_total for r in results),
+        total_soft_passed=sum(r.soft_passed for r in results),
     )
 
 
@@ -779,12 +791,13 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
     print()
 
     # Results table
-    print(f"  {'Status':<6}  {'Lang':<12}  {'Diff':<10}  {'Name'}")
-    print(f"  {'------':<6}  {'----':<12}  {'----':<10}  {'----'}")
+    print(f"  {'Status':<6}  {'Mode':<12}  {'Lang':<12}  {'Diff':<10}  {'Soft':<8}  {'Name'}")
+    print(f"  {'------':<6}  {'----':<12}  {'----':<12}  {'----':<10}  {'----':<8}  {'----'}")
     for r in results:
         status = "PASS" if r.passed else ("ERR" if r.error else "FAIL")
         icon = "\u2705" if r.passed else ("\u26a0\ufe0f " if r.error else "\u274c")
-        print(f"  {icon} {status:<4}  {r.language:<12}  {r.difficulty:<10}  {r.case_name}")
+        soft_str = f"{r.soft_passed}/{r.soft_total}" if r.soft_total > 0 else "-"
+        print(f"  {icon} {status:<4}  {r.mode:<12}  {r.language:<12}  {r.difficulty:<10}  {soft_str:<8}  {r.case_name}")
     print()
 
     # Overall
@@ -792,6 +805,13 @@ def print_summary(summary: EvalSummary, results: list[TestResult]) -> None:
           f"({summary.pass_rate}%)")
     if summary.errors > 0:
         print(f"  Errors:  {summary.errors}")
+
+    # Aggregate soft constraint score
+    total_soft = sum(r.soft_total for r in results)
+    passed_soft = sum(r.soft_passed for r in results)
+    if total_soft > 0:
+        soft_rate = round(passed_soft / total_soft * 100, 1)
+        print(f"  Soft:    {passed_soft}/{total_soft} ({soft_rate}%)")
     print()
 
     # By language
