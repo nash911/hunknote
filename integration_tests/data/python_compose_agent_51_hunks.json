@@ -1,0 +1,2962 @@
+{
+  "id": "py_compose_agent_51_hunks",
+  "language": "python",
+  "name": "Python: Compose agent implementation \u2014 34 files, 51 hunks",
+  "description": "Real-world diff: implements the Compose Agent feature with 27 new files and 7 modified files. Includes language-specific symbol extractors (13 extractor files inheriting from base.py), agent orchestrator, dependency graph, checkpoint validator, programmatic grouping, LLM messenger, cache infrastructure (paths, save/load, metadata model), CLI integration (--agent/--graph/--trace flags), compose __init__.py re-exports, and 7 test files. Key challenges: (1) models.py is a hub imported by 16+ modules, (2) all 12 extractors inherit from base.py, (3) cache/__init__.py re-exports from BOTH paths.py AND compose.py \u2014 all three must be co-committed, (4) cli/compose.py imports save_compose_agent_trace from hunknote.cache (the package __init__.py), so the entire cache subsystem (paths.py + compose.py + __init__.py) must be committed BEFORE cli/compose.py, (5) compose/__init__.py re-exports from all compose submodules so it must come after them, (6) strict ordering: models before consumers, base before ALL extractors, source before tests, agent before CLI. Derived from checkpoint failure analysis: commits C1\u2013C6 broke with ImportError because cli/compose.py was committed before cache/__init__.py re-exported save_compose_agent_trace. The ideal plan separates: data models, extractor subsystem, graph/symbols/checkpoint core, grouping/agent, cache infrastructure, CLI integration, and tests \u2014 respecting dependency order.",
+  "difficulty": "hyper_hard",
+  "category": "real_world_large_feature_hub_node",
+  "num_files": 34,
+  "num_hunks": 51,
+  "file_diffs": [
+    {
+      "file_path": "hunknote/cache/__init__.py",
+      "hunks": [
+        {
+          "id": "H1_4760cd",
+          "header": "-17,8 +17,11",
+          "lines": [
+            " # Path utilities",
+            " from hunknote.cache.paths import (",
+            "     get_cache_dir,",
+            "+    get_compose_agent_trace_file,",
+            "     get_compose_hash_file,",
+            "+    get_compose_hunk_graph_file,",
+            "     get_compose_hunk_ids_file,",
+            "+    get_compose_hunk_symbols_file,",
+            "     get_compose_metadata_file,",
+            "     get_compose_plan_file,",
+            "     get_hash_file,"
+          ]
+        },
+        {
+          "id": "H2_bb1604",
+          "header": "-50,11 +53,17",
+          "lines": [
+            " from hunknote.cache.compose import (",
+            "     invalidate_compose_cache,",
+            "     is_compose_cache_valid,",
+            "+    load_compose_agent_trace,",
+            "+    load_compose_hunk_graph,",
+            "     load_compose_hunk_ids,",
+            "+    load_compose_hunk_symbols,",
+            "     load_compose_metadata,",
+            "     load_compose_plan,",
+            "+    save_compose_agent_trace,",
+            "     save_compose_cache,",
+            "+    save_compose_hunk_graph,",
+            "     save_compose_hunk_ids,",
+            "+    save_compose_hunk_symbols,",
+            " )",
+            " ",
+            " "
+          ]
+        },
+        {
+          "id": "H3_636f52",
+          "header": "-64,8 +73,11",
+          "lines": [
+            "     \"ComposeCacheMetadata\",",
+            "     # Path utilities",
+            "     \"get_cache_dir\",",
+            "+    \"get_compose_agent_trace_file\",",
+            "     \"get_compose_hash_file\",",
+            "+    \"get_compose_hunk_graph_file\",",
+            "     \"get_compose_hunk_ids_file\",",
+            "+    \"get_compose_hunk_symbols_file\",",
+            "     \"get_compose_metadata_file\",",
+            "     \"get_compose_plan_file\",",
+            "     \"get_hash_file\","
+          ]
+        },
+        {
+          "id": "H4_49da4d",
+          "header": "-88,10 +100,16",
+          "lines": [
+            "     # Compose cache operations",
+            "     \"invalidate_compose_cache\",",
+            "     \"is_compose_cache_valid\",",
+            "+    \"load_compose_agent_trace\",",
+            "+    \"load_compose_hunk_graph\",",
+            "     \"load_compose_hunk_ids\",",
+            "+    \"load_compose_hunk_symbols\",",
+            "     \"load_compose_metadata\",",
+            "     \"load_compose_plan\",",
+            "+    \"save_compose_agent_trace\",",
+            "     \"save_compose_cache\",",
+            "+    \"save_compose_hunk_graph\",",
+            "     \"save_compose_hunk_ids\",",
+            "+    \"save_compose_hunk_symbols\",",
+            " ]",
+            " "
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/cache/compose.py",
+      "hunks": [
+        {
+          "id": "H5_ebf42d",
+          "header": "-17,8 +17,11",
+          "lines": [
+            " ",
+            " from hunknote.cache.models import ComposeCacheMetadata",
+            " from hunknote.cache.paths import (",
+            "+    get_compose_agent_trace_file,",
+            "     get_compose_hash_file,",
+            "+    get_compose_hunk_graph_file,",
+            "     get_compose_hunk_ids_file,",
+            "+    get_compose_hunk_symbols_file,",
+            "     get_compose_metadata_file,",
+            "     get_compose_plan_file,",
+            " )"
+          ]
+        },
+        {
+          "id": "H6_6b49af",
+          "header": "-60,6 +63,7",
+          "lines": [
+            "     retry_count: int = 0,",
+            "     retry_stats: list[dict] | None = None,",
+            "     thinking_tokens: int = 0,",
+            "+    agent_metadata: Optional[dict] = None,",
+            " ) -> None:",
+            "     \"\"\"Save the generated compose plan and its metadata to cache.",
+            " "
+          ]
+        },
+        {
+          "id": "H7_1f7f85",
+          "header": "-79,6 +83,7",
+          "lines": [
+            "         retry_count: Number of LLM retries performed (0 if none).",
+            "         retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].",
+            "         thinking_tokens: Number of internal thinking tokens used (thinking models).",
+            "+        agent_metadata: Agent metadata dict (when compose agent was used).",
+            "     \"\"\"",
+            "     # Save hash",
+            "     get_compose_hash_file(repo_root).write_text(context_hash)"
+          ]
+        },
+        {
+          "id": "H8_7f72e1",
+          "header": "-102,6 +107,7",
+          "lines": [
+            "         file_relationships_text=file_relationships_text,",
+            "         retry_count=retry_count,",
+            "         retry_stats=retry_stats,",
+            "+        agent=agent_metadata,",
+            "     )",
+            "     get_compose_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))",
+            " "
+          ]
+        },
+        {
+          "id": "H9_eeec66",
+          "header": "-149,7 +155,15",
+          "lines": [
+            "     Args:",
+            "         repo_root: The root directory of the git repository.",
+            "     \"\"\"",
+            "-    for file_getter in [get_compose_hash_file, get_compose_plan_file, get_compose_metadata_file, get_compose_hunk_ids_file]:",
+            "+    for file_getter in [",
+            "+        get_compose_hash_file,",
+            "+        get_compose_plan_file,",
+            "+        get_compose_metadata_file,",
+            "+        get_compose_hunk_ids_file,",
+            "+        get_compose_hunk_graph_file,",
+            "+        get_compose_hunk_symbols_file,",
+            "+        get_compose_agent_trace_file,",
+            "+    ]:",
+            "         file_path = file_getter(repo_root)",
+            "         if file_path.exists():",
+            "             file_path.unlink()"
+          ]
+        },
+        {
+          "id": "H10_e7eec3",
+          "header": "-187,3 +201,110",
+          "lines": [
+            "     except (json.JSONDecodeError, Exception):",
+            "         return None",
+            " ",
+            "+",
+            "+def save_compose_hunk_graph(",
+            "+    repo_root: Path,",
+            "+    graph_data: dict,",
+            "+) -> None:",
+            "+    \"\"\"Save the hunk dependency graph to a JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+        graph_data: Dictionary with graph edges, renames, components, etc.",
+            "+    \"\"\"",
+            "+    get_compose_hunk_graph_file(repo_root).write_text(",
+            "+        json.dumps(graph_data, indent=2, default=_set_to_list)",
+            "+    )",
+            "+",
+            "+",
+            "+def load_compose_hunk_graph(repo_root: Path) -> Optional[dict]:",
+            "+    \"\"\"Load the compose hunk dependency graph JSON.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with graph data, or None if not found.",
+            "+    \"\"\"",
+            "+    graph_file = get_compose_hunk_graph_file(repo_root)",
+            "+    if not graph_file.exists():",
+            "+        return None",
+            "+    try:",
+            "+        return json.loads(graph_file.read_text())",
+            "+    except (json.JSONDecodeError, Exception):",
+            "+        return None",
+            "+",
+            "+",
+            "+def save_compose_hunk_symbols(",
+            "+    repo_root: Path,",
+            "+    symbols_data: dict,",
+            "+) -> None:",
+            "+    \"\"\"Save the hunk symbol analyses to a JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+        symbols_data: Dictionary mapping hunk ID to symbol info.",
+            "+    \"\"\"",
+            "+    get_compose_hunk_symbols_file(repo_root).write_text(",
+            "+        json.dumps(symbols_data, indent=2, default=_set_to_list)",
+            "+    )",
+            "+",
+            "+",
+            "+def load_compose_hunk_symbols(repo_root: Path) -> Optional[dict]:",
+            "+    \"\"\"Load the compose hunk symbols JSON.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with symbol data, or None if not found.",
+            "+    \"\"\"",
+            "+    symbols_file = get_compose_hunk_symbols_file(repo_root)",
+            "+    if not symbols_file.exists():",
+            "+        return None",
+            "+    try:",
+            "+        return json.loads(symbols_file.read_text())",
+            "+    except (json.JSONDecodeError, Exception):",
+            "+        return None",
+            "+",
+            "+",
+            "+def save_compose_agent_trace(",
+            "+    repo_root: Path,",
+            "+    trace_data: dict,",
+            "+) -> None:",
+            "+    \"\"\"Save the agent execution trace to a JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+        trace_data: Dictionary with agent trace steps, timings, and results.",
+            "+    \"\"\"",
+            "+    get_compose_agent_trace_file(repo_root).write_text(",
+            "+        json.dumps(trace_data, indent=2, default=_set_to_list)",
+            "+    )",
+            "+",
+            "+",
+            "+def load_compose_agent_trace(repo_root: Path) -> Optional[dict]:",
+            "+    \"\"\"Load the compose agent trace JSON.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with trace data, or None if not found.",
+            "+    \"\"\"",
+            "+    trace_file = get_compose_agent_trace_file(repo_root)",
+            "+    if not trace_file.exists():",
+            "+        return None",
+            "+    try:",
+            "+        return json.loads(trace_file.read_text())",
+            "+    except (json.JSONDecodeError, Exception):",
+            "+        return None",
+            "+",
+            "+",
+            "+def _set_to_list(obj):",
+            "+    \"\"\"JSON serializer helper: convert sets to sorted lists.\"\"\"",
+            "+    if isinstance(obj, set):",
+            "+        return sorted(obj)",
+            "+    raise TypeError(f\"Object of type {type(obj).__name__} is not JSON serializable\")",
+            "+",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/cache/models.py",
+      "hunks": [
+        {
+          "id": "H11_ff21cd",
+          "header": "-50,4 +50,6",
+          "lines": [
+            "     # Retry statistics (for debugging purposes)",
+            "     retry_count: int = 0",
+            "     retry_stats: Optional[list[dict]] = None  # Per-retry token usage",
+            "+    # Agent metadata (compose agent mode)",
+            "+    agent: Optional[dict] = None  # Agent info when compose agent was used",
+            " "
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/cache/paths.py",
+      "hunks": [
+        {
+          "id": "H12_f63ea6",
+          "header": "-129,3 +129,40",
+          "lines": [
+            "     \"\"\"",
+            "     return get_cache_dir(repo_root) / \"hunknote_hunk_ids.json\"",
+            " ",
+            "+",
+            "+def get_compose_hunk_graph_file(repo_root: Path) -> Path:",
+            "+    \"\"\"Return path to the compose hunk dependency graph JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Path to hunknote_hunk_graph.json.",
+            "+    \"\"\"",
+            "+    return get_cache_dir(repo_root) / \"hunknote_hunk_graph.json\"",
+            "+",
+            "+",
+            "+def get_compose_hunk_symbols_file(repo_root: Path) -> Path:",
+            "+    \"\"\"Return path to the compose hunk symbols JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Path to hunknote_hunk_symbols.json.",
+            "+    \"\"\"",
+            "+    return get_cache_dir(repo_root) / \"hunknote_hunk_symbols.json\"",
+            "+",
+            "+",
+            "+def get_compose_agent_trace_file(repo_root: Path) -> Path:",
+            "+    \"\"\"Return path to the compose agent trace JSON file.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+",
+            "+    Returns:",
+            "+        Path to hunknote_agent_trace.json.",
+            "+    \"\"\"",
+            "+    return get_cache_dir(repo_root) / \"hunknote_agent_trace.json\"",
+            "+",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/cli/compose.py",
+      "hunks": [
+        {
+          "id": "H13_32caaa",
+          "header": "-25,6 +25,13",
+          "lines": [
+            "     show_in_pager,",
+            " )",
+            " from hunknote.compose.relationships import detect_file_relationships, format_relationships_for_llm",
+            "+from hunknote.cache import (",
+            "+    save_compose_agent_trace,",
+            "+    save_compose_hunk_graph,",
+            "+    save_compose_hunk_symbols,",
+            "+    load_compose_agent_trace,",
+            "+    load_compose_hunk_graph,",
+            "+)",
+            " ",
+            " ",
+            " def compose_command("
+          ]
+        },
+        {
+          "id": "H14_398353",
+          "header": "-82,6 +89,21",
+          "lines": [
+            "         \"--show\",",
+            "         help=\"Show the full diff for a compose commit ID (e.g., --show C1)\",",
+            "     ),",
+            "+    agent: Optional[bool] = typer.Option(",
+            "+        None,",
+            "+        \"--agent/--no-agent\",",
+            "+        help=\"Force agent mode (hunk-level grouping) on or off. Default: auto-detect.\",",
+            "+    ),",
+            "+    show_graph: bool = typer.Option(",
+            "+        False,",
+            "+        \"--graph\",",
+            "+        help=\"Render the hunk dependency graph on the terminal.\",",
+            "+    ),",
+            "+    show_trace: bool = typer.Option(",
+            "+        False,",
+            "+        \"--trace\",",
+            "+        help=\"Render the agent/sub-agent tracing logs on the terminal.\",",
+            "+    ),",
+            " ) -> None:",
+            "     \"\"\"Split staged changes into a clean commit stack.",
+            " "
+          ]
+        },
+        {
+          "id": "H15_57f683",
+          "header": "-174,6 +196,17",
+          "lines": [
+            "             _compose_show_diff(repo_root, show)",
+            "             raise typer.Exit(0)",
+            " ",
+            "+        # Handle --graph standalone: render cached graph and exit",
+            "+        if show_graph and not regenerate and not do_commit and not debug:",
+            "+            _render_graph(repo_root)",
+            "+            if not show_trace:",
+            "+                raise typer.Exit(0)",
+            "+",
+            "+        # Handle --trace standalone: render cached trace and exit",
+            "+        if show_trace and not regenerate and not do_commit and not debug:",
+            "+            _render_trace(repo_root)",
+            "+            raise typer.Exit(0)",
+            "+",
+            "         # Get branch and recent commits for context",
+            "         branch = get_branch()",
+            "         recent_commits_result = subprocess.run("
+          ]
+        },
+        {
+          "id": "H16_e5b740",
+          "header": "-295,7 +328,113",
+          "lines": [
+            "             file_relationships = detect_file_relationships(file_diffs, repo_root)",
+            "             file_relationships_text = format_relationships_for_llm(file_relationships)",
+            " ",
+            "-            # Build prompt",
+            "+            # Determine whether to use compose agent (hunk-level grouping)",
+            "+            from hunknote.compose.agent import run_compose_agent",
+            "+            from hunknote.compose.grouping import should_use_agent as _should_use_agent",
+            "+",
+            "+            use_agent = False",
+            "+            if agent is True:",
+            "+                use_agent = True",
+            "+            elif agent is False:",
+            "+                use_agent = False",
+            "+            else:",
+            "+                # Auto-detect: use agent for complex diffs",
+            "+                use_agent = _should_use_agent(inventory, file_diffs)",
+            "+",
+            "+            if use_agent:",
+            "+                # \u2500\u2500 Agent Path: Programmatic grouping + LLM messaging \u2500\u2500",
+            "+                try:",
+            "+                    from hunknote.llm import get_provider",
+            "+                    provider = get_provider()",
+            "+",
+            "+                    agent_result = run_compose_agent(",
+            "+                        file_diffs=file_diffs,",
+            "+                        inventory=inventory,",
+            "+                        style=effective_profile.value,",
+            "+                        max_commits=max_commits,",
+            "+                        branch=branch,",
+            "+                        recent_commits=recent_commits,",
+            "+                        force_agent=True,",
+            "+                        provider=provider,",
+            "+                    )",
+            "+",
+            "+                    if agent_result.used_agent and len(agent_result.plan.commits) > 0:",
+            "+                        plan = agent_result.plan",
+            "+                        llm_model = agent_result.llm_model",
+            "+                        llm_input_tokens = agent_result.input_tokens",
+            "+                        llm_output_tokens = agent_result.output_tokens",
+            "+                        llm_thinking_tokens = agent_result.thinking_tokens",
+            "+",
+            "+                        # Build agent metadata for cache",
+            "+                        agent_meta = _build_agent_metadata(agent_result)",
+            "+",
+            "+                        if debug:",
+            "+                            typer.echo(\"\", err=True)",
+            "+                            typer.echo(\"Agent Mode: ON (hunk-level grouping)\", err=True)",
+            "+                            typer.echo(f\"  Symbols extracted: {len(agent_result.symbol_analyses)}\", err=True)",
+            "+                            typer.echo(f\"  Graph edges: {sum(len(v) for v in agent_result.graph.values())}\", err=True)",
+            "+                            typer.echo(f\"  Groups formed: {len(agent_result.groups)}\", err=True)",
+            "+                            typer.echo(f\"  Renames detected: {len(agent_result.renames)}\", err=True)",
+            "+                            typer.echo(f\"  Large hunk annotations: {len(agent_result.large_hunk_annotations)}\", err=True)",
+            "+                            # Checkpoint validation results",
+            "+                            for commit_id, cp_result in agent_result.checkpoint_results:",
+            "+                                status = \"VALID\" if cp_result.valid else f\"INVALID ({len(cp_result.violations)} violations)\"",
+            "+                                typer.echo(f\"  Checkpoint {commit_id}: {status}\", err=True)",
+            "+                            typer.echo(\"\", err=True)",
+            "+",
+            "+                        # Save graph JSON",
+            "+                        graph_data = _build_graph_data(agent_result)",
+            "+                        save_compose_hunk_graph(repo_root, graph_data)",
+            "+",
+            "+                        # Save symbols JSON",
+            "+                        symbols_data = _build_symbols_data(agent_result)",
+            "+                        save_compose_hunk_symbols(repo_root, symbols_data)",
+            "+",
+            "+                        # Save agent trace JSON",
+            "+                        trace_data = _build_trace_data(agent_result)",
+            "+                        save_compose_agent_trace(repo_root, trace_data)",
+            "+",
+            "+                        # Save to cache",
+            "+                        changed_files = [f.file_path for f in file_diffs if not f.is_binary]",
+            "+                        save_compose_cache(",
+            "+                            repo_root=repo_root,",
+            "+                            context_hash=current_hash,",
+            "+                            plan_json=json.dumps(plan.model_dump(), indent=2),",
+            "+                            model=llm_model,",
+            "+                            input_tokens=llm_input_tokens,",
+            "+                            output_tokens=llm_output_tokens,",
+            "+                            changed_files=changed_files,",
+            "+                            total_hunks=len(inventory),",
+            "+                            num_commits=len(plan.commits),",
+            "+                            style=effective_profile.value,",
+            "+                            max_commits=max_commits,",
+            "+                            file_relationships_text=file_relationships_text or None,",
+            "+                            thinking_tokens=llm_thinking_tokens,",
+            "+                            agent_metadata=agent_meta,",
+            "+                        )",
+            "+                        hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)",
+            "+                        save_compose_hunk_ids(repo_root, hunk_ids_data)",
+            "+                    else:",
+            "+                        # Agent didn't produce results; fall through to single-shot",
+            "+                        plan = None",
+            "+                        if debug:",
+            "+                            typer.echo(\"Agent Mode: skipped (threshold not met)\", err=True)",
+            "+",
+            "+                except Exception as e:",
+            "+                    # Agent failed; fall through to single-shot",
+            "+                    plan = None",
+            "+                    if debug:",
+            "+                        typer.echo(f\"Agent Mode: failed ({e}), falling back to single-shot LLM\", err=True)",
+            "+",
+            "+        if plan is None:",
+            "+            # \u2500\u2500 Single-shot LLM Path (fallback or default for small diffs) \u2500\u2500",
+            "+            if not file_relationships_text:",
+            "+                file_relationships = detect_file_relationships(file_diffs, repo_root)",
+            "+                file_relationships_text = format_relationships_for_llm(file_relationships)",
+            "+            else:",
+            "+                # file_relationships already computed by agent path",
+            "+                file_relationships = detect_file_relationships(file_diffs, repo_root)",
+            "+",
+            "             prompt = build_compose_prompt(",
+            "                 file_diffs=file_diffs,",
+            "                 branch=branch,"
+          ]
+        },
+        {
+          "id": "H17_1e90f2",
+          "header": "-490,9 +629,47",
+          "lines": [
+            "             typer.echo(f\"  Hunks assigned: {total_hunks_in_plan}/{len(inventory)}\", err=True)",
+            "             typer.echo(\"\", err=True)",
+            " ",
+            "+            # Agent info (from cached metadata or live result)",
+            "+            agent_meta: dict | None = None",
+            "+            if cached_metadata and isinstance(cached_metadata.agent, dict):",
+            "+                agent_meta = cached_metadata.agent",
+            "+",
+            "+            if agent_meta:",
+            "+                typer.echo(\"Agent Info:\", err=True)",
+            "+                typer.echo(f\"  Mode: {agent_meta.get('mode', 'N/A')}\", err=True)",
+            "+                typer.echo(f\"  Symbols extracted: {agent_meta.get('symbols_extracted', 'N/A')}\", err=True)",
+            "+                typer.echo(f\"  Graph edges: {agent_meta.get('graph_edges', 'N/A')}\", err=True)",
+            "+                typer.echo(f\"  Renames detected: {agent_meta.get('renames_detected', 'N/A')}\", err=True)",
+            "+                typer.echo(f\"  Groups formed: {agent_meta.get('groups_formed', 'N/A')}\", err=True)",
+            "+                typer.echo(f\"  Large hunks: {agent_meta.get('large_hunks', 'N/A')}\", err=True)",
+            "+                langs = agent_meta.get(\"languages\", [])",
+            "+                if langs:",
+            "+                    typer.echo(f\"  Languages: {', '.join(langs)}\", err=True)",
+            "+                cp_summary = agent_meta.get(\"checkpoints\", {})",
+            "+                if cp_summary:",
+            "+                    typer.echo(f\"  Checkpoints: {cp_summary.get('total', 0)} checked, \"",
+            "+                               f\"{cp_summary.get('valid', 0)} valid, \"",
+            "+                               f\"{cp_summary.get('invalid', 0)} invalid\", err=True)",
+            "+                duration = agent_meta.get(\"total_duration_s\")",
+            "+                if duration:",
+            "+                    typer.echo(f\"  Agent duration: {duration}s\", err=True)",
+            "+                typer.echo(\"\", err=True)",
+            "+",
+            "             typer.echo(\"=\" * 60, err=True)",
+            "             typer.echo(\"\", err=True)",
+            " ",
+            "+        # \u2500\u2500 --graph: Render the hunk dependency graph \u2500\u2500",
+            "+        if show_graph:",
+            "+            _render_graph(repo_root)",
+            "+",
+            "+        # \u2500\u2500 --trace: Render the agent trace logs \u2500\u2500",
+            "+        if show_trace:",
+            "+            _render_trace(repo_root)",
+            "+",
+            "+        # If --graph or --trace was the only purpose, exit early",
+            "+        if (show_graph or show_trace) and not do_commit and not debug and not show_json and not show:",
+            "+            raise typer.Exit()",
+            "+",
+            "         # Try to auto-correct hallucinated hunk IDs before validation",
+            "         corrections_made, corrections_log = try_correct_hunk_ids(plan, inventory)",
+            " "
+          ]
+        },
+        {
+          "id": "H18_1f4c32",
+          "header": "-993,3 +1170,311",
+          "lines": [
+            " ",
+            "     return hunk_ids_data",
+            " ",
+            "+",
+            "+def _build_agent_metadata(agent_result) -> dict:",
+            "+    \"\"\"Build agent metadata dict for ComposeCacheMetadata.",
+            "+",
+            "+    Args:",
+            "+        agent_result: ComposeAgentResult from the agent pipeline.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with agent info for the metadata JSON.",
+            "+    \"\"\"",
+            "+    total_edges = sum(len(v) for v in agent_result.graph.values())",
+            "+    languages = list(set(",
+            "+        s.language for s in agent_result.symbol_analyses.values()",
+            "+    ))",
+            "+",
+            "+    cp_valid = sum(1 for _, r in agent_result.checkpoint_results if r.valid)",
+            "+    cp_invalid = sum(1 for _, r in agent_result.checkpoint_results if not r.valid)",
+            "+",
+            "+    # Find total duration from trace log",
+            "+    total_duration = None",
+            "+    for entry in reversed(agent_result.trace_log):",
+            "+        if entry.get(\"phase\") == \"agent_complete\":",
+            "+            total_duration = entry.get(\"duration_s\")",
+            "+            break",
+            "+",
+            "+    return {",
+            "+        \"mode\": \"agent\",",
+            "+        \"symbols_extracted\": len(agent_result.symbol_analyses),",
+            "+        \"graph_edges\": total_edges,",
+            "+        \"renames_detected\": len(agent_result.renames),",
+            "+        \"groups_formed\": len(agent_result.groups),",
+            "+        \"large_hunks\": len(agent_result.large_hunk_annotations),",
+            "+        \"languages\": languages,",
+            "+        \"checkpoints\": {",
+            "+            \"total\": len(agent_result.checkpoint_results),",
+            "+            \"valid\": cp_valid,",
+            "+            \"invalid\": cp_invalid,",
+            "+        },",
+            "+        \"total_duration_s\": total_duration,",
+            "+    }",
+            "+",
+            "+",
+            "+def _build_graph_data(agent_result) -> dict:",
+            "+    \"\"\"Build graph data dict for hunknote_hunk_graph.json.",
+            "+",
+            "+    Args:",
+            "+        agent_result: ComposeAgentResult from the agent pipeline.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with graph edges, components, and renames.",
+            "+    \"\"\"",
+            "+    # Edges: convert set values to sorted lists for JSON",
+            "+    edges = {}",
+            "+    for source, targets in agent_result.graph.items():",
+            "+        edges[source] = sorted(targets)",
+            "+",
+            "+    # Build nodes with file info",
+            "+    nodes = {}",
+            "+    for hunk_id, symbols in agent_result.symbol_analyses.items():",
+            "+        nodes[hunk_id] = {",
+            "+            \"file\": symbols.file_path,",
+            "+            \"language\": symbols.language,",
+            "+            \"defines\": sorted(symbols.defines),",
+            "+            \"references\": sorted(symbols.references),",
+            "+        }",
+            "+",
+            "+    # Groups (connected components after merge)",
+            "+    groups = []",
+            "+    for i, g in enumerate(agent_result.groups):",
+            "+        groups.append({",
+            "+            \"group_id\": i + 1,",
+            "+            \"hunks\": g.hunk_ids,",
+            "+            \"files\": g.files,",
+            "+        })",
+            "+",
+            "+    # Renames",
+            "+    renames = [",
+            "+        {\"old\": r.old_name, \"new\": r.new_name, \"hunk\": r.defining_hunk}",
+            "+        for r in agent_result.renames",
+            "+    ]",
+            "+",
+            "+    return {",
+            "+        \"nodes\": nodes,",
+            "+        \"edges\": edges,",
+            "+        \"groups\": groups,",
+            "+        \"renames\": renames,",
+            "+        \"total_edges\": sum(len(v) for v in agent_result.graph.values()),",
+            "+        \"total_nodes\": len(nodes),",
+            "+    }",
+            "+",
+            "+",
+            "+def _build_symbols_data(agent_result) -> dict:",
+            "+    \"\"\"Build symbols data dict for hunknote_hunk_symbols.json.",
+            "+",
+            "+    Args:",
+            "+        agent_result: ComposeAgentResult from the agent pipeline.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary mapping hunk ID to symbol details.",
+            "+    \"\"\"",
+            "+    symbols = {}",
+            "+    for hunk_id, s in agent_result.symbol_analyses.items():",
+            "+        symbols[hunk_id] = {",
+            "+            \"file_path\": s.file_path,",
+            "+            \"language\": s.language,",
+            "+            \"defines\": sorted(s.defines),",
+            "+            \"removes\": sorted(s.removes),",
+            "+            \"modifies\": sorted(s.modifies),",
+            "+            \"references\": sorted(s.references),",
+            "+            \"imports_added\": sorted(s.imports_added),",
+            "+            \"imports_removed\": sorted(s.imports_removed),",
+            "+            \"exports_added\": sorted(s.exports_added),",
+            "+            \"exports_removed\": sorted(s.exports_removed),",
+            "+        }",
+            "+",
+            "+    # Add large hunk annotations",
+            "+    large_hunks = {}",
+            "+    for hunk_id, ann in agent_result.large_hunk_annotations.items():",
+            "+        large_hunks[hunk_id] = {",
+            "+            \"is_new_file\": ann.is_new_file,",
+            "+            \"is_large_hunk\": ann.is_large_hunk,",
+            "+            \"line_count\": ann.line_count,",
+            "+            \"definitions_count\": ann.definitions_count,",
+            "+            \"definitions\": ann.definitions,",
+            "+            \"has_multiple_logical_sections\": ann.has_multiple_logical_sections,",
+            "+            \"estimated_sections\": ann.estimated_sections,",
+            "+        }",
+            "+",
+            "+    return {",
+            "+        \"symbols\": symbols,",
+            "+        \"large_hunks\": large_hunks,",
+            "+    }",
+            "+",
+            "+",
+            "+def _build_trace_data(agent_result) -> dict:",
+            "+    \"\"\"Build trace data dict for hunknote_agent_trace.json.",
+            "+",
+            "+    Args:",
+            "+        agent_result: ComposeAgentResult from the agent pipeline.",
+            "+",
+            "+    Returns:",
+            "+        Dictionary with the full agent execution trace.",
+            "+    \"\"\"",
+            "+    return {",
+            "+        \"agent\": \"compose_agent\",",
+            "+        \"used_agent\": agent_result.used_agent,",
+            "+        \"phases\": agent_result.trace_log,",
+            "+    }",
+            "+",
+            "+",
+            "+def _render_graph(repo_root: Path) -> None:",
+            "+    \"\"\"Render the hunk dependency graph on the terminal.",
+            "+",
+            "+    Reads from .hunknote/hunknote_hunk_graph.json and renders an",
+            "+    ASCII-art graph with nodes, edges, and groups.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+    \"\"\"",
+            "+    graph_data = load_compose_hunk_graph(repo_root)",
+            "+    if not graph_data:",
+            "+        typer.echo(\"\\nNo hunk dependency graph found.\", err=True)",
+            "+        typer.echo(\"Run 'hunknote compose --agent' to generate it.\\n\", err=True)",
+            "+        return",
+            "+",
+            "+    nodes = graph_data.get(\"nodes\", {})",
+            "+    edges = graph_data.get(\"edges\", {})",
+            "+    groups = graph_data.get(\"groups\", [])",
+            "+    renames = graph_data.get(\"renames\", [])",
+            "+    total_edges = graph_data.get(\"total_edges\", 0)",
+            "+",
+            "+    typer.echo(\"\")",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"              HUNK DEPENDENCY GRAPH\")",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"\")",
+            "+",
+            "+    # Summary",
+            "+    typer.echo(f\"  Nodes: {len(nodes)}    Edges: {total_edges}    \"",
+            "+               f\"Groups: {len(groups)}    Renames: {len(renames)}\")",
+            "+    typer.echo(\"\")",
+            "+",
+            "+    # Render groups with their hunks and dependencies",
+            "+    for group in groups:",
+            "+        gid = group.get(\"group_id\", \"?\")",
+            "+        g_hunks = group.get(\"hunks\", [])",
+            "+        g_files = group.get(\"files\", [])",
+            "+",
+            "+        typer.echo(f\"  \u250c\u2500 Group {gid}  ({len(g_hunks)} hunks, {len(g_files)} files)\")",
+            "+",
+            "+        for hid in g_hunks:",
+            "+            node = nodes.get(hid, {})",
+            "+            file_path = node.get(\"file\", \"?\")",
+            "+            lang = node.get(\"language\", \"?\")",
+            "+            defines = node.get(\"defines\", [])",
+            "+            refs = node.get(\"references\", [])",
+            "+",
+            "+            # Node line",
+            "+            deps = edges.get(hid, [])",
+            "+            dep_str = \"\"",
+            "+            if deps:",
+            "+                dep_str = f\"  \u2192 {', '.join(deps)}\"",
+            "+",
+            "+            defs_str = \"\"",
+            "+            if defines:",
+            "+                defs_str = f\"  [def: {', '.join(defines[:3])}{'...' if len(defines) > 3 else ''}]\"",
+            "+",
+            "+            typer.echo(f\"  \u2502  {hid}  {file_path} ({lang}){defs_str}{dep_str}\")",
+            "+",
+            "+        typer.echo(f\"  \u2502  Files: {', '.join(g_files)}\")",
+            "+        typer.echo(f\"  \u2514{'\u2500' * 60}\")",
+            "+        typer.echo(\"\")",
+            "+",
+            "+    # Renames",
+            "+    if renames:",
+            "+        typer.echo(\"  Renames detected:\")",
+            "+        for r in renames:",
+            "+            typer.echo(f\"    {r.get('old', '?')} \u2192 {r.get('new', '?')}  (in {r.get('hunk', '?')})\")",
+            "+        typer.echo(\"\")",
+            "+",
+            "+    # Edge list (compact)",
+            "+    if edges:",
+            "+        typer.echo(\"  Dependency edges:\")",
+            "+        for source, targets in sorted(edges.items()):",
+            "+            for target in targets:",
+            "+                src_file = nodes.get(source, {}).get(\"file\", \"?\")",
+            "+                tgt_file = nodes.get(target, {}).get(\"file\", \"?\")",
+            "+                typer.echo(f\"    {source} ({src_file})  \u2192  {target} ({tgt_file})\")",
+            "+        typer.echo(\"\")",
+            "+",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"\")",
+            "+",
+            "+",
+            "+def _render_trace(repo_root: Path) -> None:",
+            "+    \"\"\"Render the agent trace logs on the terminal.",
+            "+",
+            "+    Reads from .hunknote/hunknote_agent_trace.json and renders a",
+            "+    user-friendly timeline of agent execution phases.",
+            "+",
+            "+    Args:",
+            "+        repo_root: The root directory of the git repository.",
+            "+    \"\"\"",
+            "+    trace_data = load_compose_agent_trace(repo_root)",
+            "+    if not trace_data:",
+            "+        typer.echo(\"\\nNo agent trace found.\", err=True)",
+            "+        typer.echo(\"Run 'hunknote compose --agent' to generate it.\\n\", err=True)",
+            "+        return",
+            "+",
+            "+    phases = trace_data.get(\"phases\", [])",
+            "+    if not phases:",
+            "+        typer.echo(\"\\nAgent trace is empty.\\n\", err=True)",
+            "+        return",
+            "+",
+            "+    typer.echo(\"\")",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"              AGENT EXECUTION TRACE\")",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"\")",
+            "+",
+            "+    # Status icons",
+            "+    status_icons = {",
+            "+        \"completed\": \"\u2713\",",
+            "+        \"skipped\": \"\u25cb\",",
+            "+        \"activated\": \"\u25cf\",",
+            "+        \"fallback\": \"\u26a0\",",
+            "+    }",
+            "+",
+            "+    for i, entry in enumerate(phases):",
+            "+        phase = entry.get(\"phase\", \"unknown\")",
+            "+        status = entry.get(\"status\", \"unknown\")",
+            "+        duration = entry.get(\"duration_s\", 0)",
+            "+        timestamp = entry.get(\"timestamp\", \"\")",
+            "+        details = entry.get(\"details\", {})",
+            "+",
+            "+        icon = status_icons.get(status, \"?\")",
+            "+        phase_label = phase.replace(\"_\", \" \").title()",
+            "+",
+            "+        # Duration display",
+            "+        dur_str = f\"  ({duration:.3f}s)\" if duration > 0 else \"\"",
+            "+",
+            "+        # Phase header",
+            "+        typer.echo(f\"  {icon}  {phase_label}  [{status}]{dur_str}\")",
+            "+",
+            "+        # Phase details (indented)",
+            "+        if details:",
+            "+            for key, value in details.items():",
+            "+                if isinstance(value, list):",
+            "+                    if len(value) <= 5:",
+            "+                        typer.echo(f\"     \u2502  {key}: {value}\")",
+            "+                    else:",
+            "+                        typer.echo(f\"     \u2502  {key}: [{len(value)} items]\")",
+            "+                elif isinstance(value, dict):",
+            "+                    typer.echo(f\"     \u2502  {key}:\")",
+            "+                    for k2, v2 in value.items():",
+            "+                        typer.echo(f\"     \u2502    {k2}: {v2}\")",
+            "+                else:",
+            "+                    typer.echo(f\"     \u2502  {key}: {value}\")",
+            "+",
+            "+        # Separator between phases (except last)",
+            "+        if i < len(phases) - 1:",
+            "+            typer.echo(f\"     \u2502\")",
+            "+",
+            "+    typer.echo(\"\")",
+            "+    typer.echo(\"=\" * 64)",
+            "+    typer.echo(\"\")",
+            "+",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/__init__.py",
+      "hunks": [
+        {
+          "id": "H19_125631",
+          "header": "-1,7 +1,9",
+          "lines": [
+            " \"\"\"Compose feature for Hunknote - split changes into atomic commits.",
+            " ",
+            " This package provides modular compose handling with:",
+            "-- models: HunkRef, FileDiff, PlannedCommit, ComposePlan, BlueprintSection",
+            "+- models: HunkRef, FileDiff, PlannedCommit, ComposePlan, BlueprintSection,",
+            "+          HunkSymbols, LargeHunkAnnotation, Rename, CheckpointResult,",
+            "+          Violation, CommitGroup",
+            " - parser: parse_unified_diff and related functions",
+            " - inventory: build_hunk_inventory, format_inventory_for_llm",
+            " - validation: validate_plan, PlanValidationError"
+          ]
+        },
+        {
+          "id": "H20_a984cf",
+          "header": "-11,6 +13,13",
+          "lines": [
+            " - executor: ComposeSnapshot, ComposeExecutionError, create_snapshot,",
+            "             restore_from_snapshot, execute_commit",
+            " - cleanup: cleanup_temp_files",
+            "+- extractors: Language-specific symbol extractors (agent)",
+            "+- symbols: extract_symbols_from_hunk, extract_all_symbols, annotate_large_hunks (agent)",
+            "+- graph: build_hunk_dependency_graph, compute_connected_components (agent)",
+            "+- checkpoint: validate_commit_checkpoint, validate_plan_checkpoints (agent)",
+            "+- grouping: should_use_agent, group_hunks_programmatic (agent)",
+            "+- messenger: build_message_prompt, COMPOSE_MESSAGE_SYSTEM_PROMPT (agent)",
+            "+- agent: run_compose_agent, ComposeAgentResult (agent orchestrator)",
+            " \"\"\"",
+            " ",
+            " # Models"
+          ]
+        },
+        {
+          "id": "H21_9e7c81",
+          "header": "-75,6 +84,58",
+          "lines": [
+            "     cleanup_temp_files,",
+            " )",
+            " ",
+            "+# Agent: Symbol Extraction",
+            "+from hunknote.compose.symbols import (",
+            "+    extract_all_symbols,",
+            "+    extract_symbols_from_hunk,",
+            "+    annotate_large_hunks,",
+            "+)",
+            "+",
+            "+# Agent: Models",
+            "+from hunknote.compose.models import (",
+            "+    HunkSymbols,",
+            "+    LargeHunkAnnotation,",
+            "+    Rename,",
+            "+    CheckpointResult,",
+            "+    Violation,",
+            "+    CommitGroup,",
+            "+    SymbolSet,",
+            "+)",
+            "+",
+            "+# Agent: Dependency Graph",
+            "+from hunknote.compose.graph import (",
+            "+    build_hunk_dependency_graph,",
+            "+    compute_connected_components,",
+            "+    detect_renames,",
+            "+    find_related_hunks,",
+            "+    topological_sort_groups,",
+            "+)",
+            "+",
+            "+# Agent: Checkpoint Validation",
+            "+from hunknote.compose.checkpoint import (",
+            "+    validate_commit_checkpoint,",
+            "+    validate_plan_checkpoints,",
+            "+)",
+            "+",
+            "+# Agent: Grouping",
+            "+from hunknote.compose.grouping import (",
+            "+    group_hunks_programmatic,",
+            "+    should_use_agent,",
+            "+)",
+            "+",
+            "+# Agent: Messenger",
+            "+from hunknote.compose.messenger import (",
+            "+    COMPOSE_MESSAGE_SYSTEM_PROMPT,",
+            "+    build_message_prompt,",
+            "+    create_plan_from_groups,",
+            "+)",
+            "+",
+            "+# Agent: Orchestrator",
+            "+from hunknote.compose.agent import (",
+            "+    ComposeAgentResult,",
+            "+    run_compose_agent,",
+            "+)",
+            "+",
+            " ",
+            " __all__ = [",
+            "     # Models"
+          ]
+        },
+        {
+          "id": "H22_2d7c8b",
+          "header": "-112,5 +173,35",
+          "lines": [
+            "     \"execute_commit\",",
+            "     # Cleanup",
+            "     \"cleanup_temp_files\",",
+            "+    # Agent: Models",
+            "+    \"HunkSymbols\",",
+            "+    \"LargeHunkAnnotation\",",
+            "+    \"Rename\",",
+            "+    \"CheckpointResult\",",
+            "+    \"Violation\",",
+            "+    \"CommitGroup\",",
+            "+    \"SymbolSet\",",
+            "+    # Agent: Symbols",
+            "+    \"extract_symbols_from_hunk\",",
+            "+    \"extract_all_symbols\",",
+            "+    \"annotate_large_hunks\",",
+            "+    # Agent: Graph",
+            "+    \"build_hunk_dependency_graph\",",
+            "+    \"compute_connected_components\",",
+            "+    \"detect_renames\",",
+            "+    \"find_related_hunks\",",
+            "+    \"topological_sort_groups\",",
+            "+    # Agent: Checkpoint",
+            "+    \"validate_commit_checkpoint\",",
+            "+    \"validate_plan_checkpoints\",",
+            "+    # Agent: Grouping",
+            "+    \"group_hunks_programmatic\",",
+            "+    \"should_use_agent\",",
+            "+    # Agent: Messenger",
+            "+    \"COMPOSE_MESSAGE_SYSTEM_PROMPT\",",
+            "+    \"build_message_prompt\",",
+            "+    \"create_plan_from_groups\",",
+            "+    # Agent: Orchestrator",
+            "+    \"ComposeAgentResult\",",
+            "+    \"run_compose_agent\",",
+            " ]",
+            "-"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/agent.py",
+      "hunks": [
+        {
+          "id": "H23_6a0f45",
+          "header": "-0,0 +1,360",
+          "lines": [
+            "+\"\"\"Compose Agent \u2014 Orchestrator for hunk-level commit planning.",
+            "+",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import logging",
+            "+import time",
+            "+from datetime import datetime, timezone",
+            "+from typing import Any",
+            "+",
+            "+from hunknote.compose.checkpoint import (",
+            "+from hunknote.compose.graph import (",
+            "+from hunknote.compose.grouping import group_hunks_programmatic, should_use_agent",
+            "+from hunknote.compose.messenger import (",
+            "+from hunknote.compose.models import (",
+            "+from hunknote.compose.symbols import (",
+            "+",
+            "+logger = logging.getLogger(__name__)",
+            "+",
+            "+",
+            "+class ComposeAgentResult:",
+            "+    \"\"\"Result from the compose agent pipeline.\"\"\"",
+            "+    def __init__(",
+            "+def run_compose_agent(",
+            "+    \"\"\"Run the compose agent pipeline.",
+            "+    \"\"\"",
+            "+    def _trace(phase: str, status: str, details: dict | None = None, duration: float = 0.0):",
+            "+            from hunknote.llm.base import parse_json_response",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+def _merge_to_max_commits(",
+            "+    \"\"\"Merge groups until we have at most max_commits.",
+            "+    \"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/checkpoint.py",
+      "hunks": [
+        {
+          "id": "H24_7c72a2",
+          "header": "-0,0 +1,253",
+          "lines": [
+            "+\"\"\"Checkpoint validator for the Compose Agent.",
+            "+",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+from hunknote.compose.models import (",
+            "+",
+            "+",
+            "+def validate_commit_checkpoint(",
+            "+    \"\"\"Validate that a checkpoint is structurally valid.",
+            "+    \"\"\"",
+            "+                    from hunknote.compose.graph import _extract_symbol_from_import",
+            "+",
+            "+",
+            "+",
+            "+            from hunknote.compose.graph import _extract_symbol_from_import",
+            "+",
+            "+",
+            "+",
+            "+def validate_plan_checkpoints(",
+            "+    \"\"\"Validate all checkpoints in a compose plan sequentially.",
+            "+    \"\"\"",
+            "+def _looks_like_rename(old: str, new: str) -> bool:",
+            "+    \"\"\"Quick check if old \u2192 new looks like a rename.\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/__init__.py",
+      "hunks": [
+        {
+          "id": "H25_4f0286",
+          "header": "-0,0 +1,125",
+          "lines": [
+            "+\"\"\"Symbol extractor registry for Hunknote Compose Agent.",
+            "+",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor, SymbolSet",
+            "+from hunknote.compose.extractors.python_extractor import PythonExtractor",
+            "+from hunknote.compose.extractors.js_ts_extractor import JavaScriptExtractor, TypeScriptExtractor",
+            "+from hunknote.compose.extractors.go_extractor import GoExtractor",
+            "+from hunknote.compose.extractors.rust_extractor import RustExtractor",
+            "+from hunknote.compose.extractors.java_kotlin_extractor import JavaExtractor, KotlinExtractor",
+            "+from hunknote.compose.extractors.ruby_extractor import RubyExtractor",
+            "+from hunknote.compose.extractors.c_cpp_extractor import CExtractor, CppExtractor",
+            "+from hunknote.compose.extractors.csharp_extractor import CSharpExtractor",
+            "+from hunknote.compose.extractors.swift_extractor import SwiftExtractor",
+            "+from hunknote.compose.extractors.php_extractor import PHPExtractor",
+            "+from hunknote.compose.extractors.universal_extractor import UniversalFallbackExtractor",
+            "+from hunknote.compose.extractors.noncode_extractor import (",
+            "+",
+            "+",
+            "+EXTRACTORS: dict[str, SymbolExtractor] = {",
+            "+",
+            "+_FALLBACK = UniversalFallbackExtractor()",
+            "+",
+            "+",
+            "+def get_extractor(file_path: str) -> SymbolExtractor:",
+            "+    \"\"\"Get the appropriate extractor for a file path.",
+            "+    \"\"\"",
+            "+    import os",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+__all__ = [",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/base.py",
+      "hunks": [
+        {
+          "id": "H26_63b8f1",
+          "header": "-0,0 +1,173",
+          "lines": [
+            "+\"\"\"Base class and utilities for symbol extractors.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+from abc import ABC, abstractmethod",
+            "+from dataclasses import dataclass, field",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class SymbolSet:",
+            "+    \"\"\"Symbols extracted from a code fragment.\"\"\"",
+            "+DEFINITION_KEYWORDS = frozenset({",
+            "+",
+            "+_DEFINITION_IDENT_RE = re.compile(",
+            "+",
+            "+",
+            "+def is_module_scope(line: str, language: str = \"\") -> bool:",
+            "+    \"\"\"Check if a line is at module/file scope (not inside a function body).",
+            "+    \"\"\"",
+            "+def _is_definition_keyword(stripped_line: str, language: str = \"\") -> bool:",
+            "+    \"\"\"Check if a stripped line starts with a definition keyword.",
+            "+    \"\"\"",
+            "+class SymbolExtractor(ABC):",
+            "+    \"\"\"Abstract base class for language-specific symbol extractors.",
+            "+    from a diff hunk) and extracts module-scope symbols.",
+            "+    \"\"\"",
+            "+",
+            "+    @abstractmethod",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract symbol definitions (function, class, variable, type names).",
+            "+        \"\"\"",
+            "+    @abstractmethod",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract symbol references (identifiers used, not defined here).",
+            "+        \"\"\"",
+            "+    @abstractmethod",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract import/require/include statements.",
+            "+        \"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/c_cpp_extractor.py",
+      "hunks": [
+        {
+          "id": "H27_944418",
+          "header": "-0,0 +1,86",
+          "lines": [
+            "+\"\"\"C / C++ symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class CExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for C.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class CppExtractor(CExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for C++ (extends C).\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/csharp_extractor.py",
+      "hunks": [
+        {
+          "id": "H28_09657e",
+          "header": "-0,0 +1,72",
+          "lines": [
+            "+\"\"\"C# symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class CSharpExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for C#.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/go_extractor.py",
+      "hunks": [
+        {
+          "id": "H29_8f1c8c",
+          "header": "-0,0 +1,57",
+          "lines": [
+            "+\"\"\"Go symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class GoExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Go.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/java_kotlin_extractor.py",
+      "hunks": [
+        {
+          "id": "H30_b1d6f1",
+          "header": "-0,0 +1,125",
+          "lines": [
+            "+\"\"\"Java / Kotlin symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class JavaExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Java.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class KotlinExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Kotlin.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/js_ts_extractor.py",
+      "hunks": [
+        {
+          "id": "H31_d3950a",
+          "header": "-0,0 +1,80",
+          "lines": [
+            "+\"\"\"JavaScript / TypeScript symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor, is_module_scope",
+            "+",
+            "+",
+            "+class JavaScriptExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for JavaScript.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class TypeScriptExtractor(JavaScriptExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for TypeScript (extends JavaScript).\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/noncode_extractor.py",
+      "hunks": [
+        {
+          "id": "H32_9acdf0",
+          "header": "-0,0 +1,238",
+          "lines": [
+            "+\"\"\"Non-code file symbol extractors.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class ProtobufExtractor(SymbolExtractor):",
+            "+    \"\"\"Extractor for Protocol Buffer (.proto) files.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class GraphQLExtractor(SymbolExtractor):",
+            "+    \"\"\"Extractor for GraphQL schema files.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class YAMLExtractor(SymbolExtractor):",
+            "+    \"\"\"Extractor for YAML configuration files.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class JSONExtractor(SymbolExtractor):",
+            "+    \"\"\"Extractor for JSON configuration files.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class TOMLExtractor(SymbolExtractor):",
+            "+    \"\"\"Extractor for TOML configuration files.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+class SQLExtractor(SymbolExtractor):"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/php_extractor.py",
+      "hunks": [
+        {
+          "id": "H33_fa2eed",
+          "header": "-0,0 +1,58",
+          "lines": [
+            "+\"\"\"PHP symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class PHPExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for PHP.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/python_extractor.py",
+      "hunks": [
+        {
+          "id": "H34_da0410",
+          "header": "-0,0 +1,174",
+          "lines": [
+            "+\"\"\"Python symbol extractor \u2014 Tier 1 (AST-based, highest accuracy).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import ast",
+            "+import re",
+            "+from typing import Set",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor, is_module_scope",
+            "+",
+            "+",
+            "+class PythonExtractor(SymbolExtractor):",
+            "+    \"\"\"AST-based symbol extractor for Python code.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract function, class, and module-level variable definitions.\"\"\"",
+            "+    def _extract_definitions_regex(self, code: str) -> set[str]:",
+            "+        \"\"\"Regex fallback for code fragments that don't parse as valid AST.\"\"\"",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract function/class references (calls and type annotations).\"\"\"",
+            "+    def _extract_references_regex(self, code: str) -> set[str]:",
+            "+        \"\"\"Regex fallback for function call references.\"\"\"",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract all import statements using AST.\"\"\"",
+            "+    def _extract_imports_regex(self, code: str) -> set[str]:",
+            "+        \"\"\"Regex fallback for import extraction.\"\"\"",
+            "+    def extract_exports(self, code: str) -> set[str]:",
+            "+        \"\"\"Extract __all__ exports from Python modules.\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/ruby_extractor.py",
+      "hunks": [
+        {
+          "id": "H35_514942",
+          "header": "-0,0 +1,59",
+          "lines": [
+            "+\"\"\"Ruby symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class RubyExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Ruby.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/rust_extractor.py",
+      "hunks": [
+        {
+          "id": "H36_5a9f96",
+          "header": "-0,0 +1,86",
+          "lines": [
+            "+\"\"\"Rust symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class RustExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Rust.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/swift_extractor.py",
+      "hunks": [
+        {
+          "id": "H37_1e767d",
+          "header": "-0,0 +1,67",
+          "lines": [
+            "+\"\"\"Swift symbol extractor \u2014 Tier 2 (regex-based).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor",
+            "+",
+            "+",
+            "+class SwiftExtractor(SymbolExtractor):",
+            "+    \"\"\"Regex-based symbol extractor for Swift.\"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/extractors/universal_extractor.py",
+      "hunks": [
+        {
+          "id": "H38_322c54",
+          "header": "-0,0 +1,102",
+          "lines": [
+            "+\"\"\"Universal fallback symbol extractor \u2014 Tier 3.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+",
+            "+from hunknote.compose.extractors.base import SymbolExtractor, is_module_scope",
+            "+",
+            "+",
+            "+class UniversalFallbackExtractor(SymbolExtractor):",
+            "+    \"\"\"Universal fallback extractor for unknown/unsupported languages.",
+            "+    \"\"\"",
+            "+    def extract_definitions(self, code: str) -> set[str]:",
+            "+    def extract_references(self, code: str) -> set[str]:",
+            "+    def extract_imports(self, code: str) -> set[str]:",
+            "+    def extract_exports(self, code: str) -> set[str]:"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/graph.py",
+      "hunks": [
+        {
+          "id": "H39_c7eb8f",
+          "header": "-0,0 +1,384",
+          "lines": [
+            "+\"\"\"Hunk-level dependency graph for the Compose Agent.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+import re",
+            "+from collections import defaultdict, deque",
+            "+",
+            "+from hunknote.compose.models import HunkSymbols, Rename",
+            "+",
+            "+",
+            "+def _extract_symbol_from_import(import_path: str) -> str:",
+            "+    \"\"\"Extract the symbol name from any language's import path.",
+            "+    \"\"\"",
+            "+def detect_renames(",
+            "+    \"\"\"Detect rename pairs within hunks.",
+            "+    \"\"\"",
+            "+def _is_likely_rename(old_name: str, new_name: str) -> bool:",
+            "+    \"\"\"Heuristic: check if old_name \u2192 new_name looks like a rename.",
+            "+    \"\"\"",
+            "+def build_hunk_dependency_graph(",
+            "+    \"\"\"Build a directed dependency graph between hunks.",
+            "+    \"\"\"",
+            "+def find_related_hunks(",
+            "+    \"\"\"Find all hunks transitively connected to a given hunk.",
+            "+    \"\"\"",
+            "+def compute_connected_components(",
+            "+    \"\"\"Compute connected components of the hunk dependency graph.",
+            "+    \"\"\"",
+            "+def build_inter_group_edges(",
+            "+    \"\"\"Build dependency edges between commit groups.",
+            "+    \"\"\"",
+            "+def topological_sort_groups(",
+            "+    \"\"\"Topologically sort commit groups by inter-group dependencies.",
+            "+    \"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/grouping.py",
+      "hunks": [
+        {
+          "id": "H40_3d5f86",
+          "header": "-0,0 +1,186",
+          "lines": [
+            "+\"\"\"Grouping logic for the Compose Agent.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+from hunknote.compose.checkpoint import validate_commit_checkpoint",
+            "+from hunknote.compose.graph import (",
+            "+from hunknote.compose.models import CommitGroup, FileDiff, HunkRef, HunkSymbols",
+            "+",
+            "+",
+            "+AGENT_HUNK_THRESHOLD = 10",
+            "+AGENT_CONNECTIVITY_THRESHOLD = 0.5",
+            "+",
+            "+",
+            "+def should_use_agent(",
+            "+    \"\"\"Determine whether to use the agent or single-shot LLM.",
+            "+    \"\"\"",
+            "+def group_hunks_programmatic(",
+            "+    \"\"\"Group hunks into atomic commit groups using the dependency graph.",
+            "+    \"\"\"",
+            "+def _validate_and_merge(",
+            "+    \"\"\"Validate checkpoints and merge groups that cause violations.",
+            "+    \"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/messenger.py",
+      "hunks": [
+        {
+          "id": "H41_ce13fd",
+          "header": "-0,0 +1,188",
+          "lines": [
+            "+\"\"\"Message generation for the Compose Agent (Messenger sub-agent).",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+",
+            "+from hunknote.compose.models import (",
+            "+",
+            "+",
+            "+COMPOSE_MESSAGE_SYSTEM_PROMPT = \"\"\"You are an expert software engineer writing commit messages for pre-grouped changes.",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+",
+            "+def build_message_prompt(",
+            "+    \"\"\"Build a prompt for generating commit messages for pre-grouped hunks.",
+            "+    \"\"\"",
+            "+def create_plan_from_groups(",
+            "+    \"\"\"Create a ComposePlan from commit groups and optional LLM-generated messages.",
+            "+    \"\"\"",
+            "+def _infer_commit_type(group: CommitGroup) -> str:",
+            "+    \"\"\"Infer the conventional commit type from file paths.\"\"\"",
+            "+def _infer_scope(group: CommitGroup) -> str:",
+            "+    \"\"\"Infer the scope from file paths.\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/models.py",
+      "hunks": [
+        {
+          "id": "H42_974741",
+          "header": "-6,6 +6,11",
+          "lines": [
+            " - BlueprintSection: Section in a blueprint-style commit message",
+            " - PlannedCommit: A single commit in the compose plan",
+            " - ComposePlan: The full compose plan containing multiple commits",
+            "+- HunkSymbols: Extracted symbols from a single hunk (agent)",
+            "+- LargeHunkAnnotation: Metadata for large new-file hunks (agent)",
+            "+- Rename: Detected rename pair across hunks (agent)",
+            "+- CheckpointResult / Violation: Checkpoint validation results (agent)",
+            "+- CommitGroup: A group of hunks forming an atomic commit (agent)",
+            " \"\"\"",
+            " ",
+            " import re"
+          ]
+        },
+        {
+          "id": "H43_1d73b4",
+          "header": "-99,3 +104,96",
+          "lines": [
+            "     warnings: list[str] = []",
+            "     commits: list[PlannedCommit] = []",
+            " ",
+            "+",
+            "+# ============================================================",
+            "+# Compose Agent Data Models",
+            "+# ============================================================",
+            "+",
+            "+@dataclass",
+            "+class SymbolSet:",
+            "+    \"\"\"Symbols extracted from a code fragment (added or removed lines).\"\"\"",
+            "+",
+            "+    definitions: set[str] = field(default_factory=set)",
+            "+    references: set[str] = field(default_factory=set)",
+            "+    imports: set[str] = field(default_factory=set)",
+            "+    exports: set[str] = field(default_factory=set)",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class HunkSymbols:",
+            "+    \"\"\"Extracted module-scope symbols from a single hunk.",
+            "+",
+            "+    Only contains module-scope symbols (functions, classes, types, constants).",
+            "+    Local variables (idx, err, i, result, etc.) are excluded to prevent",
+            "+    false dependency edges.",
+            "+    \"\"\"",
+            "+",
+            "+    file_path: str",
+            "+    language: str  # Detected language based on file extension",
+            "+    defines: set[str] = field(default_factory=set)   # Module-scope symbols added",
+            "+    removes: set[str] = field(default_factory=set)    # Module-scope symbols removed",
+            "+    modifies: set[str] = field(default_factory=set)   # Symbols changed (in both + and -)",
+            "+    references: set[str] = field(default_factory=set)  # Module-scope symbols referenced",
+            "+    imports_added: set[str] = field(default_factory=set)",
+            "+    imports_removed: set[str] = field(default_factory=set)",
+            "+    exports_added: set[str] = field(default_factory=set)",
+            "+    exports_removed: set[str] = field(default_factory=set)",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class LargeHunkAnnotation:",
+            "+    \"\"\"Metadata annotation for large new-file hunks.",
+            "+",
+            "+    When a new file is added with hundreds of lines, Git treats the",
+            "+    entire file as a single hunk. This annotation provides metadata",
+            "+    about the hunk's internal structure for downstream agents.",
+            "+    \"\"\"",
+            "+",
+            "+    is_new_file: bool = False",
+            "+    is_large_hunk: bool = False",
+            "+    line_count: int = 0",
+            "+    definitions_count: int = 0",
+            "+    definitions: list[str] = field(default_factory=list)",
+            "+    has_multiple_logical_sections: bool = False",
+            "+    estimated_sections: int = 1",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class Rename:",
+            "+    \"\"\"A detected rename pair: old_name was replaced by new_name.\"\"\"",
+            "+",
+            "+    old_name: str",
+            "+    new_name: str",
+            "+    defining_hunk: str  # Hunk ID where the rename occurs",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class Violation:",
+            "+    \"\"\"A specific violation found during checkpoint validation.\"\"\"",
+            "+",
+            "+    hunk: str                    # The hunk ID causing the issue",
+            "+    in_commit: bool              # Whether the hunk is in the current commit",
+            "+    references: list[str]        # Symbols referenced",
+            "+    defined_in: str              # Hunk ID that defines the symbol",
+            "+    defined_in_committed: bool   # Whether the defining hunk is committed",
+            "+    issue: str                   # Human-readable description",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class CheckpointResult:",
+            "+    \"\"\"Result of validating a commit checkpoint.\"\"\"",
+            "+",
+            "+    valid: bool",
+            "+    violations: list[Violation] = field(default_factory=list)",
+            "+",
+            "+",
+            "+@dataclass",
+            "+class CommitGroup:",
+            "+    \"\"\"A group of hunks forming an atomic commit.\"\"\"",
+            "+",
+            "+    hunk_ids: list[str]",
+            "+    reason: str = \"\"           # Why these hunks are grouped together",
+            "+    commit_type: str = \"\"      # Suggested conventional commit type",
+            "+    scope: str = \"\"            # Suggested scope",
+            "+    files: list[str] = field(default_factory=list)  # Files touched by this group",
+            "+"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "hunknote/compose/symbols.py",
+      "hunks": [
+        {
+          "id": "H44_bb2c5b",
+          "header": "-0,0 +1,187",
+          "lines": [
+            "+\"\"\"Symbol extraction from hunks for the Compose Agent.",
+            "+",
+            "+\"\"\"",
+            "+",
+            "+from pathlib import Path",
+            "+",
+            "+from hunknote.compose.extractors import get_extractor",
+            "+from hunknote.compose.models import (",
+            "+",
+            "+LARGE_HUNK_LINE_THRESHOLD = 50",
+            "+",
+            "+_EXT_TO_LANGUAGE: dict[str, str] = {",
+            "+",
+            "+",
+            "+def _detect_language(file_path: str) -> str:",
+            "+    \"\"\"Detect the language from file path extension.\"\"\"",
+            "+def extract_symbols_from_hunk(hunk: HunkRef) -> HunkSymbols:",
+            "+    \"\"\"Extract module-scope symbols from a single hunk.",
+            "+    \"\"\"",
+            "+def extract_all_symbols(",
+            "+    \"\"\"Extract symbols from all hunks in the inventory.",
+            "+    \"\"\"",
+            "+def annotate_large_hunks(",
+            "+    \"\"\"Detect and annotate large new-file hunks.",
+            "+    \"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_checkpoint.py",
+      "hunks": [
+        {
+          "id": "H45_7b781e",
+          "header": "-0,0 +1,233",
+          "lines": [
+            "+\"\"\"Tests for the checkpoint validator.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import (",
+            "+from hunknote.compose.checkpoint import (",
+            "+",
+            "+",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestValidateCommitCheckpoint:",
+            "+    \"\"\"Tests for validating individual commit checkpoints.\"\"\"",
+            "+    def test_valid_checkpoint_independent_hunks(self):",
+            "+        \"\"\"Independent hunks can be in any commit.\"\"\"",
+            "+    def test_valid_checkpoint_dependency_committed(self):",
+            "+        \"\"\"H2 depends on H1, both committed \u2192 valid.\"\"\"",
+            "+    def test_invalid_forward_dependency(self):",
+            "+        \"\"\"H1 references func_b defined by H2, but H2 is NOT committed.\"\"\"",
+            "+    def test_invalid_removed_symbol_still_referenced(self):",
+            "+        \"\"\"H1 removes func_old, but H2 (uncommitted) still references it.\"\"\"",
+            "+    def test_invalid_rename_without_consumer_update(self):",
+            "+        \"\"\"H1 renames old_func \u2192 new_func, but H2 (consumer update) is not committed.\"\"\"",
+            "+    def test_valid_rename_with_consumer_update(self):",
+            "+        \"\"\"H1 renames, H2 updates consumer \u2014 both committed together.\"\"\"",
+            "+    def test_empty_commit(self):",
+            "+        \"\"\"Empty commit is always valid.\"\"\"",
+            "+    def test_all_committed(self):",
+            "+        \"\"\"All hunks committed, nothing remaining \u2014 valid.\"\"\"",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestValidatePlanCheckpoints:",
+            "+    \"\"\"Tests for validating all checkpoints in a plan sequentially.\"\"\"",
+            "+    def test_valid_plan(self):",
+            "+        \"\"\"Two commits in correct order \u2014 both valid.\"\"\"",
+            "+    def test_invalid_plan_wrong_order(self):",
+            "+        \"\"\"H2 references func_a defined by H1, but H2 is committed first.\"\"\"",
+            "+    def test_plan_with_independent_commits(self):",
+            "+        \"\"\"Independent commits are always valid regardless of order.\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_compose_agent.py",
+      "hunks": [
+        {
+          "id": "H46_7b5379",
+          "header": "-0,0 +1,337",
+          "lines": [
+            "+\"\"\"Tests for the Compose Agent orchestrator.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import (",
+            "+from hunknote.compose.agent import (",
+            "+",
+            "+",
+            "+def _make_hunk(hunk_id: str, file_path: str, added: list[str] | None = None) -> HunkRef:",
+            "+def _make_file_diff(file_path: str, hunks: list[HunkRef], is_new_file: bool = False) -> FileDiff:",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestRunComposeAgent:",
+            "+    \"\"\"Tests for the run_compose_agent orchestrator.\"\"\"",
+            "+    def test_small_diff_skips_agent(self):",
+            "+        \"\"\"Below threshold \u2192 used_agent=False, empty plan.\"\"\"",
+            "+    def test_force_agent_mode(self):",
+            "+        \"\"\"force_agent=True activates agent even for small diffs.\"\"\"",
+            "+    def test_agent_extracts_symbols(self):",
+            "+        \"\"\"Agent should extract symbols from all hunks.\"\"\"",
+            "+    def test_agent_builds_graph(self):",
+            "+        \"\"\"Agent should build hunk dependency graph.\"\"\"",
+            "+    def test_agent_groups_dependent_hunks(self):",
+            "+        \"\"\"Dependent hunks should be in the same group.\"\"\"",
+            "+    def test_agent_creates_placeholder_plan_without_provider(self):",
+            "+        \"\"\"Without an LLM provider, agent creates placeholder messages.\"\"\"",
+            "+    def test_agent_validates_checkpoints(self):",
+            "+        \"\"\"Agent should validate plan checkpoints.\"\"\"",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestMergeToMaxCommits:",
+            "+    \"\"\"Tests for _merge_to_max_commits.\"\"\"",
+            "+    def test_no_merge_needed(self):",
+            "+    def test_merge_to_one(self):",
+            "+    def test_merge_smallest_first(self):",
+            "+    def test_single_group_unchanged(self):",
+            "+# ============================================================",
+            "+# ============================================================"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_extractors.py",
+      "hunks": [
+        {
+          "id": "H47_cdd600",
+          "header": "-0,0 +1,637",
+          "lines": [
+            "+\"\"\"Tests for the symbol extractor registry and language-specific extractors.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.extractors import get_extractor, EXTRACTORS",
+            "+from hunknote.compose.extractors.base import SymbolExtractor, is_module_scope, SymbolSet",
+            "+from hunknote.compose.extractors.python_extractor import PythonExtractor",
+            "+from hunknote.compose.extractors.js_ts_extractor import JavaScriptExtractor, TypeScriptExtractor",
+            "+from hunknote.compose.extractors.go_extractor import GoExtractor",
+            "+from hunknote.compose.extractors.rust_extractor import RustExtractor",
+            "+from hunknote.compose.extractors.java_kotlin_extractor import JavaExtractor, KotlinExtractor",
+            "+from hunknote.compose.extractors.ruby_extractor import RubyExtractor",
+            "+from hunknote.compose.extractors.c_cpp_extractor import CExtractor, CppExtractor",
+            "+from hunknote.compose.extractors.csharp_extractor import CSharpExtractor",
+            "+from hunknote.compose.extractors.swift_extractor import SwiftExtractor",
+            "+from hunknote.compose.extractors.php_extractor import PHPExtractor",
+            "+from hunknote.compose.extractors.universal_extractor import UniversalFallbackExtractor",
+            "+from hunknote.compose.extractors.noncode_extractor import (",
+            "+",
+            "+",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestExtractorRegistry:",
+            "+    \"\"\"Tests for the extractor registry and get_extractor function.\"\"\"",
+            "+    def test_python_extension(self):",
+            "+    def test_js_extension(self):",
+            "+    def test_ts_extension(self):",
+            "+    def test_tsx_extension(self):",
+            "+    def test_go_extension(self):",
+            "+    def test_rust_extension(self):",
+            "+    def test_java_extension(self):",
+            "+    def test_kotlin_extension(self):",
+            "+    def test_ruby_extension(self):",
+            "+    def test_c_extension(self):",
+            "+    def test_cpp_extension(self):",
+            "+    def test_header_extension(self):",
+            "+    def test_csharp_extension(self):",
+            "+    def test_swift_extension(self):",
+            "+    def test_php_extension(self):"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_grouping.py",
+      "hunks": [
+        {
+          "id": "H48_948bb6",
+          "header": "-0,0 +1,174",
+          "lines": [
+            "+\"\"\"Tests for the grouping module and should_use_agent threshold.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import (",
+            "+from hunknote.compose.grouping import (",
+            "+",
+            "+",
+            "+def _make_hunk(hunk_id: str, file_path: str) -> HunkRef:",
+            "+def _make_file_diff(file_path: str, hunk_ids: list[str]) -> FileDiff:",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestShouldUseAgent:",
+            "+    \"\"\"Tests for the agent activation threshold.\"\"\"",
+            "+    def test_small_diff_no_agent(self):",
+            "+        \"\"\"3 hunks across 2 files \u2014 below threshold.\"\"\"",
+            "+    def test_large_diff_triggers_agent(self):",
+            "+        \"\"\"12 hunks \u2014 above default threshold of 10.\"\"\"",
+            "+    def test_threshold_boundary(self):",
+            "+        \"\"\"Exactly at threshold \u2014 should NOT trigger.\"\"\"",
+            "+    def test_high_connectivity_triggers_agent(self):",
+            "+        \"\"\"Many hunks in few files \u2014 high connectivity.\"\"\"",
+            "+    def test_single_file_no_agent(self):",
+            "+        \"\"\"Single file, even with many hunks, low connectivity.\"\"\"",
+            "+    def test_custom_threshold(self):",
+            "+        \"\"\"Custom threshold override.\"\"\"",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestGroupHunksProgrammatic:",
+            "+    \"\"\"Tests for programmatic hunk grouping.\"\"\"",
+            "+    def test_independent_hunks_separate_groups(self):",
+            "+        \"\"\"Independent hunks \u2192 one group per hunk.\"\"\"",
+            "+    def test_dependent_hunks_same_group(self):",
+            "+        \"\"\"H2 depends on H1 \u2192 same group.\"\"\"",
+            "+    def test_two_independent_chains(self):",
+            "+        \"\"\"H1\u2192H3, H2\u2192H4 \u2014 two groups.\"\"\"",
+            "+    def test_transitive_chain_single_group(self):",
+            "+        \"\"\"H3\u2192H2\u2192H1 \u2014 all in one group.\"\"\""
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_hunk_graph.py",
+      "hunks": [
+        {
+          "id": "H49_ee4014",
+          "header": "-0,0 +1,327",
+          "lines": [
+            "+\"\"\"Tests for the hunk dependency graph.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import HunkSymbols, Rename",
+            "+from hunknote.compose.graph import (",
+            "+",
+            "+",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestExtractSymbolFromImport:",
+            "+    \"\"\"Tests for the multi-language import path normaliser.\"\"\"",
+            "+    def test_python_dotted_path(self):",
+            "+    def test_js_relative_path(self):",
+            "+    def test_go_package_path(self):",
+            "+    def test_rust_crate_path(self):",
+            "+    def test_java_package_path(self):",
+            "+    def test_c_header_path(self):",
+            "+    def test_single_name(self):",
+            "+    def test_ts_with_extension(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestDetectRenames:",
+            "+    \"\"\"Tests for rename detection across hunks.\"\"\"",
+            "+    def test_simple_rename(self):",
+            "+    def test_no_rename_different_case(self):",
+            "+    def test_no_rename_very_different_names(self):",
+            "+    def test_rename_shared_suffix(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestBuildHunkDependencyGraph:",
+            "+    \"\"\"Tests for building the hunk-level dependency graph.\"\"\"",
+            "+    def test_simple_dependency(self):",
+            "+        \"\"\"H2 references a symbol defined by H1.\"\"\"",
+            "+    def test_independent_hunks(self):",
+            "+        \"\"\"No shared symbols \u2192 no edges.\"\"\"",
+            "+    def test_import_dependency(self):"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_messenger.py",
+      "hunks": [
+        {
+          "id": "H50_890461",
+          "header": "-0,0 +1,158",
+          "lines": [
+            "+\"\"\"Tests for the Compose Agent messenger module.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import CommitGroup, FileDiff, HunkRef",
+            "+from hunknote.compose.messenger import (",
+            "+",
+            "+",
+            "+def _make_hunk(hunk_id: str, file_path: str, added: list[str] | None = None) -> HunkRef:",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestBuildMessagePrompt:",
+            "+    \"\"\"Tests for building message-only prompts.\"\"\"",
+            "+    def test_prompt_contains_commit_groups(self):",
+            "+    def test_prompt_contains_context(self):",
+            "+    def test_prompt_multiple_groups(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestCreatePlanFromGroups:",
+            "+    \"\"\"Tests for creating a ComposePlan from groups.\"\"\"",
+            "+    def test_placeholder_plan(self):",
+            "+    def test_plan_from_llm_data(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestInferCommitType:",
+            "+    \"\"\"Tests for _infer_commit_type.\"\"\"",
+            "+    def test_test_files(self):",
+            "+    def test_doc_files(self):",
+            "+    def test_mixed_files(self):",
+            "+    def test_build_files(self):",
+            "+class TestInferScope:",
+            "+    \"\"\"Tests for _infer_scope.\"\"\"",
+            "+    def test_single_file(self):",
+            "+    def test_common_directory(self):",
+            "+    def test_empty_files(self):"
+          ]
+        }
+      ]
+    },
+    {
+      "file_path": "tests/test_symbols.py",
+      "hunks": [
+        {
+          "id": "H51_1f4dfa",
+          "header": "-0,0 +1,230",
+          "lines": [
+            "+\"\"\"Tests for the symbol extraction module.\"\"\"",
+            "+",
+            "+import pytest",
+            "+",
+            "+from hunknote.compose.models import FileDiff, HunkRef, HunkSymbols, LargeHunkAnnotation",
+            "+from hunknote.compose.symbols import (",
+            "+",
+            "+",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+def _make_hunk(",
+            "+    \"\"\"Create a HunkRef with specified added/removed/context lines.\"\"\"",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestDetectLanguage:",
+            "+    \"\"\"Tests for language detection from file path.\"\"\"",
+            "+    def test_python(self):",
+            "+    def test_javascript(self):",
+            "+    def test_typescript(self):",
+            "+    def test_go(self):",
+            "+    def test_rust(self):",
+            "+    def test_unknown(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+",
+            "+class TestExtractSymbolsFromHunk:",
+            "+    \"\"\"Tests for extract_symbols_from_hunk.\"\"\"",
+            "+    def test_python_function_addition(self):",
+            "+    def test_python_function_removal(self):",
+            "+    def test_python_function_modification(self):",
+            "+    def test_python_import_added(self):",
+            "+    def test_python_import_removed(self):",
+            "+    def test_js_function_definition(self):",
+            "+    def test_go_function_definition(self):",
+            "+    def test_unknown_language_uses_fallback(self):",
+            "+# ============================================================",
+            "+# ============================================================",
+            "+"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_relationships": [
+    {
+      "source": "hunknote/cli/compose.py",
+      "target": "hunknote/cache/__init__.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/cli/compose.py",
+      "target": "hunknote/compose/agent.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/cli/compose.py",
+      "target": "hunknote/compose/grouping.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/symbols.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/graph.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/checkpoint.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/grouping.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/messenger.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/__init__.py",
+      "target": "hunknote/compose/agent.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/checkpoint.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/graph.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/grouping.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/messenger.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/agent.py",
+      "target": "hunknote/compose/symbols.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/checkpoint.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/checkpoint.py",
+      "target": "hunknote/compose/graph.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/python_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/js_ts_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/go_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/rust_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/java_kotlin_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/ruby_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/c_cpp_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/csharp_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/swift_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/php_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/universal_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/__init__.py",
+      "target": "hunknote/compose/extractors/noncode_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/c_cpp_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/csharp_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/go_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/java_kotlin_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/js_ts_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/noncode_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/php_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/python_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/ruby_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/rust_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/swift_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/extractors/universal_extractor.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/graph.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/grouping.py",
+      "target": "hunknote/compose/checkpoint.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/grouping.py",
+      "target": "hunknote/compose/graph.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/grouping.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/messenger.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/symbols.py",
+      "target": "hunknote/compose/extractors/__init__.py",
+      "kind": "direct"
+    },
+    {
+      "source": "hunknote/compose/symbols.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_checkpoint.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_checkpoint.py",
+      "target": "hunknote/compose/checkpoint.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_compose_agent.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_compose_agent.py",
+      "target": "hunknote/compose/agent.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/__init__.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/base.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/python_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/js_ts_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/go_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/rust_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/java_kotlin_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/ruby_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/c_cpp_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/csharp_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/swift_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/php_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/universal_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_extractors.py",
+      "target": "hunknote/compose/extractors/noncode_extractor.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_grouping.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_grouping.py",
+      "target": "hunknote/compose/grouping.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_hunk_graph.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_hunk_graph.py",
+      "target": "hunknote/compose/graph.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_messenger.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_messenger.py",
+      "target": "hunknote/compose/messenger.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_symbols.py",
+      "target": "hunknote/compose/models.py",
+      "kind": "direct"
+    },
+    {
+      "source": "tests/test_symbols.py",
+      "target": "hunknote/compose/symbols.py",
+      "kind": "direct"
+    }
+  ],
+  "must_be_together": [
+    [
+      "hunknote/cache/paths.py",
+      "hunknote/cache/compose.py",
+      "hunknote/cache/__init__.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/__init__.py"
+    ]
+  ],
+  "must_be_ordered": [
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/graph.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/checkpoint.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/grouping.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/messenger.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/symbols.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/extractors/base.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/c_cpp_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/csharp_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/go_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/java_kotlin_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/js_ts_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/noncode_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/php_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/python_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/ruby_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/rust_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/swift_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/universal_extractor.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/__init__.py"
+    ],
+    [
+      "hunknote/compose/extractors/__init__.py",
+      "hunknote/compose/symbols.py"
+    ],
+    [
+      "hunknote/compose/graph.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/compose/checkpoint.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/compose/grouping.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/compose/symbols.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/compose/messenger.py",
+      "hunknote/compose/agent.py"
+    ],
+    [
+      "hunknote/cache/models.py",
+      "hunknote/cache/compose.py"
+    ],
+    [
+      "hunknote/cache/paths.py",
+      "hunknote/cache/compose.py"
+    ],
+    [
+      "hunknote/cache/__init__.py",
+      "hunknote/cli/compose.py"
+    ],
+    [
+      "hunknote/cache/paths.py",
+      "hunknote/cli/compose.py"
+    ],
+    [
+      "hunknote/cache/compose.py",
+      "hunknote/cli/compose.py"
+    ],
+    [
+      "hunknote/compose/agent.py",
+      "hunknote/cli/compose.py"
+    ],
+    [
+      "hunknote/compose/grouping.py",
+      "hunknote/cli/compose.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/agent.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/graph.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/checkpoint.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/grouping.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/messenger.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/symbols.py",
+      "hunknote/compose/__init__.py"
+    ],
+    [
+      "hunknote/compose/checkpoint.py",
+      "tests/test_checkpoint.py"
+    ],
+    [
+      "hunknote/compose/grouping.py",
+      "tests/test_grouping.py"
+    ],
+    [
+      "hunknote/compose/messenger.py",
+      "tests/test_messenger.py"
+    ],
+    [
+      "hunknote/compose/symbols.py",
+      "tests/test_symbols.py"
+    ],
+    [
+      "hunknote/compose/agent.py",
+      "tests/test_compose_agent.py"
+    ],
+    [
+      "hunknote/compose/graph.py",
+      "tests/test_hunk_graph.py"
+    ],
+    [
+      "hunknote/compose/extractors/__init__.py",
+      "tests/test_extractors.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "tests/test_extractors.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_checkpoint.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_compose_agent.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_grouping.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_hunk_graph.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_messenger.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_symbols.py"
+    ],
+    [
+      "hunknote/compose/models.py",
+      "tests/test_extractors.py"
+    ]
+  ],
+  "hunk_to_file": {
+    "H1_4760cd": "hunknote/cache/__init__.py",
+    "H2_bb1604": "hunknote/cache/__init__.py",
+    "H3_636f52": "hunknote/cache/__init__.py",
+    "H4_49da4d": "hunknote/cache/__init__.py",
+    "H5_ebf42d": "hunknote/cache/compose.py",
+    "H6_6b49af": "hunknote/cache/compose.py",
+    "H7_1f7f85": "hunknote/cache/compose.py",
+    "H8_7f72e1": "hunknote/cache/compose.py",
+    "H9_eeec66": "hunknote/cache/compose.py",
+    "H10_e7eec3": "hunknote/cache/compose.py",
+    "H11_ff21cd": "hunknote/cache/models.py",
+    "H12_f63ea6": "hunknote/cache/paths.py",
+    "H13_32caaa": "hunknote/cli/compose.py",
+    "H14_398353": "hunknote/cli/compose.py",
+    "H15_57f683": "hunknote/cli/compose.py",
+    "H16_e5b740": "hunknote/cli/compose.py",
+    "H17_1e90f2": "hunknote/cli/compose.py",
+    "H18_1f4c32": "hunknote/cli/compose.py",
+    "H19_125631": "hunknote/compose/__init__.py",
+    "H20_a984cf": "hunknote/compose/__init__.py",
+    "H21_9e7c81": "hunknote/compose/__init__.py",
+    "H22_2d7c8b": "hunknote/compose/__init__.py",
+    "H23_6a0f45": "hunknote/compose/agent.py",
+    "H24_7c72a2": "hunknote/compose/checkpoint.py",
+    "H25_4f0286": "hunknote/compose/extractors/__init__.py",
+    "H26_63b8f1": "hunknote/compose/extractors/base.py",
+    "H27_944418": "hunknote/compose/extractors/c_cpp_extractor.py",
+    "H28_09657e": "hunknote/compose/extractors/csharp_extractor.py",
+    "H29_8f1c8c": "hunknote/compose/extractors/go_extractor.py",
+    "H30_b1d6f1": "hunknote/compose/extractors/java_kotlin_extractor.py",
+    "H31_d3950a": "hunknote/compose/extractors/js_ts_extractor.py",
+    "H32_9acdf0": "hunknote/compose/extractors/noncode_extractor.py",
+    "H33_fa2eed": "hunknote/compose/extractors/php_extractor.py",
+    "H34_da0410": "hunknote/compose/extractors/python_extractor.py",
+    "H35_514942": "hunknote/compose/extractors/ruby_extractor.py",
+    "H36_5a9f96": "hunknote/compose/extractors/rust_extractor.py",
+    "H37_1e767d": "hunknote/compose/extractors/swift_extractor.py",
+    "H38_322c54": "hunknote/compose/extractors/universal_extractor.py",
+    "H39_c7eb8f": "hunknote/compose/graph.py",
+    "H40_3d5f86": "hunknote/compose/grouping.py",
+    "H41_ce13fd": "hunknote/compose/messenger.py",
+    "H42_974741": "hunknote/compose/models.py",
+    "H43_1d73b4": "hunknote/compose/models.py",
+    "H44_bb2c5b": "hunknote/compose/symbols.py",
+    "H45_7b781e": "tests/test_checkpoint.py",
+    "H46_7b5379": "tests/test_compose_agent.py",
+    "H47_cdd600": "tests/test_extractors.py",
+    "H48_948bb6": "tests/test_grouping.py",
+    "H49_ee4014": "tests/test_hunk_graph.py",
+    "H50_890461": "tests/test_messenger.py",
+    "H51_1f4dfa": "tests/test_symbols.py"
+  },
+  "nice_if_together": [
+    [
+      "hunknote/compose/checkpoint.py",
+      "tests/test_checkpoint.py"
+    ],
+    [
+      "hunknote/compose/grouping.py",
+      "tests/test_grouping.py"
+    ],
+    [
+      "hunknote/compose/messenger.py",
+      "tests/test_messenger.py"
+    ],
+    [
+      "hunknote/compose/symbols.py",
+      "tests/test_symbols.py"
+    ],
+    [
+      "hunknote/compose/agent.py",
+      "tests/test_compose_agent.py"
+    ],
+    [
+      "hunknote/compose/graph.py",
+      "tests/test_hunk_graph.py"
+    ],
+    [
+      "hunknote/compose/extractors/__init__.py",
+      "tests/test_extractors.py"
+    ],
+    [
+      "hunknote/cache/models.py",
+      "hunknote/cache/compose.py"
+    ],
+    [
+      "hunknote/compose/extractors/base.py",
+      "hunknote/compose/extractors/__init__.py"
+    ],
+    [
+      "hunknote/compose/agent.py",
+      "hunknote/compose/grouping.py"
+    ]
+  ],
+  "nice_if_ordered": [
+    [
+      "hunknote/cache/__init__.py",
+      "hunknote/compose/__init__.py"
+    ]
+  ]
+}

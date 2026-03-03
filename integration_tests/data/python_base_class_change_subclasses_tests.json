@@ -187,6 +187,15 @@
     "H9_sh07e9": "tests/test_csv_processor.py",
     "H10_sh07fa": "tests/test_json_processor.py",
     "H11_sh07fb": "tests/test_json_processor.py"
-  }
+  },
+  "nice_if_together": [
+    [
+      "processors/json_processor.py",
+      "tests/test_json_processor.py"
+    ],
+    [
+      "processors/csv_processor.py",
+      "tests/test_csv_processor.py"
+    ]
+  ]
 }
-
