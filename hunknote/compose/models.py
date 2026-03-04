@@ -197,3 +197,90 @@ class CommitGroup:
     scope: str = ""            # Suggested scope
     files: list[str] = field(default_factory=list)  # Files touched by this group
 
+
+@dataclass
+class DependencyEdge:
+    """A directed dependency edge between two hunks."""
+
+    source: str        # Hunk that depends
+    target: str        # Hunk being depended upon
+    reason: str        # Why this dependency exists
+    strength: str      # "must_be_together" or "must_be_ordered"
+
+
+@dataclass
+class DependencyGraph:
+    """Semantic dependency graph produced by the Dependency Analyzer."""
+
+    edges: list[DependencyEdge] = field(default_factory=list)
+    independent_hunks: list[str] = field(default_factory=list)
+    reasoning_summary: str = ""
+
+    def get_dependencies(self, hunk_id: str) -> list[DependencyEdge]:
+        """Get all edges where hunk_id is the source (depends on others)."""
+        return [e for e in self.edges if e.source == hunk_id]
+
+    def get_dependents(self, hunk_id: str) -> list[DependencyEdge]:
+        """Get all edges where hunk_id is the target (depended upon)."""
+        return [e for e in self.edges if e.target == hunk_id]
+
+    def get_must_be_together_groups(self) -> list[set[str]]:
+        """Compute connected components of 'must_be_together' edges."""
+        together_edges = [e for e in self.edges if e.strength == "must_be_together"]
+        if not together_edges:
+            return []
+
+        # Union-Find
+        parent: dict[str, str] = {}
+
+        def find(x: str) -> str:
+            if x not in parent:
+                parent[x] = x
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a: str, b: str) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        for e in together_edges:
+            union(e.source, e.target)
+
+        groups: dict[str, set[str]] = {}
+        for node in parent:
+            root = find(node)
+            groups.setdefault(root, set()).add(node)
+
+        return list(groups.values())
+
+
+@dataclass
+class AgentState:
+    """Mutable state passed through the orchestrator's ReAct loop."""
+
+    file_diffs: list[FileDiff]
+    inventory: dict[str, HunkRef]
+    style: str
+    max_commits: int
+    branch: str = ""
+    recent_commits: list[str] = field(default_factory=list)
+
+    # Built during execution
+    dependency_graph: Optional[DependencyGraph] = None
+    commit_groups: Optional[list[CommitGroup]] = None
+    ordered_groups: Optional[list[CommitGroup]] = None
+    plan: Optional[ComposePlan] = None
+    validation_result: Optional[dict] = None
+
+    # Token tracking
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_thinking_tokens: int = 0
+    llm_model: str = ""
+
+    # Trace log
+    trace_log: list[dict] = field(default_factory=list)
+
