@@ -1,0 +1,26 @@
+"""ReAct sub-agents for the Compose Orchestrator.
+
+Each sub-agent is a specialised LLM-powered component that handles one
+aspect of commit planning:
+
+- analyzer: Dependency analysis between hunks
+- grouper: Grouping hunks into atomic commits
+- orderer: Ordering commits for valid checkpoints
+- validator: Validating intermediate checkpoint states
+- messenger: Generating conventional commit messages
+"""
+
+from hunknote.compose.agents.analyzer import DependencyAnalyzerAgent
+from hunknote.compose.agents.grouper import GrouperAgent
+from hunknote.compose.agents.orderer import OrdererAgent
+from hunknote.compose.agents.validator import CheckpointValidatorAgent
+from hunknote.compose.agents.messenger import MessengerAgent
+
+__all__ = [
+    "DependencyAnalyzerAgent",
+    "GrouperAgent",
+    "OrdererAgent",
+    "CheckpointValidatorAgent",
+    "MessengerAgent",
+]
+
