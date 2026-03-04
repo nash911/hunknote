@@ -136,6 +136,10 @@ from hunknote.compose.agent import (
     run_compose_agent,
 )
 
+# ReAct Agent and LiteLLM Adapter are internal implementation details
+# accessed via hunknote.compose.react_agent and hunknote.compose.litellm_adapter
+# They are not re-exported from __init__.py to avoid circular imports.
+
 
 __all__ = [
     # Models

@@ -90,15 +90,17 @@ def run_compose_agent(
     recent_commits: list[str] | None = None,
     force_agent: bool = False,
     provider: Any = None,
+    use_react: bool = True,
+    stream: bool = False,
 ) -> ComposeAgentResult:
     """Run the compose agent pipeline.
 
-    Phases:
-    1. Extract symbols from each hunk (programmatic)
-    2. Build hunk-level dependency graph (programmatic)
-    3. Compute connected components and group hunks (programmatic)
-    4. Validate checkpoints and merge if needed (programmatic)
-    5. Generate commit messages (LLM)
+    When use_react=True (default), delegates to the ReAct orchestrator
+    which uses LLM sub-agents for dependency analysis, grouping, ordering,
+    and validation. Falls back to the programmatic pipeline on failure.
+
+    When use_react=False, uses the existing programmatic pipeline with
+    LLM only for message generation.
 
     Args:
         file_diffs: Parsed file diffs.
@@ -108,7 +110,9 @@ def run_compose_agent(
         branch: Current branch name.
         recent_commits: Recent commit subjects.
         force_agent: Force agent mode regardless of threshold.
-        provider: LLM provider for message generation.
+        provider: LLM provider for message generation (legacy path).
+        use_react: Use the ReAct orchestrator (default: True).
+        stream: Stream status updates to stderr.
 
     Returns:
         ComposeAgentResult with the plan and metadata.
@@ -148,6 +152,58 @@ def run_compose_agent(
         "hunks": len(all_hunk_ids),
         "files": len(file_diffs),
     })
+
+    # ── ReAct Agent Path ──
+    if use_react and provider is not None:
+        try:
+            # Determine provider name and model name from provider object
+            provider_name = _get_provider_name(provider)
+            model_name = getattr(provider, "model", "gemini-2.5-flash")
+
+            from hunknote.compose.react_agent import run_react_agent
+
+            agent_state = run_react_agent(
+                provider_name=provider_name,
+                model_name=model_name,
+                file_diffs=file_diffs,
+                inventory=inventory,
+                style=style,
+                max_commits=max_commits,
+                branch=branch,
+                recent_commits=recent_commits,
+                stream=stream,
+            )
+
+            if agent_state.plan and len(agent_state.plan.commits) > 0:
+                # Build a programmatic graph for ComposeAgentResult compat
+                symbol_analyses = extract_all_symbols(inventory)
+                renames = detect_renames(symbol_analyses)
+                prog_graph = build_hunk_dependency_graph(symbol_analyses, renames)
+                large_hunk_annotations = annotate_large_hunks(
+                    inventory, file_diffs, symbol_analyses,
+                )
+
+                return ComposeAgentResult(
+                    plan=agent_state.plan,
+                    used_agent=True,
+                    symbol_analyses=symbol_analyses,
+                    graph=prog_graph,
+                    renames=renames,
+                    groups=agent_state.ordered_groups or agent_state.commit_groups or [],
+                    large_hunk_annotations=large_hunk_annotations,
+                    checkpoint_results=[],
+                    llm_model=agent_state.llm_model,
+                    input_tokens=agent_state.total_input_tokens,
+                    output_tokens=agent_state.total_output_tokens,
+                    thinking_tokens=agent_state.total_thinking_tokens,
+                    trace_log=agent_state.trace_log,
+                )
+            else:
+                logger.info("ReAct agent produced empty plan, falling back to programmatic pipeline")
+
+        except Exception as e:
+            logger.warning("ReAct agent failed: %s, falling back to programmatic pipeline", e)
+            _trace("react_fallback", "failed", {"error": str(e)})
 
     # ── Phase 1: Symbol Extraction ──
     logger.debug("Agent Phase 1: Extracting symbols from %d hunks", len(inventory))
@@ -357,4 +413,29 @@ def _merge_to_max_commits(
         groups = groups[:min_idx] + [merged] + groups[min_idx + 2:]
 
     return groups
+
+
+def _get_provider_name(provider: Any) -> str:
+    """Extract the provider name from a provider object.
+
+    Args:
+        provider: An LLM provider instance.
+
+    Returns:
+        Provider name string (e.g., "google", "anthropic").
+    """
+    class_name = type(provider).__name__.lower()
+    # Match by substring to handle subclasses and wrappers
+    for keyword, name in [
+        ("google", "google"),
+        ("anthropic", "anthropic"),
+        ("openai", "openai"),
+        ("mistral", "mistral"),
+        ("cohere", "cohere"),
+        ("groq", "groq"),
+        ("openrouter", "openrouter"),
+    ]:
+        if keyword in class_name:
+            return name
+    return "google"
 
