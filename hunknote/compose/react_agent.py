@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from hunknote.compose.agents import (
@@ -16,6 +17,7 @@ from hunknote.compose.agents import (
 )
 from hunknote.compose.agents.prompts import ORCHESTRATOR_PROMPT
 from hunknote.compose.agents.tools import extract_symbol_info
+from hunknote.compose.agents.tools import repo_regex_search
 from hunknote.compose.litellm_adapter import (
     extract_usage,
     litellm_completion,
@@ -59,6 +61,7 @@ class OrchestratorAgent:
         max_commits: int,
         branch: str,
         recent_commits: list[str],
+        repo_root: str | Path = ".",
     ) -> None:
         self.provider_name = provider_name
         self.model_name = model_name
@@ -69,6 +72,7 @@ class OrchestratorAgent:
         self.max_commits = max_commits
         self.branch = branch
         self.recent_commits = recent_commits
+        self.repo_root = str(repo_root)
 
         setup_litellm_api_keys(provider_name)
 
@@ -259,6 +263,22 @@ class OrchestratorAgent:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "repo_regex_search",
+                    "description": "Run regex search over repository files (ripgrep).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pattern": {"type": "string"},
+                            "path_glob": {"type": "string"},
+                            "max_results": {"type": "integer"},
+                        },
+                        "required": ["pattern"],
+                    },
+                },
+            },
         ]
 
     def _dispatch_tool(self, tool_name: str, args: dict) -> dict:
@@ -276,6 +296,12 @@ class OrchestratorAgent:
             return self._call_messenger()
         if tool_name == "get_state_snapshot":
             return self._get_state_snapshot()
+        if tool_name == "repo_regex_search":
+            return self._repo_regex_search(
+                pattern=args.get("pattern", ""),
+                path_glob=args.get("path_glob", ""),
+                max_results=int(args.get("max_results", 40) or 40),
+            )
         return {"error": f"unknown tool: {tool_name}"}
 
     def _call_dependency_analyzer(self) -> dict:
@@ -431,6 +457,18 @@ class OrchestratorAgent:
             "validation_valid": bool(self.validation_result.get("valid", False)),
             "has_plan": self.plan is not None,
         }
+
+    def _repo_regex_search(self, pattern: str, path_glob: str = "", max_results: int = 40) -> dict:
+        raw = repo_regex_search(
+            pattern=pattern,
+            repo_root=self.repo_root,
+            path_glob=path_glob,
+            max_results=max_results,
+        )
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {"ok": False, "error": "failed to parse regex tool output"}
 
     def _fallback_plan(self) -> ComposePlan:
         groups = self.ordered_groups or self.commit_groups
