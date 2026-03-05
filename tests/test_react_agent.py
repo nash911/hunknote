@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from hunknote.compose.models import FileDiff, HunkRef
+from hunknote.compose.models import CommitGroup, FileDiff, HunkRef
 from hunknote.compose.react_agent import OrchestratorAgent, run_react_compose_planner
 
 
@@ -165,3 +165,69 @@ def test_orchestrator_fallback_when_no_tool_progress(mock_orch_completion, mock_
 
     assert len(res.plan.commits) == 1
     assert set(res.plan.commits[0].hunks) == {"H1", "H2"}
+
+
+@patch("hunknote.compose.react_agent.setup_litellm_api_keys")
+def test_force_reorder_from_dependencies(_mock_keys):
+    inv, files = _inventory_and_files()
+    agent = OrchestratorAgent(
+        provider_name="google",
+        model_name="gemini-2.5-flash",
+        inventory=inv,
+        file_diffs=files,
+        style="default",
+        max_commits=4,
+        branch="main",
+        recent_commits=[],
+    )
+    # Wrong order: importer first
+    agent.ordered_groups = [
+        CommitGroup(hunk_ids=["H2"], files=["src/api.py"], reason="api"),
+        CommitGroup(hunk_ids=["H1"], files=["src/models.py"], reason="models"),
+    ]
+    agent.commit_groups = list(agent.ordered_groups)
+    agent.dependency_graph = {
+        "edges": [
+            {"source": "H2", "target": "H1", "strength": "must_be_ordered", "reason": "imports"},
+        ]
+    }
+
+    changed = agent._force_reorder_from_dependencies()
+
+    assert changed is True
+    assert agent.ordered_groups[0].hunk_ids == ["H1"]
+
+
+@patch("hunknote.compose.react_agent.setup_litellm_api_keys")
+def test_merge_from_validation_merges_referenced_commits(_mock_keys):
+    inv, files = _inventory_and_files()
+    agent = OrchestratorAgent(
+        provider_name="google",
+        model_name="gemini-2.5-flash",
+        inventory=inv,
+        file_diffs=files,
+        style="default",
+        max_commits=4,
+        branch="main",
+        recent_commits=[],
+    )
+    agent.ordered_groups = [
+        CommitGroup(hunk_ids=["H1"], files=["src/models.py"], reason="models"),
+        CommitGroup(hunk_ids=["H2"], files=["src/api.py"], reason="api"),
+    ]
+    agent.commit_groups = list(agent.ordered_groups)
+
+    did_merge = agent._merge_from_validation({
+        "valid": False,
+        "checkpoints": [
+            {
+                "checkpoint": 2,
+                "commit_id": "C2",
+                "valid": False,
+                "violations": [{"missing_from": "C1"}],
+            }
+        ],
+    })
+
+    assert did_merge is True
+    assert len(agent.ordered_groups) == 1
