@@ -310,6 +310,7 @@ class OrchestratorAgent:
             inventory=self.inventory,
             file_diffs=self.file_diffs,
             symbol_info=self.symbol_info,
+            repo_root=self.repo_root,
         )
         graph = agent.run()
         self.dependency_graph = graph
@@ -364,6 +365,7 @@ class OrchestratorAgent:
             inventory=self.inventory,
             file_diffs=self.file_diffs,
             symbol_info=self.symbol_info,
+            repo_root=self.repo_root,
         )
         result = agent.run(groups, self.dependency_graph)
         self.validation_result = result
@@ -568,6 +570,7 @@ def run_react_compose_planner(
     max_commits: int,
     branch: str,
     recent_commits: list[str],
+    repo_root: str | Path = ".",
 ) -> ReactComposeResult:
     """Convenience wrapper to execute the ReAct compose planner."""
     orchestrator = OrchestratorAgent(
@@ -579,5 +582,6 @@ def run_react_compose_planner(
         max_commits=max_commits,
         branch=branch,
         recent_commits=recent_commits,
+        repo_root=repo_root,
     )
     return orchestrator.run()

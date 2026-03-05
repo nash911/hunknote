@@ -348,6 +348,7 @@ def compose_command(
                         max_commits=max_commits,
                         branch=branch,
                         recent_commits=recent_commits,
+                        repo_root=repo_root,
                     )
                     plan = react_result.plan
                     llm_model = react_result.model or getattr(provider, "model", "")
