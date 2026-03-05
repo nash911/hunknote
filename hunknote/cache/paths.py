@@ -10,6 +10,7 @@ Contains functions for getting paths to cache files:
 - get_compose_plan_file: Get path to compose plan file
 - get_compose_metadata_file: Get path to compose metadata file
 - get_compose_hunk_ids_file: Get path to compose hunk IDs file
+- get_compose_agent_trace_file: Get path to compose planner trace file
 """
 
 from pathlib import Path
@@ -129,3 +130,7 @@ def get_compose_hunk_ids_file(repo_root: Path) -> Path:
     """
     return get_cache_dir(repo_root) / "hunknote_hunk_ids.json"
 
+
+def get_compose_agent_trace_file(repo_root: Path) -> Path:
+    """Return path to the compose planner trace JSON file."""
+    return get_cache_dir(repo_root) / "hunknote_compose_agent_trace.json"

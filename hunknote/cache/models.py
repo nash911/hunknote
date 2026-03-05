@@ -50,4 +50,6 @@ class ComposeCacheMetadata(BaseModel):
     # Retry statistics (for debugging purposes)
     retry_count: int = 0
     retry_stats: Optional[list[dict]] = None  # Per-retry token usage
-
+    # Planner diagnostics
+    planner_mode: str = "single_shot"  # react | single_shot | single_shot_fallback
+    trace_log: Optional[list[dict]] = None

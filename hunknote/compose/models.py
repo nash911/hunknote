@@ -58,6 +58,15 @@ class FileDiff:
     old_path: Optional[str] = None  # For renames
 
 
+@dataclass
+class CommitGroup:
+    """Intermediate group of hunks that should become one commit."""
+
+    hunk_ids: list[str]
+    files: list[str]
+    reason: str = ""
+
+
 class BlueprintSection(BaseModel):
     """Section in a blueprint-style commit message."""
 
@@ -98,4 +107,3 @@ class ComposePlan(BaseModel):
     version: str = "1"
     warnings: list[str] = []
     commits: list[PlannedCommit] = []
-
