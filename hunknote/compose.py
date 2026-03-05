@@ -19,6 +19,7 @@ The compose module has been refactored into a package with the following structu
 from hunknote.compose import (
     # Models
     BlueprintSection,
+    CommitGroup,
     ComposePlan,
     FileDiff,
     HunkRef,
@@ -47,6 +48,10 @@ from hunknote.compose import (
     restore_from_snapshot,
     # Cleanup
     cleanup_temp_files,
+    # ReAct planner
+    OrchestratorAgent,
+    ReactComposeResult,
+    run_react_compose_planner,
 )
 
 __all__ = [
@@ -54,6 +59,7 @@ __all__ = [
     "HunkRef",
     "FileDiff",
     "BlueprintSection",
+    "CommitGroup",
     "PlannedCommit",
     "ComposePlan",
     # Parser
@@ -80,4 +86,8 @@ __all__ = [
     "execute_commit",
     # Cleanup
     "cleanup_temp_files",
+    # ReAct planner
+    "OrchestratorAgent",
+    "ReactComposeResult",
+    "run_react_compose_planner",
 ]

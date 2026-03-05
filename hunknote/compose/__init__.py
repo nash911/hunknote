@@ -16,6 +16,7 @@ This package provides modular compose handling with:
 # Models
 from hunknote.compose.models import (
     BlueprintSection,
+    CommitGroup,
     ComposePlan,
     FileDiff,
     HunkRef,
@@ -75,12 +76,20 @@ from hunknote.compose.cleanup import (
     cleanup_temp_files,
 )
 
+# ReAct planner
+from hunknote.compose.react_agent import (
+    OrchestratorAgent,
+    ReactComposeResult,
+    run_react_compose_planner,
+)
+
 
 __all__ = [
     # Models
     "HunkRef",
     "FileDiff",
     "BlueprintSection",
+    "CommitGroup",
     "PlannedCommit",
     "ComposePlan",
     # Parser
@@ -112,5 +121,8 @@ __all__ = [
     "execute_commit",
     # Cleanup
     "cleanup_temp_files",
+    # ReAct planner
+    "OrchestratorAgent",
+    "ReactComposeResult",
+    "run_react_compose_planner",
 ]
-

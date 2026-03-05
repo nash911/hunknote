@@ -17,6 +17,7 @@ from typing import Optional
 
 from hunknote.cache.models import ComposeCacheMetadata
 from hunknote.cache.paths import (
+    get_compose_agent_trace_file,
     get_compose_hash_file,
     get_compose_hunk_ids_file,
     get_compose_metadata_file,
@@ -60,6 +61,8 @@ def save_compose_cache(
     retry_count: int = 0,
     retry_stats: list[dict] | None = None,
     thinking_tokens: int = 0,
+    planner_mode: str = "single_shot",
+    trace_log: list[dict] | None = None,
 ) -> None:
     """Save the generated compose plan and its metadata to cache.
 
@@ -79,6 +82,8 @@ def save_compose_cache(
         retry_count: Number of LLM retries performed (0 if none).
         retry_stats: Per-retry statistics [{input_tokens, output_tokens, success}].
         thinking_tokens: Number of internal thinking tokens used (thinking models).
+        planner_mode: Which planning path generated the plan.
+        trace_log: Optional planner trace entries for debugging.
     """
     # Save hash
     get_compose_hash_file(repo_root).write_text(context_hash)
@@ -102,8 +107,24 @@ def save_compose_cache(
         file_relationships_text=file_relationships_text,
         retry_count=retry_count,
         retry_stats=retry_stats,
+        planner_mode=planner_mode,
+        trace_log=trace_log,
     )
     get_compose_metadata_file(repo_root).write_text(metadata.model_dump_json(indent=2))
+
+    # Save trace log in a dedicated file for easier debugging.
+    trace_payload = {
+        "planner_mode": planner_mode,
+        "generated_at": metadata.generated_at,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "thinking_tokens": thinking_tokens,
+        "trace_log": trace_log or [],
+    }
+    get_compose_agent_trace_file(repo_root).write_text(
+        json.dumps(trace_payload, indent=2)
+    )
 
 
 def load_compose_plan(repo_root: Path) -> Optional[str]:
@@ -149,7 +170,13 @@ def invalidate_compose_cache(repo_root: Path) -> None:
     Args:
         repo_root: The root directory of the git repository.
     """
-    for file_getter in [get_compose_hash_file, get_compose_plan_file, get_compose_metadata_file, get_compose_hunk_ids_file]:
+    for file_getter in [
+        get_compose_hash_file,
+        get_compose_plan_file,
+        get_compose_metadata_file,
+        get_compose_hunk_ids_file,
+        get_compose_agent_trace_file,
+    ]:
         file_path = file_getter(repo_root)
         if file_path.exists():
             file_path.unlink()
@@ -187,3 +214,13 @@ def load_compose_hunk_ids(repo_root: Path) -> Optional[list[dict]]:
     except (json.JSONDecodeError, Exception):
         return None
 
+
+def load_compose_agent_trace(repo_root: Path) -> Optional[dict]:
+    """Load the dedicated compose planner trace JSON."""
+    trace_file = get_compose_agent_trace_file(repo_root)
+    if not trace_file.exists():
+        return None
+    try:
+        return json.loads(trace_file.read_text())
+    except (json.JSONDecodeError, Exception):
+        return None

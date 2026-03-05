@@ -17,6 +17,7 @@ from hunknote.cache.models import (
 # Path utilities
 from hunknote.cache.paths import (
     get_cache_dir,
+    get_compose_agent_trace_file,
     get_compose_hash_file,
     get_compose_hunk_ids_file,
     get_compose_metadata_file,
@@ -49,6 +50,7 @@ from hunknote.cache.message import (
 # Compose cache operations
 from hunknote.cache.compose import (
     invalidate_compose_cache,
+    load_compose_agent_trace,
     is_compose_cache_valid,
     load_compose_hunk_ids,
     load_compose_metadata,
@@ -64,6 +66,7 @@ __all__ = [
     "ComposeCacheMetadata",
     # Path utilities
     "get_cache_dir",
+    "get_compose_agent_trace_file",
     "get_compose_hash_file",
     "get_compose_hunk_ids_file",
     "get_compose_metadata_file",
@@ -87,6 +90,7 @@ __all__ = [
     "update_metadata_overrides",
     # Compose cache operations
     "invalidate_compose_cache",
+    "load_compose_agent_trace",
     "is_compose_cache_valid",
     "load_compose_hunk_ids",
     "load_compose_metadata",
@@ -94,4 +98,3 @@ __all__ = [
     "save_compose_cache",
     "save_compose_hunk_ids",
 ]
-
