@@ -153,7 +153,9 @@ class OrchestratorAgent:
                 ),
             })
 
-        final_plan = self.plan or self._fallback_plan()
+        if self.plan is None:
+            self.plan = self._recover_and_finalize_plan()
+        final_plan = self.plan
         return ReactComposeResult(
             plan=final_plan,
             input_tokens=self.total_input_tokens,
@@ -383,6 +385,8 @@ class OrchestratorAgent:
                 self._call_grouper(regroup_hint=hint)
                 self._call_orderer()
             else:
+                # First apply deterministic dependency order; then allow LLM reorder.
+                self._force_reorder_from_dependencies()
                 self._call_orderer(reorder_hint=hint)
         else:
             # Hard fallback
@@ -402,6 +406,67 @@ class OrchestratorAgent:
             "issue_type": result.get("issue_type"),
             "validation_retries": self.validation_retries,
         }
+
+    def _force_reorder_from_dependencies(self) -> bool:
+        """Deterministically reorder groups using must_be_ordered edges."""
+        groups = self.ordered_groups or self.commit_groups
+        if len(groups) <= 1:
+            return False
+
+        hunk_to_group: dict[str, int] = {}
+        for idx, group in enumerate(groups):
+            for hid in group.hunk_ids:
+                hunk_to_group[hid] = idx
+
+        n = len(groups)
+        outgoing: dict[int, set[int]] = {i: set() for i in range(n)}
+        indegree: dict[int, int] = {i: 0 for i in range(n)}
+        for edge in self.dependency_graph.get("edges", []):
+            if edge.get("strength") != "must_be_ordered":
+                continue
+            src = hunk_to_group.get(edge.get("source", ""))
+            tgt = hunk_to_group.get(edge.get("target", ""))
+            if src is None or tgt is None or src == tgt:
+                continue
+            # source depends on target => target group must precede source group
+            if src not in outgoing[tgt]:
+                outgoing[tgt].add(src)
+                indegree[src] += 1
+
+        if not any(outgoing.values()):
+            return False
+
+        # Stable Kahn topological sort using current order as tie-break.
+        queue = [i for i in range(n) if indegree[i] == 0]
+        queue.sort()
+        order: list[int] = []
+        while queue:
+            node = queue.pop(0)
+            order.append(node)
+            for nxt in sorted(outgoing[node]):
+                indegree[nxt] -= 1
+                if indegree[nxt] == 0:
+                    queue.append(nxt)
+            queue.sort()
+
+        if len(order) != n:
+            return False
+
+        if order == list(range(n)):
+            return False
+
+        reordered = [groups[i] for i in order]
+        self.ordered_groups = reordered
+        self.commit_groups = reordered
+        self.trace.append({
+            "phase": "programmatic_orderer",
+            "success": True,
+            "result": {
+                "ordered_group_ids": [f"C{i+1}" for i in range(len(reordered))],
+                "source": "dependency_graph_toposort",
+            },
+        })
+        return True
 
     def _merge_groups(self, commit_a_id: str, commit_b_id: str) -> dict:
         groups = self.ordered_groups or self.commit_groups
@@ -450,6 +515,103 @@ class OrchestratorAgent:
         self._record_subagent_trace("messenger", agent)
 
         return {"ok": True, "commits": len(self.plan.commits)}
+
+    def _recover_and_finalize_plan(self) -> ComposePlan:
+        """Deterministic recovery path when orchestrator loop ends without a plan."""
+        groups = self.ordered_groups or self.commit_groups
+        if not groups:
+            return self._fallback_plan()
+
+        max_recovery_attempts = 5
+        for attempt in range(1, max_recovery_attempts + 1):
+            validator = CheckpointValidatorAgent(
+                model=self.litellm_model,
+                inventory=self.inventory,
+                file_diffs=self.file_diffs,
+                symbol_info=self.symbol_info,
+                repo_root=self.repo_root,
+            )
+            result = validator.run(groups, self.dependency_graph)
+            self.validation_result = result
+            self._accumulate_agent_tokens(validator)
+            self._record_subagent_trace("checkpoint_validator_recovery", validator)
+            self.trace.append({
+                "phase": "recovery_iteration",
+                "attempt": attempt,
+                "valid": bool(result.get("valid", False)),
+                "issue_type": result.get("issue_type"),
+            })
+
+            if result.get("valid", False):
+                break
+
+            merged = self._merge_from_validation(result)
+            if merged:
+                groups = self.ordered_groups or self.commit_groups
+                continue
+
+            reordered = self._force_reorder_from_dependencies()
+            groups = self.ordered_groups or self.commit_groups
+            if not reordered:
+                break
+
+        # Last resort: collapse to a single coherent group instead of single-shot planning.
+        groups = self.ordered_groups or self.commit_groups
+        if not self.validation_result.get("valid", False) and len(groups) > 1:
+            merged = CommitGroup(
+                hunk_ids=sorted({hid for g in groups for hid in g.hunk_ids}),
+                files=sorted({fp for g in groups for fp in g.files}),
+                reason="Recovery merge after unresolved validation conflicts",
+            )
+            self.commit_groups = [merged]
+            self.ordered_groups = [merged]
+            groups = [merged]
+            self.trace.append({
+                "phase": "recovery_merge_all",
+                "success": True,
+                "result": {"groups": 1},
+            })
+
+        agent = MessengerAgent(model=self.litellm_model)
+        plan = agent.run(
+            ordered_groups=groups,
+            inventory=self.inventory,
+            style=self.style,
+            branch=self.branch,
+            recent_commits=self.recent_commits,
+        )
+        self._accumulate_agent_tokens(agent)
+        self._record_subagent_trace("messenger_recovery", agent)
+        return plan
+
+    def _merge_from_validation(self, validation_result: dict) -> bool:
+        """Merge commit groups based on concrete checkpoint violations."""
+        checkpoints = validation_result.get("checkpoints", [])
+        for cp in checkpoints:
+            if cp.get("valid", True):
+                continue
+            commit_a = cp.get("commit_id")
+            for violation in cp.get("violations", []):
+                commit_b = violation.get("missing_from")
+                if (
+                    isinstance(commit_a, str)
+                    and commit_a.startswith("C")
+                    and isinstance(commit_b, str)
+                    and commit_b.startswith("C")
+                    and commit_a != commit_b
+                ):
+                    merged = self._merge_groups(commit_a, commit_b)
+                    if merged.get("ok") and merged.get("merged"):
+                        self.trace.append({
+                            "phase": "recovery_merge_pair",
+                            "success": True,
+                            "result": {
+                                "commit_a_id": commit_a,
+                                "commit_b_id": commit_b,
+                            },
+                        })
+                        return True
+        return False
 
     def _get_state_snapshot(self) -> dict:
         return {
