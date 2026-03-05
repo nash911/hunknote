@@ -82,6 +82,11 @@ def compose_command(
         "--show",
         help="Show the full diff for a compose commit ID (e.g., --show C1)",
     ),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        help="Show compose planner trace (react/sub-agent steps and fallback details)",
+    ),
 ) -> None:
     """Split staged changes into a clean commit stack.
 
@@ -99,6 +104,7 @@ def compose_command(
         is_compose_cache_valid,
         save_compose_cache,
         save_compose_hunk_ids,
+        load_compose_agent_trace,
         load_compose_plan,
         load_compose_metadata,
         invalidate_compose_cache,
@@ -250,6 +256,8 @@ def compose_command(
         llm_thinking_tokens = 0
         cached_metadata = None
         file_relationships_text = ""
+        planner_trace_log: list[dict] = []
+        planner_mode = "single_shot"
 
         if from_plan:
             # Load plan from external JSON file
@@ -282,6 +290,12 @@ def compose_command(
                         llm_output_tokens = cached_metadata.output_tokens
                         llm_thinking_tokens = getattr(cached_metadata, 'thinking_tokens', 0)
                         file_relationships_text = cached_metadata.file_relationships_text or ""
+                        planner_trace_log = cached_metadata.trace_log or []
+                        planner_mode = getattr(cached_metadata, "planner_mode", "single_shot")
+                    cached_trace = load_compose_agent_trace(repo_root)
+                    if cached_trace and isinstance(cached_trace, dict):
+                        planner_mode = cached_trace.get("planner_mode", planner_mode)
+                        planner_trace_log = cached_trace.get("trace_log", planner_trace_log) or []
                 except Exception as e:
                     typer.echo(f"Failed to load cached plan: {e}", err=True)
                     typer.echo("Regenerating...", err=True)
@@ -320,26 +334,66 @@ def compose_command(
             try:
                 from hunknote.llm import get_provider
                 provider = get_provider()
+                # Primary path: true ReAct orchestrator
+                react_failed = False
+                try:
+                    from hunknote.compose.react_agent import run_react_compose_planner
 
-                # Use the compose-specific prompt
-                result = provider.generate_raw(
-                    system_prompt=COMPOSE_SYSTEM_PROMPT,
-                    user_prompt=prompt,
-                )
+                    react_result = run_react_compose_planner(
+                        provider_name=_get_provider_name(provider),
+                        model_name=getattr(provider, "model", ""),
+                        inventory=inventory,
+                        file_diffs=file_diffs,
+                        style=effective_profile.value,
+                        max_commits=max_commits,
+                        branch=branch,
+                        recent_commits=recent_commits,
+                    )
+                    plan = react_result.plan
+                    llm_model = react_result.model or getattr(provider, "model", "")
+                    llm_input_tokens = react_result.input_tokens
+                    llm_output_tokens = react_result.output_tokens
+                    llm_thinking_tokens = react_result.thinking_tokens
+                    planner_trace_log = react_result.trace
+                    planner_mode = react_result.mode
+                except Exception as e:
+                    react_failed = True
+                    planner_mode = "single_shot_fallback"
+                    planner_trace_log = [{
+                        "phase": "react_error",
+                        "error": str(e),
+                    }]
+                    if debug:
+                        typer.echo(f"ReAct compose planner failed, falling back: {e}", err=True)
 
-                llm_model = result.model
-                llm_input_tokens = result.input_tokens
-                llm_output_tokens = result.output_tokens
-                llm_thinking_tokens = result.thinking_tokens
+                # Fallback path: original single-shot call
+                if react_failed or plan is None:
+                    result = provider.generate_raw(
+                        system_prompt=COMPOSE_SYSTEM_PROMPT,
+                        user_prompt=prompt,
+                    )
 
-                if debug:
-                    typer.echo(f"LLM Response ({result.input_tokens} in, {result.output_tokens} out):", err=True)
-                    typer.echo(result.raw_response[:500] if len(result.raw_response) > 500 else result.raw_response, err=True)
-                    typer.echo("", err=True)
+                    llm_model = result.model
+                    llm_input_tokens = result.input_tokens
+                    llm_output_tokens = result.output_tokens
+                    llm_thinking_tokens = result.thinking_tokens
+                    planner_trace_log.append({
+                        "phase": "single_shot_generation",
+                        "model": result.model,
+                        "input_tokens": result.input_tokens,
+                        "output_tokens": result.output_tokens,
+                    })
+                    if planner_mode != "single_shot_fallback":
+                        planner_mode = "single_shot"
 
-                # Parse response
-                plan_data = parse_json_response(result.raw_response)
-                plan = ComposePlan(**plan_data)
+                    if debug:
+                        typer.echo(f"LLM Response ({result.input_tokens} in, {result.output_tokens} out):", err=True)
+                        typer.echo(result.raw_response[:500] if len(result.raw_response) > 500 else result.raw_response, err=True)
+                        typer.echo("", err=True)
+
+                    # Parse response
+                    plan_data = parse_json_response(result.raw_response)
+                    plan = ComposePlan(**plan_data)
 
                 # Save to cache
                 changed_files = [f.file_path for f in file_diffs if not f.is_binary]
@@ -357,6 +411,8 @@ def compose_command(
                     max_commits=max_commits,
                     file_relationships_text=file_relationships_text or None,
                     thinking_tokens=llm_thinking_tokens,
+                    planner_mode=planner_mode,
+                    trace_log=planner_trace_log or None,
                 )
 
                 # Build and save hunk IDs file
@@ -476,6 +532,11 @@ def compose_command(
                 typer.echo("  No relationships detected.", err=True)
             typer.echo("", err=True)
 
+            typer.echo("Planner:", err=True)
+            typer.echo(f"  Mode: {planner_mode}", err=True)
+            typer.echo(f"  Trace entries: {len(planner_trace_log)}", err=True)
+            typer.echo("", err=True)
+
             # Warnings
             if parse_warnings:
                 typer.echo("Warnings:", err=True)
@@ -514,6 +575,8 @@ def compose_command(
                 max_commits=max_commits,
                 file_relationships_text=file_relationships_text or None,
                 thinking_tokens=llm_thinking_tokens,
+                planner_mode=planner_mode,
+                trace_log=planner_trace_log or None,
             )
             hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
             save_compose_hunk_ids(repo_root, hunk_ids_data)
@@ -593,6 +656,8 @@ def compose_command(
                         retry_count=retry_count,
                         retry_stats=retry_stats,
                         thinking_tokens=llm_thinking_tokens,
+                        planner_mode=planner_mode,
+                        trace_log=planner_trace_log or None,
                     )
 
                     # Update hunk IDs cache
@@ -645,6 +710,10 @@ def compose_command(
         # Print warnings
         for warning in plan.warnings + parse_warnings:
             typer.echo(f"Warning: {warning}", err=True)
+
+        if trace:
+            typer.echo("")
+            _print_compose_trace(planner_mode, planner_trace_log)
 
         # Print commit summaries
         typer.echo("")
@@ -993,3 +1062,58 @@ def _build_hunk_ids_data(
 
     return hunk_ids_data
 
+
+def _print_compose_trace(planner_mode: str, trace_log: list[dict]) -> None:
+    """Render planner trace in a readable terminal form."""
+    typer.echo("[COMPOSE TRACE]")
+    typer.echo(f"Mode: {planner_mode}")
+    if not trace_log:
+        typer.echo("No trace entries recorded.")
+        return
+
+    for idx, entry in enumerate(trace_log, start=1):
+        phase = entry.get("phase") or entry.get("tool") or "step"
+        status = "ok" if entry.get("success", True) else "failed"
+        typer.echo(f"{idx:02d}. {phase} [{status}]")
+
+        if "iteration" in entry:
+            typer.echo(f"    iteration: {entry['iteration']}")
+        if entry.get("error"):
+            typer.echo(f"    error: {entry['error']}")
+        if entry.get("args"):
+            typer.echo(f"    args: {json.dumps(entry['args'])[:180]}")
+        if entry.get("result"):
+            typer.echo(f"    result: {json.dumps(entry['result'])[:220]}")
+        if entry.get("input_tokens") is not None and "input_tokens" in entry:
+            typer.echo(f"    tokens: in={entry.get('input_tokens', 0)} out={entry.get('output_tokens', 0)} think={entry.get('thinking_tokens', 0)}")
+        if entry.get("trace"):
+            substeps = entry.get("trace", [])
+            typer.echo(f"    substeps: {len(substeps)}")
+            for sidx, sub in enumerate(substeps, start=1):
+                action = sub.get("action") or sub.get("tool") or "step"
+                short = ""
+                if sub.get("parsed") is not None:
+                    short = f" parsed={sub.get('parsed')}"
+                elif sub.get("result_snippet"):
+                    short = f" result={str(sub.get('result_snippet'))[:80]}"
+                typer.echo(f"      {sidx:02d}. {action}{short}")
+                if sub.get("raw_snippet"):
+                    typer.echo(f"          raw: {str(sub.get('raw_snippet'))[:160]}")
+
+
+def _get_provider_name(provider) -> str:
+    """Map provider instance class name to hunknote provider key."""
+    class_name = type(provider).__name__.lower()
+    mapping = [
+        ("google", "google"),
+        ("anthropic", "anthropic"),
+        ("openai", "openai"),
+        ("mistral", "mistral"),
+        ("cohere", "cohere"),
+        ("groq", "groq"),
+        ("openrouter", "openrouter"),
+    ]
+    for key, value in mapping:
+        if key in class_name:
+            return value
+    return "google"
