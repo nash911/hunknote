@@ -786,6 +786,7 @@ class TestComposeCommand:
         assert "--from-plan" in result.output
         assert "--debug" in result.output
         assert "--show" in result.output
+        assert "--trace" in result.output
 
     def test_compose_no_staged_changes(self, mocker, temp_dir):
         """Test compose error when no staged changes."""
@@ -850,6 +851,38 @@ class TestComposeShowDiff:
 
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
+
+
+class TestComposeTraceOutput:
+    """Tests for compose trace rendering."""
+
+    def test_print_compose_trace_renders_substeps(self, capsys):
+        """Test that trace output includes sub-agent substeps and raw snippets."""
+        from hunknote.cli.compose import _print_compose_trace
+
+        trace_log = [
+            {
+                "phase": "grouper",
+                "success": False,
+                "error": "failed to parse JSON",
+                "trace": [
+                    {
+                        "action": "single_call_response",
+                        "parsed": False,
+                        "raw_snippet": "```json\\n{\\n  \\\"groups\\\": [",
+                    }
+                ],
+            }
+        ]
+
+        _print_compose_trace("react", trace_log)
+        out = capsys.readouterr().out
+
+        assert "[COMPOSE TRACE]" in out
+        assert "grouper [failed]" in out
+        assert "substeps: 1" in out
+        assert "single_call_response parsed=False" in out
+        assert "raw:" in out
 
 
 class TestColorizeDiff:
@@ -1417,4 +1450,3 @@ class TestShowInPager:
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args[0][0]
         assert "/usr/bin/less" in call_args
-

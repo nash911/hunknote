@@ -7,6 +7,7 @@ from hunknote.cache import (
     compute_context_hash,
     extract_staged_files,
     get_cache_dir,
+    get_compose_agent_trace_file,
     get_compose_hash_file,
     get_compose_hunk_ids_file,
     get_compose_metadata_file,
@@ -23,6 +24,7 @@ from hunknote.cache import (
     load_cache_metadata,
     load_cached_message,
     load_compose_hunk_ids,
+    load_compose_agent_trace,
     load_compose_metadata,
     load_compose_plan,
     save_cache,
@@ -892,6 +894,14 @@ class TestComposeFilePaths:
         assert path.name == "hunknote_hunk_ids.json"
         assert path.parent.name == ".hunknote"
 
+    def test_get_compose_agent_trace_file(self, temp_dir):
+        """Test compose planner trace file path."""
+        from hunknote.cache import get_compose_agent_trace_file
+
+        path = get_compose_agent_trace_file(temp_dir)
+        assert path.name == "hunknote_compose_agent_trace.json"
+        assert path.parent.name == ".hunknote"
+
 
 class TestIsComposeCacheValid:
     """Tests for is_compose_cache_valid function."""
@@ -1046,6 +1056,36 @@ class TestSaveComposeCache:
         assert metadata.style == "blueprint"
         assert metadata.max_commits == 8
 
+    def test_trace_file_content(self, temp_dir):
+        """Test that compose agent trace file is written with planner data."""
+        from hunknote.cache import save_compose_cache, load_compose_agent_trace
+
+        trace_log = [
+            {"phase": "dependency_analyzer", "success": True},
+            {"phase": "grouper", "success": False, "error": "parse"},
+        ]
+        save_compose_cache(
+            repo_root=temp_dir,
+            context_hash="trace_hash",
+            plan_json='{"commits": []}',
+            model="gemini-2.5-flash",
+            input_tokens=111,
+            output_tokens=22,
+            changed_files=["a.py"],
+            total_hunks=1,
+            num_commits=1,
+            style="default",
+            max_commits=4,
+            planner_mode="react",
+            trace_log=trace_log,
+        )
+
+        trace_payload = load_compose_agent_trace(temp_dir)
+        assert trace_payload is not None
+        assert trace_payload["planner_mode"] == "react"
+        assert trace_payload["model"] == "gemini-2.5-flash"
+        assert trace_payload["trace_log"] == trace_log
+
 
 class TestLoadComposePlan:
     """Tests for load_compose_plan function."""
@@ -1125,6 +1165,50 @@ class TestLoadComposeMetadata:
         assert metadata is None
 
 
+class TestLoadComposeAgentTrace:
+    """Tests for load_compose_agent_trace function."""
+
+    def test_loads_valid_trace(self, temp_dir):
+        """Test loading valid compose planner trace payload."""
+        from hunknote.cache import save_compose_cache, load_compose_agent_trace
+
+        trace_log = [{"phase": "messenger", "success": True}]
+        save_compose_cache(
+            repo_root=temp_dir,
+            context_hash="hash",
+            plan_json='{"commits": []}',
+            model="gpt-4",
+            input_tokens=100,
+            output_tokens=50,
+            changed_files=["file.py"],
+            total_hunks=1,
+            num_commits=1,
+            style="default",
+            max_commits=6,
+            planner_mode="react",
+            trace_log=trace_log,
+        )
+
+        payload = load_compose_agent_trace(temp_dir)
+        assert payload is not None
+        assert payload["trace_log"] == trace_log
+
+    def test_returns_none_if_missing(self, temp_dir):
+        """Test that None is returned if trace file is missing."""
+        from hunknote.cache import load_compose_agent_trace
+
+        assert load_compose_agent_trace(temp_dir) is None
+
+    def test_returns_none_if_corrupted(self, temp_dir):
+        """Test that None is returned if trace file is corrupted."""
+        from hunknote.cache import load_compose_agent_trace, get_compose_agent_trace_file
+
+        trace_file = get_compose_agent_trace_file(temp_dir)
+        trace_file.write_text("not valid json")
+
+        assert load_compose_agent_trace(temp_dir) is None
+
+
 class TestInvalidateComposeCache:
     """Tests for invalidate_compose_cache function."""
 
@@ -1159,6 +1243,7 @@ class TestInvalidateComposeCache:
         assert (cache_dir / "hunknote_compose_plan.json").exists()
         assert (cache_dir / "hunknote_compose_metadata.json").exists()
         assert (cache_dir / "hunknote_hunk_ids.json").exists()
+        assert (cache_dir / "hunknote_compose_agent_trace.json").exists()
 
         # Invalidate
         invalidate_compose_cache(temp_dir)
@@ -1168,6 +1253,7 @@ class TestInvalidateComposeCache:
         assert not (cache_dir / "hunknote_compose_plan.json").exists()
         assert not (cache_dir / "hunknote_compose_metadata.json").exists()
         assert not (cache_dir / "hunknote_hunk_ids.json").exists()
+        assert not (cache_dir / "hunknote_compose_agent_trace.json").exists()
 
     def test_handles_missing_files(self, temp_dir):
         """Test that invalidate doesn't error on missing files."""
@@ -1522,3 +1608,31 @@ class TestComposeCacheIntegration:
         plan = load_compose_plan(temp_dir)
         assert "C2" in plan
 
+    def test_compose_cache_stores_trace_and_mode(self, temp_dir):
+        """Test planner mode and trace log persistence in compose metadata."""
+        from hunknote.cache import save_compose_cache, load_compose_metadata
+
+        trace = [
+            {"phase": "call_dependency_analyzer", "success": True},
+            {"phase": "call_grouper", "success": True},
+        ]
+        save_compose_cache(
+            repo_root=temp_dir,
+            context_hash="trace_hash",
+            plan_json='{"commits": [{"id": "C1"}]}',
+            model="gemini-2.5-flash",
+            input_tokens=123,
+            output_tokens=45,
+            changed_files=["a.py"],
+            total_hunks=1,
+            num_commits=1,
+            style="default",
+            max_commits=4,
+            planner_mode="react",
+            trace_log=trace,
+        )
+
+        metadata = load_compose_metadata(temp_dir)
+        assert metadata is not None
+        assert metadata.planner_mode == "react"
+        assert metadata.trace_log == trace
