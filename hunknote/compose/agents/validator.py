@@ -10,6 +10,7 @@ from hunknote.compose.agents.prompts import CHECKPOINT_VALIDATOR_PROMPT
 from hunknote.compose.agents.tools import (
     get_checkpoint_state,
     programmatic_checkpoint_validation,
+    repo_regex_search,
 )
 from hunknote.compose.models import CommitGroup, FileDiff, HunkRef
 
@@ -26,6 +27,7 @@ class CheckpointValidatorAgent(BaseSubAgent):
         inventory: dict[str, HunkRef],
         file_diffs: list[FileDiff],
         symbol_info,
+        repo_root: str = ".",
         max_tokens: int = 16000,
     ) -> None:
         super().__init__(
@@ -39,6 +41,7 @@ class CheckpointValidatorAgent(BaseSubAgent):
         self.inventory = inventory
         self.file_diffs = file_diffs
         self.symbol_info = symbol_info
+        self.repo_root = repo_root
         self._ordered_groups: list[CommitGroup] = []
 
         self.register_tool(
@@ -51,6 +54,25 @@ class CheckpointValidatorAgent(BaseSubAgent):
                     "checkpoint": {"type": "integer"},
                 },
                 "required": ["checkpoint"],
+            },
+        )
+        self.register_tool(
+            name="repo_regex_search",
+            func=lambda pattern, path_glob="", max_results=40: repo_regex_search(
+                pattern=pattern,
+                repo_root=self.repo_root,
+                path_glob=path_glob,
+                max_results=max_results,
+            ),
+            description="Search repository text with regex via ripgrep.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string"},
+                    "path_glob": {"type": "string"},
+                    "max_results": {"type": "integer"},
+                },
+                "required": ["pattern"],
             },
         )
 
@@ -98,7 +120,7 @@ Return JSON now."""
             return programmatic
 
         normalized = self._normalize(result.output, ordered_groups)
-        return normalized
+        return self._merge_with_programmatic(normalized, programmatic)
 
     def _tool_checkpoint_state(self, checkpoint: int) -> str:
         return get_checkpoint_state(checkpoint, self._ordered_groups, self.inventory)
@@ -128,3 +150,24 @@ Return JSON now."""
         else:
             payload["issue_type"] = payload.get("issue_type") or "ordering"
         return payload
+
+    @staticmethod
+    def _merge_with_programmatic(llm_payload: dict, programmatic: dict) -> dict:
+        """Programmatic violations are authoritative for checkpoint validity."""
+        if programmatic.get("valid", True):
+            return llm_payload
+
+        merged = dict(llm_payload)
+        merged["valid"] = False
+        merged["issue_type"] = programmatic.get("issue_type") or merged.get("issue_type") or "ordering"
+
+        llm_reason = (llm_payload.get("fix_reasoning") or "").strip()
+        prog_reason = (programmatic.get("fix_reasoning") or "").strip()
+        if llm_reason and prog_reason:
+            merged["fix_reasoning"] = f"{llm_reason} Programmatic check: {prog_reason}"
+        else:
+            merged["fix_reasoning"] = llm_reason or prog_reason or "Programmatic checkpoint violations detected."
+
+        # Prefer deterministic checkpoint details.
+        merged["checkpoints"] = programmatic.get("checkpoints", llm_payload.get("checkpoints", []))
+        return merged
