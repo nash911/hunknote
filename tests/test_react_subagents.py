@@ -11,7 +11,11 @@ from hunknote.compose.agents.base import BaseSubAgent
 from hunknote.compose.agents.grouper import GrouperAgent
 from hunknote.compose.agents.messenger import MessengerAgent
 from hunknote.compose.agents.orderer import OrdererAgent
-from hunknote.compose.agents.tools import extract_symbol_info
+from hunknote.compose.agents.tools import (
+    extract_symbol_info,
+    programmatic_checkpoint_validation,
+    repo_regex_search,
+)
 from hunknote.compose.agents.validator import CheckpointValidatorAgent
 from hunknote.compose.models import CommitGroup, FileDiff, HunkRef
 
@@ -210,6 +214,61 @@ def test_validator_normalizes_missing_from(mock_completion):
 
 
 @patch("hunknote.compose.agents.base.litellm_completion")
+def test_validator_keeps_programmatic_invalid_even_if_llm_says_valid(mock_completion):
+    inventory = {
+        "H1": HunkRef(
+            id="H1",
+            file_path="hunknote/compose/__init__.py",
+            header="@@ -1,0 +1,2 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=2,
+            lines=["+from hunknote.compose.react_agent import run_react_compose_planner"],
+        ),
+        "H2": HunkRef(
+            id="H2",
+            file_path="hunknote/compose/react_agent.py",
+            header="@@ -1,0 +1,2 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=2,
+            lines=["+def run_react_compose_planner():", "+    return None"],
+        ),
+    }
+    file_diffs = [
+        FileDiff(file_path="hunknote/compose/__init__.py", diff_header_lines=["diff"], hunks=[inventory["H1"]]),
+        FileDiff(file_path="hunknote/compose/react_agent.py", diff_header_lines=["diff"], hunks=[inventory["H2"]], is_new_file=True),
+    ]
+    groups = [
+        CommitGroup(hunk_ids=["H1"], files=["hunknote/compose/__init__.py"]),
+        CommitGroup(hunk_ids=["H2"], files=["hunknote/compose/react_agent.py"]),
+    ]
+    sym = extract_symbol_info(inventory)
+
+    mock_completion.return_value = _mock_response({
+        "valid": True,
+        "issue_type": None,
+        "checkpoints": [
+            {"checkpoint": 1, "commit_id": "C1", "valid": True},
+            {"checkpoint": 2, "commit_id": "C2", "valid": True},
+        ],
+        "fix_reasoning": "",
+    })
+
+    agent = CheckpointValidatorAgent(
+        model="gemini/gemini-2.5-flash",
+        inventory=inventory,
+        file_diffs=file_diffs,
+        symbol_info=sym,
+    )
+    out = agent.run(groups, dependency_graph={"edges": []})
+
+    assert out["valid"] is False
+
+
+@patch("hunknote.compose.agents.base.litellm_completion")
 def test_messenger_fallback(mock_completion):
     mock_completion.return_value = _mock_response("not-json")
 
@@ -224,3 +283,94 @@ def test_messenger_fallback(mock_completion):
 
     assert len(plan.commits) == 1
     assert plan.commits[0].hunks == ["H1"]
+
+
+def test_extract_symbol_info_parses_parenthesized_from_import():
+    inventory = {
+        "H1": HunkRef(
+            id="H1",
+            file_path="hunknote/compose/__init__.py",
+            header="@@ -1,0 +1,3 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=3,
+            lines=[
+                "+from hunknote.compose.react_agent import (",
+                "+    run_react_compose_planner,",
+                "+)",
+            ],
+        ),
+        "H2": HunkRef(
+            id="H2",
+            file_path="hunknote/compose/react_agent.py",
+            header="@@ -1,0 +1,3 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=3,
+            lines=["+def run_react_compose_planner():", "+    return None"],
+        ),
+    }
+
+    sym = extract_symbol_info(inventory)
+    assert "hunknote.compose.react_agent" in sym["H1"].imports
+
+
+def test_programmatic_validator_detects_module_provider_ordering_violation():
+    inventory = {
+        "H1": HunkRef(
+            id="H1",
+            file_path="hunknote/compose/__init__.py",
+            header="@@ -1,0 +1,2 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=2,
+            lines=["+from hunknote.compose.react_agent import run_react_compose_planner"],
+        ),
+        "H2": HunkRef(
+            id="H2",
+            file_path="hunknote/compose/react_agent.py",
+            header="@@ -1,0 +1,2 @@",
+            old_start=1,
+            old_len=0,
+            new_start=1,
+            new_len=2,
+            lines=["+def run_react_compose_planner():", "+    return None"],
+        ),
+    }
+    file_diffs = [
+        FileDiff(file_path="hunknote/compose/__init__.py", diff_header_lines=["diff"], hunks=[inventory["H1"]]),
+        FileDiff(file_path="hunknote/compose/react_agent.py", diff_header_lines=["diff"], hunks=[inventory["H2"]], is_new_file=True),
+    ]
+    symbol_info = extract_symbol_info(inventory)
+    ordered_groups = [
+        CommitGroup(hunk_ids=["H1"], files=["hunknote/compose/__init__.py"]),
+        CommitGroup(hunk_ids=["H2"], files=["hunknote/compose/react_agent.py"]),
+    ]
+
+    out = programmatic_checkpoint_validation(ordered_groups, inventory, file_diffs, symbol_info)
+
+    assert out["valid"] is False
+    assert out["issue_type"] == "ordering"
+    assert out["checkpoints"][0]["valid"] is False
+
+
+def test_repo_regex_search_reports_matches(mocker, tmp_path):
+    mocker.patch(
+        "hunknote.compose.agents.tools.subprocess.run",
+        return_value=SimpleNamespace(
+            returncode=0,
+            stdout="a.py:1:from hunknote.compose.react_agent import run_react_compose_planner\n",
+            stderr="",
+        ),
+    )
+    payload = json.loads(repo_regex_search(
+        pattern=r"run_react_compose_planner",
+        repo_root=str(tmp_path),
+        path_glob="*.py",
+        max_results=10,
+    ))
+    assert payload["ok"] is True
+    assert payload["match_count"] >= 1
