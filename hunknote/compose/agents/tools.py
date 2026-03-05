@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from hunknote.compose.models import CommitGroup, FileDiff, HunkRef
 
@@ -17,6 +19,75 @@ class HunkSymbolInfo:
     file_path: str
     defines: set[str]
     imports: set[str]
+
+
+def repo_regex_search(
+    pattern: str,
+    repo_root: str,
+    path_glob: str = "",
+    max_results: int = 50,
+) -> str:
+    """Search repository text with ripgrep and return structured matches."""
+    if not pattern.strip():
+        return json.dumps({"ok": False, "error": "empty pattern"})
+
+    cmd = [
+        "rg",
+        "--line-number",
+        "--no-heading",
+        "--color",
+        "never",
+        "--max-count",
+        str(max(1, min(max_results, 200))),
+        pattern,
+    ]
+    if path_glob.strip():
+        cmd.extend(["-g", path_glob.strip()])
+    cmd.append(".")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(Path(repo_root)),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": str(exc)})
+
+    if proc.returncode not in (0, 1):
+        return json.dumps({
+            "ok": False,
+            "error": proc.stderr.strip() or "rg failed",
+            "returncode": proc.returncode,
+        })
+
+    matches: list[dict] = []
+    for line in proc.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        file_path, line_no, text = parts
+        try:
+            ln = int(line_no)
+        except ValueError:
+            continue
+        matches.append({
+            "file": file_path,
+            "line": ln,
+            "text": text[:400],
+        })
+        if len(matches) >= max_results:
+            break
+
+    return json.dumps({
+        "ok": True,
+        "pattern": pattern,
+        "path_glob": path_glob,
+        "match_count": len(matches),
+        "matches": matches,
+    })
 
 
 def get_changed_lines(hunk: HunkRef, limit: int | None = None) -> list[str]:
@@ -68,7 +139,7 @@ def extract_symbol_info(inventory: dict[str, HunkRef]) -> dict[str, HunkSymbolIn
     ]
 
     import_patterns = [
-        re.compile(r"^\+\s*from\s+([A-Za-z0-9_\.]+)\s+import\s+([A-Za-z0-9_\*,\s]+)"),
+        re.compile(r"^\+\s*from\s+([A-Za-z0-9_\.]+)\s+import\b(.*)$"),
         re.compile(r"^\+\s*import\s+([A-Za-z0-9_\.]+)"),
         re.compile(r"^\+\s*import\s+.*?from\s+['\"]([^'\"]+)['\"]"),
         re.compile(r"^\+\s*const\s+\w+\s*=\s*require\(['\"]([^'\"]+)['\"]\)"),
@@ -89,13 +160,20 @@ def extract_symbol_info(inventory: dict[str, HunkRef]) -> dict[str, HunkSymbolIn
                 if match:
                     defines.add(match.group(1))
 
-            # Python from-import captures both module and symbols
+            # Python from-import captures module and same-line imported symbols.
             py_from = import_patterns[0].match(line)
             if py_from:
                 module = py_from.group(1)
                 imports.add(module)
-                symbols = [s.strip() for s in py_from.group(2).split(",") if s.strip() and s.strip() != "*"]
-                imports.update(symbols)
+                symbol_blob = (py_from.group(2) or "").replace("(", " ").replace(")", " ")
+                tokens = [t.strip() for t in symbol_blob.split(",") if t.strip()]
+                for token in tokens:
+                    if token == "*":
+                        continue
+                    # Strip "as alias" if present
+                    base = token.split(" as ", 1)[0].strip()
+                    if base:
+                        imports.add(base)
 
             for pat in import_patterns[1:]:
                 match = pat.match(line)
@@ -264,12 +342,20 @@ def programmatic_checkpoint_validation(
     file_diffs: list[FileDiff],
     symbol_info: dict[str, HunkSymbolInfo],
 ) -> dict:
-    """Heuristic checkpoint validation focused on new-file dependency ordering."""
+    """Heuristic checkpoint validation focused on module/symbol dependency ordering."""
     # map new file -> creator hunks
     new_file_creators: dict[str, set[str]] = {}
     for fd in file_diffs:
         if fd.is_new_file:
             new_file_creators[fd.file_path] = {h.id for h in fd.hunks}
+
+    symbol_to_hunks: dict[str, set[str]] = {}
+    file_with_def_hunks: dict[str, set[str]] = {}
+    for hid, sym in symbol_info.items():
+        if sym.defines:
+            file_with_def_hunks.setdefault(sym.file_path, set()).add(hid)
+        for name in sym.defines:
+            symbol_to_hunks.setdefault(name, set()).add(hid)
 
     def file_modules(path: str) -> list[str]:
         stem = path.rsplit(".", 1)[0] if "." in path else path
@@ -279,6 +365,13 @@ def programmatic_checkpoint_validation(
         fp: file_modules(fp)
         for fp in new_file_creators
     }
+    module_providers: dict[str, set[str]] = {}
+    for file_path, def_hunks in file_with_def_hunks.items():
+        for module_token in file_modules(file_path):
+            module_providers.setdefault(module_token, set()).update(def_hunks)
+    for file_path, hunks in new_file_creators.items():
+        for module_token in file_modules(file_path):
+            module_providers.setdefault(module_token, set()).update(hunks)
 
     checkpoints: list[dict] = []
     committed: set[str] = set()
@@ -292,6 +385,42 @@ def programmatic_checkpoint_validation(
             if not sym:
                 continue
             for imp in sym.imports:
+                # Symbol provider dependency.
+                provider_hunks = symbol_to_hunks.get(imp, set())
+                if provider_hunks and not provider_hunks.issubset(committed):
+                    missing_commit = ""
+                    for j, g in enumerate(ordered_groups, start=1):
+                        if any(h in g.hunk_ids for h in provider_hunks):
+                            missing_commit = f"C{j}"
+                            break
+                    violations.append({
+                        "commit": f"C{idx}",
+                        "hunk": hid,
+                        "issue": f"imports symbol {imp} before provider change",
+                        "missing_from": missing_commit or f"C{idx}",
+                        "fix": "ordering",
+                    })
+
+                # Module provider dependency from changed files/new files.
+                for mod, providers in module_providers.items():
+                    if not (imp == mod or imp.startswith(mod + ".") or mod.startswith(imp + ".")):
+                        continue
+                    if providers.issubset(committed):
+                        continue
+                    missing_commit = ""
+                    for j, g in enumerate(ordered_groups, start=1):
+                        if any(h in g.hunk_ids for h in providers):
+                            missing_commit = f"C{j}"
+                            break
+                    violations.append({
+                        "commit": f"C{idx}",
+                        "hunk": hid,
+                        "issue": f"imports module {imp} before provider module change",
+                        "missing_from": missing_commit or f"C{idx}",
+                        "fix": "ordering",
+                    })
+                    break
+
                 for file_path, modules in new_file_modules.items():
                     if not any(imp == m or imp.startswith(m + ".") for m in modules):
                         continue
