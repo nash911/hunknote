@@ -12,6 +12,7 @@ from hunknote.compose.agents.tools import (
     build_programmatic_dependencies,
     get_file_hunks,
     get_hunk_diff,
+    repo_regex_search,
     get_symbol_summary,
 )
 from hunknote.compose.models import FileDiff, HunkRef
@@ -29,6 +30,7 @@ class DependencyAnalyzerAgent(BaseSubAgent):
         inventory: dict[str, HunkRef],
         file_diffs: list[FileDiff],
         symbol_info,
+        repo_root: str = ".",
         max_tokens: int = 12000,
     ) -> None:
         super().__init__(
@@ -42,6 +44,7 @@ class DependencyAnalyzerAgent(BaseSubAgent):
         self.inventory = inventory
         self.file_diffs = file_diffs
         self.symbol_info = symbol_info
+        self.repo_root = repo_root
 
         self.register_tool(
             name="get_hunk_diff",
@@ -75,6 +78,25 @@ class DependencyAnalyzerAgent(BaseSubAgent):
                     "hunk_ids": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": ["hunk_ids"],
+            },
+        )
+        self.register_tool(
+            name="repo_regex_search",
+            func=lambda pattern, path_glob="", max_results=40: repo_regex_search(
+                pattern=pattern,
+                repo_root=self.repo_root,
+                path_glob=path_glob,
+                max_results=max_results,
+            ),
+            description="Search repository text with regex via ripgrep.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string"},
+                    "path_glob": {"type": "string"},
+                    "max_results": {"type": "integer"},
+                },
+                "required": ["pattern"],
             },
         )
 
