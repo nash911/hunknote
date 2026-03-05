@@ -12,6 +12,7 @@ Workflow constraints:
 4. Then call call_checkpoint_validator.
 5. If validation fails, fix using re-group/re-order and validate again.
 6. Only after validation passes, call call_messenger.
+7. Use repo_regex_search whenever hunk-local context is insufficient.
 
 When the plan is complete, output a single JSON object:
 {
@@ -35,6 +36,7 @@ Rules:
 - source depends on target.
 - strength is must_be_ordered or must_be_together.
 - Include re-export and test-after-impl dependencies.
+- Use repo_regex_search/get_hunk_diff/get_symbol_summary tools when needed.
 - Keep reasons short.
 """
 
@@ -84,6 +86,7 @@ If invalid, include violations:
 {"commit": "C2", "hunk": "H7", "issue": "...", "missing_from": "C1", "fix": "ordering"}
 
 missing_from must be a single commit ID.
+Use get_checkpoint_state and repo_regex_search tools to verify assumptions.
 """
 
 MESSENGER_PROMPT = """Write conventional commit metadata per validated group.
