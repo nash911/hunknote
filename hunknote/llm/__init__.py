@@ -1,6 +1,9 @@
 """LLM provider module for hunknote.
 
-This module provides a unified interface to multiple LLM providers.
+This module provides a unified interface to multiple LLM providers
+via LiteLLM. All providers (Anthropic, OpenAI, Google, Mistral,
+Cohere, Groq, OpenRouter) are routed through a single LiteLLMProvider.
+
 The active provider is configured in hunknote/config.py.
 """
 
@@ -27,17 +30,22 @@ def get_provider(
 ) -> BaseLLMProvider:
     """Get an LLM provider instance.
 
+    All providers are routed through LiteLLMProvider, which uses litellm
+    to provide a unified interface to every supported LLM backend.
+
     Args:
         provider: The provider to use. Defaults to ACTIVE_PROVIDER from config.
         model: The model to use. Defaults to ACTIVE_MODEL from config.
         style: The commit style to use (default, blueprint, conventional, ticket, kernel).
 
     Returns:
-        An instance of the appropriate LLM provider.
+        A LiteLLMProvider instance configured for the requested provider.
 
     Raises:
         ValueError: If the provider is not supported.
     """
+    from hunknote.llm.litellm_provider import LiteLLMProvider
+
     # Read config values at call time (not import time) so that
     # load_config() updates are visible even if this module was
     # imported before load_config() ran.
@@ -45,43 +53,11 @@ def get_provider(
     model = model or _config.ACTIVE_MODEL
     style = style or "default"
 
-    if provider == LLMProvider.ANTHROPIC:
-        from hunknote.llm.anthropic_provider import AnthropicProvider
-
-        return AnthropicProvider(model=model, style=style)
-
-    elif provider == LLMProvider.OPENAI:
-        from hunknote.llm.openai_provider import OpenAIProvider
-
-        return OpenAIProvider(model=model, style=style)
-
-    elif provider == LLMProvider.GOOGLE:
-        from hunknote.llm.google_provider import GoogleProvider
-
-        return GoogleProvider(model=model, style=style)
-
-    elif provider == LLMProvider.MISTRAL:
-        from hunknote.llm.mistral_provider import MistralProvider
-
-        return MistralProvider(model=model, style=style)
-
-    elif provider == LLMProvider.COHERE:
-        from hunknote.llm.cohere_provider import CohereProvider
-
-        return CohereProvider(model=model, style=style)
-
-    elif provider == LLMProvider.GROQ:
-        from hunknote.llm.groq_provider import GroqProvider
-
-        return GroqProvider(model=model, style=style)
-
-    elif provider == LLMProvider.OPENROUTER:
-        from hunknote.llm.openrouter_provider import OpenRouterProvider
-
-        return OpenRouterProvider(model=model, style=style)
-
-    else:
+    # Validate provider
+    if not isinstance(provider, LLMProvider):
         raise ValueError(f"Unsupported provider: {provider}")
+
+    return LiteLLMProvider(provider=provider, model=model, style=style)
 
 
 def generate_commit_json(context_bundle: str, style: str = "default") -> LLMResult:
