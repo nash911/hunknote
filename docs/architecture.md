@@ -64,11 +64,12 @@ hunknote/
 │   ├── message.py           # Commit message cache operations
 │   └── compose.py           # Compose plan cache operations
 │
-├── llm/                     # LLM Integration
+├── llm/                     # LLM Integration (unified via LiteLLM)
 │   ├── __init__.py          # Provider factory, re-exports
 │   ├── base.py              # LLMResult, BaseLLMProvider (slimmed)
 │   ├── exceptions.py        # LLMError, MissingAPIKeyError, JSONParseError
 │   ├── parsing.py           # JSON response parsing and validation
+│   ├── litellm_provider.py  # Unified provider via litellm (all backends)
 │   ├── prompts/             # Style-specific prompts (refactored from base.py)
 │   │   ├── __init__.py      # Re-exports all prompts
 │   │   ├── system.py        # System prompt
@@ -77,13 +78,6 @@ hunknote/
 │   │   ├── blueprint.py     # Blueprint style prompt
 │   │   ├── ticket.py        # Ticket style prompt
 │   │   └── kernel.py        # Kernel style prompt
-│   ├── anthropic_provider.py
-│   ├── openai_provider.py
-│   ├── google_provider.py
-│   ├── mistral_provider.py
-│   ├── cohere_provider.py
-│   ├── groq_provider.py
-│   └── openrouter_provider.py
 │
 ├── scope.py                 # Scope inference (not refactored - well-organized)
 ├── config.py                # Repository configuration
