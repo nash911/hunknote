@@ -28,7 +28,7 @@ packages = [{include = "hunknote"}]
 include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.15"
+python = ">=3.11,<3.15"
 typer = "0.21.2"
 pydantic = "^2.12.5"
 python-dotenv = "^1.2.1"
@@ -41,7 +41,10 @@ google-genai = "^1.63.0"
 mistralai = "^1.12.2"
 cohere = "^5.20.5"
 groq = "^1.0.0"
+# Core LLM interaction library
 litellm = "^1.82.0"
+# Evaluation libraries
+scikit-learn = "^1.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
