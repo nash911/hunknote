@@ -75,6 +75,12 @@ from hunknote.compose.cleanup import (
     cleanup_temp_files,
 )
 
+# Planner (single-shot LLM flow)
+from hunknote.compose.planner import (
+    ComposeResult,
+    generate_compose_plan,
+)
+
 
 __all__ = [
     # Models
@@ -112,5 +118,8 @@ __all__ = [
     "execute_commit",
     # Cleanup
     "cleanup_temp_files",
+    # Planner
+    "ComposeResult",
+    "generate_compose_plan",
 ]
 
