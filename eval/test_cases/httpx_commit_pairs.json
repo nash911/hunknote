@@ -1,0 +1,368 @@
+{
+  "repo": "https://github.com/encode/httpx",
+  "description": "Before/after commit SHA pairs for the Compose Agent eval, organized by difficulty tier. 'before' is the parent commit (the repo state before the change), 'after' is the commit (or last commit in a range) that produces the change. The squashed diff from before..after is the agent's input.",
+  "tiers": {
+    "tier1": {
+      "description": "2-5 hunks, 1-3 files — small bug fixes and single-concern changes",
+      "cases": [
+        {
+          "id": "python_httpx_tier1_iter_text_fix",
+          "before": "90538a3b4610ba49ce16c997bcfdb9101f9503be",
+          "after": "1e110964736a95d822144390b99d7ecf17fca527",
+          "message": "Fixed `iter_text` adding an empty string (#2998)",
+          "hunks": 5,
+          "files": 3,
+          "lines_added": 17,
+          "lines_removed": 4,
+          "file_list": [
+            "httpx/_decoders.py",
+            "httpx/_models.py",
+            "tests/test_decoders.py"
+          ],
+          "rationale": "Bug fix touching decoder logic + model + test. Good cross-file dependency: the decoder fix must be co-committed with the test that validates it."
+        },
+        {
+          "id": "python_httpx_tier1_digest_auth_cookies",
+          "before": "c3585a5ccfa57bec653f3846b8625a27d11dcd5e",
+          "after": "88e84314378b31336027363af862619c519a4a3a",
+          "message": "Add cookies to the retried request when performing digest authentication (#2846)",
+          "hunks": 5,
+          "files": 2,
+          "lines_added": 44,
+          "lines_removed": 3,
+          "file_list": [
+            "httpx/_auth.py",
+            "tests/test_auth.py"
+          ],
+          "rationale": "Feature addition with paired test. Clean source+test co-commit constraint."
+        },
+        {
+          "id": "python_httpx_tier1_streaming_multipart",
+          "before": "af56476a8c4b35a0b27e165a7fccae08b307e32c",
+          "after": "b97c0594a59a9a5e62e9930fe9a783be79d8cc6e",
+          "message": "Streaming multipart support (#2382)",
+          "hunks": 5,
+          "files": 2,
+          "lines_added": 33,
+          "lines_removed": 25,
+          "file_list": [
+            "httpx/_multipart.py",
+            "tests/test_multipart.py"
+          ],
+          "rationale": "Refactor of multipart internals with test updates. Both additions and removals create interesting hunk grouping."
+        }
+      ]
+    },
+    "tier2": {
+      "description": "5-15 hunks, 2-5 files — feature additions and module refactors",
+      "cases": [
+        {
+          "id": "python_httpx_tier2_move_utils_to_models",
+          "before": "6212e8fa3bf90154b891c7721f6d29737caac861",
+          "after": "41597adffa9d34171a63f7511fc0f702558dd08c",
+          "message": "Move remaining utility functions from _utils.py to _models.py (#3387)",
+          "hunks": 13,
+          "files": 5,
+          "lines_added": 118,
+          "lines_removed": 124,
+          "file_list": [
+            "httpx/_models.py",
+            "httpx/_utils.py",
+            "scripts/lint",
+            "tests/models/test_headers.py",
+            "tests/test_utils.py"
+          ],
+          "rationale": "Code move refactor touching source, utils, lint config, and tests. Multiple cross-file dependencies: moved functions must land with their new import sites."
+        },
+        {
+          "id": "python_httpx_tier2_immutable_queryparams",
+          "before": "8fe32c52debc0add303fed81b9220689ddc502e4",
+          "after": "2abb2f214a57f990d7f4cda0f51d476b47cef165",
+          "message": "Immutable QueryParams (#1600)",
+          "hunks": 12,
+          "files": 4,
+          "lines_added": 188,
+          "lines_removed": 67,
+          "file_list": [
+            "httpx/_client.py",
+            "httpx/_models.py",
+            "httpx/_utils.py",
+            "tests/models/test_queryparams.py"
+          ],
+          "rationale": "API redesign making QueryParams immutable. Touches client, model, utils, and test — all tightly coupled. Rich dependency graph for grouping."
+        },
+        {
+          "id": "python_httpx_tier2_drop_response_on_close",
+          "before": "4870cb5adf63f4377a71c0b5bef6146fcdb53a9c",
+          "after": "073a3284abbcecad68033053acf595ff749800a7",
+          "message": "Drop 'Response(on_close=...)' from API (#1572)",
+          "hunks": 12,
+          "files": 5,
+          "lines_added": 113,
+          "lines_removed": 21,
+          "file_list": [
+            "httpx/_client.py",
+            "httpx/_models.py",
+            "tests/client/test_async_client.py",
+            "tests/client/test_client.py",
+            "tests/models/test_responses.py"
+          ],
+          "rationale": "API removal touching both sync and async client code plus three test files. Tests must be updated together with the model change."
+        }
+      ]
+    },
+    "tier3": {
+      "description": "15-40 hunks, 5-15 files — multi-file features and cross-cutting changes",
+      "cases": [
+        {
+          "id": "python_httpx_tier3_charset_autodetect",
+          "before": "940d61b239d0f387405f56005b13ad5aed3216b0",
+          "after": "1c33a2854e5d18955c8766c5c01e6229716b5b7a",
+          "message": "Make charset auto-detection optional (#2165)",
+          "hunks": 39,
+          "files": 11,
+          "lines_added": 245,
+          "lines_removed": 54,
+          "file_list": [
+            "README.md",
+            "README_chinese.md",
+            "docs/advanced.md",
+            "docs/index.md",
+            "httpx/_client.py",
+            "httpx/_models.py",
+            "requirements.txt",
+            "setup.py",
+            "tests/client/test_client.py",
+            "tests/models/test_responses.py",
+            "tests/test_decoders.py"
+          ],
+          "rationale": "Cross-cutting feature change: optional charset detection touches client API, models, dependencies, docs, and multiple test files. Deep dependency chains between the client config change and downstream test expectations."
+        },
+        {
+          "id": "python_httpx_tier3_zstd_decoding",
+          "before": "7df47ce4d93a06f2c3310cd692b4c2336d7663ba",
+          "after": "392dbe45f086d0877bd288c5d68abf860653b680",
+          "message": "Add support for zstd decoding (#3139)",
+          "hunks": 35,
+          "files": 15,
+          "lines_added": 148,
+          "lines_removed": 26,
+          "file_list": [
+            "CHANGELOG.md",
+            "README.md",
+            "docs/index.md",
+            "docs/quickstart.md",
+            "httpx/_compat.py",
+            "httpx/_decoders.py",
+            "httpx/_models.py",
+            "pyproject.toml",
+            "requirements.txt",
+            "tests/client/test_client.py",
+            "tests/client/test_event_hooks.py",
+            "tests/client/test_headers.py",
+            "tests/test_asgi.py",
+            "tests/test_decoders.py",
+            "tests/test_main.py"
+          ],
+          "rationale": "New codec feature spanning compat layer, decoders, models, config, docs, and 6 test files. The decoder implementation must co-commit with the compat shim and model integration."
+        },
+        {
+          "id": "python_httpx_tier3_cli_support",
+          "before": "a761e17abc9649d62dd1ff4c9df975c5ed1c6f99",
+          "after": "ee9250d60bc5cf49b4949fc961a82b42f9ab1bcc",
+          "message": "Add cli support (#1855)",
+          "hunks": 22,
+          "files": 14,
+          "lines_added": 796,
+          "lines_removed": 67,
+          "file_list": [
+            "CHANGELOG.md",
+            "README.md",
+            "docs/compatibility.md",
+            "docs/img/httpx-help.png",
+            "docs/img/httpx-request.png",
+            "docs/index.md",
+            "docs/quickstart.md",
+            "httpx/__init__.py",
+            "httpx/__version__.py",
+            "httpx/_main.py",
+            "requirements.txt",
+            "setup.py",
+            "tests/conftest.py",
+            "tests/test_main.py"
+          ],
+          "rationale": "Major new feature: entire CLI module + docs + tests + dependency changes. New module _main.py must co-commit with __init__.py exports and test infrastructure."
+        }
+      ]
+    },
+    "tier4": {
+      "description": "40-100 hunks, 10-25 files — large refactors and API redesigns",
+      "cases": [
+        {
+          "id": "python_httpx_tier4_transport_api",
+          "before": "6cb1672459b0c1386cb36b89a92b87419fdc478c",
+          "after": "1a6e254f72d9fd5694a1c10a28927e193ab4f76b",
+          "message": "Transport API (#1522)",
+          "hunks": 87,
+          "files": 20,
+          "lines_added": 625,
+          "lines_removed": 335,
+          "file_list": [
+            "CHANGELOG.md",
+            "docs/advanced.md",
+            "httpx/__init__.py",
+            "httpx/_client.py",
+            "httpx/_decoders.py",
+            "httpx/_exceptions.py",
+            "httpx/_models.py",
+            "httpx/_transports/asgi.py",
+            "httpx/_transports/base.py",
+            "httpx/_transports/default.py",
+            "httpx/_transports/mock.py",
+            "httpx/_transports/wsgi.py",
+            "tests/client/test_async_client.py",
+            "tests/client/test_client.py",
+            "tests/client/test_redirects.py",
+            "tests/conftest.py",
+            "tests/models/test_responses.py",
+            "tests/test_asgi.py",
+            "tests/test_decoders.py",
+            "tests/test_exceptions.py"
+          ],
+          "rationale": "Major architectural change introducing the Transport API. Touches every transport implementation, both clients, models, exceptions, and numerous test files. Deep inter-module dependencies throughout."
+        },
+        {
+          "id": "python_httpx_tier4_stream_interface",
+          "before": "535df6c99832ce65167e6bf36c5b7834a5bb3fe0",
+          "after": "110ce8565259a3c6927352554eccd94ca5804463",
+          "message": "Stream interface (#1550)",
+          "hunks": 59,
+          "files": 13,
+          "lines_added": 221,
+          "lines_removed": 155,
+          "file_list": [
+            "docs/advanced.md",
+            "httpx/__init__.py",
+            "httpx/_client.py",
+            "httpx/_content.py",
+            "httpx/_models.py",
+            "httpx/_multipart.py",
+            "httpx/_transports/asgi.py",
+            "httpx/_transports/base.py",
+            "httpx/_transports/default.py",
+            "httpx/_transports/mock.py",
+            "httpx/_transports/wsgi.py",
+            "httpx/_types.py",
+            "tests/test_content.py"
+          ],
+          "rationale": "Redesign of the stream interface across all transport implementations, client, content handling, multipart, and type definitions. Every transport file must be updated consistently."
+        }
+      ]
+    },
+    "tier5": {
+      "description": "100+ hunks, 25+ files — massive cross-cutting changes",
+      "cases": [
+        {
+          "id": "python_httpx_tier5_future_annotations",
+          "before": "4f6edf36e93fd9f83ff95b065718fd6bd0c4d3c5",
+          "after": "371b6e946c9e70df3dce79590c195448eac3f635",
+          "message": "Use `__future__.annotations` (#3068)",
+          "hunks": 225,
+          "files": 25,
+          "lines_added": 623,
+          "lines_removed": 624,
+          "type": "single_commit",
+          "file_list": [
+            "httpx/_api.py",
+            "httpx/_auth.py",
+            "httpx/_client.py",
+            "httpx/_config.py",
+            "httpx/_content.py",
+            "httpx/_decoders.py",
+            "httpx/_exceptions.py",
+            "httpx/_main.py",
+            "httpx/_models.py",
+            "httpx/_multipart.py",
+            "httpx/_status_codes.py",
+            "httpx/_transports/asgi.py",
+            "httpx/_transports/base.py",
+            "httpx/_transports/default.py",
+            "httpx/_transports/mock.py",
+            "httpx/_transports/wsgi.py",
+            "httpx/_urlparse.py",
+            "httpx/_urls.py",
+            "httpx/_utils.py",
+            "tests/client/test_async_client.py",
+            "tests/client/test_client.py",
+            "tests/test_decoders.py",
+            "tests/test_exceptions.py",
+            "tests/test_multipart.py",
+            "tests/test_wsgi.py"
+          ],
+          "rationale": "Massive mechanical change adding `from __future__ import annotations` to every source and test file, then converting all type hints from runtime to string-based. 225 hunks across 25 files. Each file's changes are independent at the hunk level but semantically form one logical commit — tests the agent's ability to group a wide but shallow change."
+        },
+        {
+          "id": "python_httpx_tier5_sslcontext_release",
+          "before": "3f76571d3429497c4ee4ecf5d8bc034b6f765957",
+          "after": "80960fa31918d7663c3f4c3ad61661cf0e80628f",
+          "message": "SSLContext API introduction through v0.28.0 release (23 commits squashed)",
+          "hunks": 168,
+          "files": 44,
+          "lines_added": 836,
+          "lines_removed": 1400,
+          "type": "multi_commit_range",
+          "source_commits_count": 23,
+          "commit_range": "8e36f2bc685dfbe43cd7503bc1c422a6ed6e05a5~1..80960fa31918d7663c3f4c3ad61661cf0e80628f",
+          "file_list": [
+            ".github/CONTRIBUTING.md",
+            ".github/workflows/test-suite.yml",
+            "CHANGELOG.md",
+            "README.md",
+            "docs/advanced/ssl.md",
+            "docs/compatibility.md",
+            "docs/contributing.md",
+            "docs/environment_variables.md",
+            "docs/logging.md",
+            "httpx/__version__.py",
+            "httpx/_api.py",
+            "httpx/_client.py",
+            "httpx/_compat.py",
+            "httpx/_config.py",
+            "httpx/_content.py",
+            "httpx/_decoders.py",
+            "httpx/_main.py",
+            "httpx/_models.py",
+            "httpx/_multipart.py",
+            "httpx/_transports/asgi.py",
+            "httpx/_transports/default.py",
+            "httpx/_types.py",
+            "httpx/_urlparse.py",
+            "httpx/_urls.py",
+            "httpx/_utils.py",
+            "pyproject.toml",
+            "scripts/lint",
+            "tests/client/test_auth.py",
+            "tests/client/test_headers.py",
+            "tests/client/test_proxies.py",
+            "tests/conftest.py",
+            "tests/models/test_headers.py",
+            "tests/models/test_requests.py",
+            "tests/models/test_responses.py",
+            "tests/models/test_url.py",
+            "tests/models/test_whatwg.py",
+            "tests/test_api.py",
+            "tests/test_asgi.py",
+            "tests/test_config.py",
+            "tests/test_content.py",
+            "tests/test_decoders.py",
+            "tests/test_main.py",
+            "tests/test_utils.py",
+            "tests/test_wsgi.py"
+          ],
+          "rationale": "The full v0.28 release cycle: new SSLContext API, deprecation escalations, utility function reorganization, and release. 23 original commits squashed into one diff with 168 hunks across 44 files. Deep cross-cutting dependencies between API changes, config, transports, and tests. The ideal Tier 5 case — the agent must recover the original commit boundaries from a massive squashed diff."
+        }
+      ]
+    }
+  }
+}
+
