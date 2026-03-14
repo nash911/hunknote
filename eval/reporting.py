@@ -178,6 +178,8 @@ def load_result(path: Path) -> EvalRunResult:
             patch_apply_rate=mech_data.get("patch_apply_rate", 0.0),
             import_integrity_rate=mech_data.get("import_integrity_rate", 0.0),
             test_pass_rate=mech_data.get("test_pass_rate"),
+            final_state_matches=mech_data.get("final_state_matches"),
+            final_state_diff=mech_data.get("final_state_diff"),
             per_commit=per_commit,
             first_failure_index=mech_data.get("first_failure_index"),
         )
@@ -323,6 +325,8 @@ def _result_to_dict(result: EvalRunResult) -> dict:
                 "patch_apply_rate": case.mechanical.patch_apply_rate,
                 "import_integrity_rate": case.mechanical.import_integrity_rate,
                 "test_pass_rate": case.mechanical.test_pass_rate,
+                "final_state_matches": case.mechanical.final_state_matches,
+                "final_state_diff": case.mechanical.final_state_diff,
                 "per_commit": per_commit_data,
                 "first_failure_index": case.mechanical.first_failure_index,
             },
