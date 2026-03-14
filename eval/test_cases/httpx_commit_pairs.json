@@ -169,33 +169,6 @@
             "tests/test_main.py"
           ],
           "rationale": "New codec feature spanning compat layer, decoders, models, config, docs, and 6 test files. The decoder implementation must co-commit with the compat shim and model integration."
-        },
-        {
-          "id": "python_httpx_tier3_cli_support",
-          "before": "a761e17abc9649d62dd1ff4c9df975c5ed1c6f99",
-          "after": "ee9250d60bc5cf49b4949fc961a82b42f9ab1bcc",
-          "message": "Add cli support (#1855)",
-          "hunks": 22,
-          "files": 14,
-          "lines_added": 796,
-          "lines_removed": 67,
-          "file_list": [
-            "CHANGELOG.md",
-            "README.md",
-            "docs/compatibility.md",
-            "docs/img/httpx-help.png",
-            "docs/img/httpx-request.png",
-            "docs/index.md",
-            "docs/quickstart.md",
-            "httpx/__init__.py",
-            "httpx/__version__.py",
-            "httpx/_main.py",
-            "requirements.txt",
-            "setup.py",
-            "tests/conftest.py",
-            "tests/test_main.py"
-          ],
-          "rationale": "Major new feature: entire CLI module + docs + tests + dependency changes. New module _main.py must co-commit with __init__.py exports and test infrastructure."
         }
       ]
     },
