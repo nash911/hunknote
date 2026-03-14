@@ -209,7 +209,7 @@ class LiteLLMProvider(BaseLLMProvider):
         """
         base = _config.MAX_TOKENS
         if for_raw:
-            base = max(base, 8192)
+            base = max(base, 16384)
 
         if _is_thinking_model(self._litellm_model):
             return base * _THINKING_TOKEN_MULTIPLIER
