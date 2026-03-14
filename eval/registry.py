@@ -176,11 +176,24 @@ def filter_cases_by_suite(
         Filtered list of test cases.
     """
     patterns = SUITES.get(suite, ["*"])
-    return [
-        c
-        for c in cases
-        if any(fnmatch.fnmatch(c.id, pat) for pat in patterns)
-    ]
+
+    if suite == "smoke":
+        # For smoke suite, only include one case per language/tier to keep it small and fast
+        seen = set()
+        filtered = []
+        for c in cases:
+            key = (c.language, c.tier)
+            if key not in seen and any(fnmatch.fnmatch(c.id, pat) for pat in patterns):
+                filtered.append(c)
+                seen.add(key)
+        return filtered
+    else:  # Standard and full suites
+        # Include all cases matching the patterns
+        filtered = []
+        for c in cases:
+            if any(fnmatch.fnmatch(c.id, pat) for pat in patterns):
+                filtered.append(c)
+        return filtered
 
 
 def get_suites() -> dict[str, list[str]]:
