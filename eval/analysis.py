@@ -433,6 +433,7 @@ def generate_terminal_report(result: EvalRunResult) -> str:
 
     # ── Per-case table ──
     lines.append(f"  {BOLD}Per-Case Results{RST}")
+    # lines.append(f"  {DIM}Legend: {GREEN}●{RST}{DIM} all pass  {YELLOW}●{RST}{DIM} tests fail (build ok)  {RED}●{RST}{DIM} build/import fail{RST}")
     lines.append(f"  {DIM}{'─' * 75}{RST}")
     hdr2 = f"  {'Status':>3}  {'Case':<38} {'Tier':>4}  {'Score':>6}  {'Tests':>6}  {'Commits':>7}"
     lines.append(f"{DIM}{hdr2}{RST}")
@@ -465,6 +466,8 @@ def generate_terminal_report(result: EvalRunResult) -> str:
             lines.append(f"       {DIM}commits:{RST} {' '.join(dots)}  {DIM}final-state:{RST} {fs}")
 
     lines.append(f"  {DIM}{'─' * 75}{RST}")
+    lines.append(
+        f"\t{GREEN}●{RST}{DIM} all pass  {YELLOW}●{RST}{DIM} tests fail (build ok)  {RED}●{RST}{DIM} build/import fail{RST}")
     lines.append("")
 
     # ── Failure digest ──
