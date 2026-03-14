@@ -123,17 +123,20 @@ def generate_report(result: EvalRunResult) -> str:
 def save_result(result: EvalRunResult, output_dir: Optional[Path] = None) -> Path:
     """Save eval result as JSON.
 
+    Results are stored under ``{output_dir}/{timestamp}/eval_results.json``.
+
     Args:
         result: The eval run result.
-        output_dir: Output directory. Default: eval_results/
+        output_dir: Root output directory. Default: eval_results/
 
     Returns:
         Path to the saved JSON file.
     """
-    out_dir = output_dir or EVAL_RESULTS_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
+    root_dir = output_dir or EVAL_RESULTS_DIR
+    run_dir = root_dir / result.timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = out_dir / f"{result.run_id}.json"
+    file_path = run_dir / "eval_results.json"
 
     data = _result_to_dict(result)
     with open(file_path, "w") as f:
