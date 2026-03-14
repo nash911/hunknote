@@ -411,6 +411,11 @@ def _check_imports(
         if basename.startswith("test_") or basename == "conftest.py":
             continue
 
+        # Skip deleted files — they were touched (removed) by this commit
+        full_path = worktree_dir / file_path
+        if not full_path.exists():
+            continue
+
         module_name = _file_path_to_module(file_path, worktree_dir)
         if module_name is None:
             continue
@@ -487,4 +492,8 @@ def _file_path_to_module(file_path: str, repo_dir: Path) -> Optional[str]:
         return ".".join(parts[:-1])
     else:
         module_parts = parts[:-1] + [path.stem]
+        # Skip files whose name parts are not valid Python identifiers
+        # (e.g., "unicode10-0-0.py" — hyphens make import impossible)
+        if not all(p.isidentifier() for p in module_parts):
+            return None
         return ".".join(module_parts)
