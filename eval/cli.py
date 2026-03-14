@@ -79,6 +79,162 @@ def generate_case_cmd(
         raise typer.Exit(1)
 
 
+@eval_app.command("generate-batch")
+def generate_batch_cmd(
+    input_file: str = typer.Option(
+        ...,
+        "--input-file",
+        help="JSON file with commit SHA pairs per tier (httpx_commit_pairs.json format)",
+    ),
+    language: str = typer.Option("python", help="Language"),
+    install_cmd: list[str] = typer.Option(
+        [],
+        help="Pip install commands (repeatable). Default: 'pip install -e .'",
+    ),
+    check_command: str = typer.Option(
+        "python -m py_compile {file}", help="Syntax check command"
+    ),
+    output_dir: Optional[str] = typer.Option(None, help="Output directory"),
+    python_version_min: Optional[str] = typer.Option(None, help="Min Python version"),
+    tiers: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated tier numbers to generate (e.g., '1,2,3'). Default: all.",
+    ),
+) -> None:
+    """Generate test cases in batch from a commit-pairs JSON file.
+
+    The JSON file should have the format:
+
+    \b
+    {
+      "repo": "https://github.com/user/repo",
+      "tiers": {
+        "tier1": { "cases": [ { "id": "...", "before": "sha", "after": "sha", ... }, ... ] },
+        "tier2": { ... },
+        ...
+      }
+    }
+
+    Each case needs at minimum: id, before, after.
+    Multi-commit ranges can specify a "commit_range" field; otherwise
+    "before..after" is used.
+    """
+    import json as json_mod
+
+    from eval.generator import generate_case
+    from eval.models import BuildSystemConfig
+
+    _setup_logging()
+
+    input_path = Path(input_file)
+    if not input_path.exists():
+        typer.echo(f"Input file not found: {input_file}", err=True)
+        raise typer.Exit(1)
+
+    with open(input_path) as f:
+        data = json_mod.load(f)
+
+    repo_url = data.get("repo", "")
+    if not repo_url:
+        typer.echo("JSON file must have a top-level 'repo' field.", err=True)
+        raise typer.Exit(1)
+
+    tiers_data = data.get("tiers", {})
+    if not tiers_data:
+        typer.echo("JSON file has no 'tiers' data.", err=True)
+        raise typer.Exit(1)
+
+    # Filter tiers if --tiers flag is provided
+    tier_filter: Optional[set[int]] = None
+    if tiers:
+        try:
+            tier_filter = {int(t.strip()) for t in tiers.split(",")}
+        except ValueError:
+            typer.echo(f"Invalid --tiers value: {tiers}. Expected comma-separated integers.", err=True)
+            raise typer.Exit(1)
+
+    # Build system config
+    effective_install = list(install_cmd) if install_cmd else ["pip install -e ."]
+    build_system = BuildSystemConfig(
+        type=language,
+        install_commands=effective_install,
+        check_command=check_command,
+        import_check=True,
+        test_enabled=False,
+        python_version_min=python_version_min,
+    )
+
+    out = Path(output_dir) if output_dir else EVAL_TEST_CASES_DIR / language
+
+    generated = 0
+    failed = 0
+
+    for tier_key, tier_data in sorted(tiers_data.items()):
+        # Parse tier number from key like "tier1", "tier2", etc.
+        tier_num_str = tier_key.replace("tier", "").strip()
+        try:
+            tier_num = int(tier_num_str)
+        except ValueError:
+            typer.echo(f"Skipping unrecognized tier key: {tier_key}", err=True)
+            continue
+
+        if tier_filter and tier_num not in tier_filter:
+            continue
+
+        cases = tier_data.get("cases", [])
+        tier_desc = tier_data.get("description", "")
+        typer.echo(f"\n── Tier {tier_num}: {tier_desc} ({len(cases)} cases) ──")
+
+        for case_data in cases:
+            case_id = case_data.get("id", "")
+            if not case_id:
+                typer.echo("  Skipping case with no 'id'", err=True)
+                failed += 1
+                continue
+
+            before = case_data.get("before", "")
+            after = case_data.get("after", "")
+            if not before or not after:
+                typer.echo(f"  Skipping {case_id}: missing 'before' or 'after' SHA", err=True)
+                failed += 1
+                continue
+
+            # Determine commit range
+            commit_range = case_data.get("commit_range", f"{before}..{after}")
+            description = case_data.get("message", case_data.get("rationale", ""))
+
+            typer.echo(f"  Generating: {case_id} ...", nl=False)
+
+            try:
+                case = generate_case(
+                    repo_url=repo_url,
+                    commit_range=commit_range,
+                    case_id=case_id,
+                    language=Language(language),
+                    tier=DifficultyTier(tier_num),
+                    description=description,
+                    output_dir=out,
+                    build_system=build_system,
+                    tags=sorted({f"tier{tier_num}", tier_key}),
+                )
+                typer.echo(
+                    f" OK ({case.stats.total_hunks} hunks, "
+                    f"{case.stats.total_files} files, "
+                    f"{case.stats.reference_commit_count} ref commits)"
+                )
+                generated += 1
+            except Exception as e:
+                typer.echo(f" FAILED: {e}", err=True)
+                failed += 1
+
+    typer.echo(f"\n{'=' * 50}")
+    typer.echo(f"Generated: {generated}  Failed: {failed}  Total: {generated + failed}")
+    typer.echo(f"Output directory: {out}")
+
+    if failed > 0:
+        raise typer.Exit(1)
+
+
 @eval_app.command("run")
 def run_eval_cmd(
     suite: str = typer.Option("standard", help="Suite: smoke, standard, full"),
