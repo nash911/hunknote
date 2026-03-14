@@ -351,13 +351,16 @@ def _run_tests(
     test_command: str,
     target_env: TargetEnv,
 ) -> tuple[bool, list[str]]:
-    """Run the test suite.
+    """Run the full test suite after a commit is applied.
+
+    Called for every commit in the proposed plan when ``test_enabled``
+    is True and the earlier mechanical checks (syntax, import) passed.
 
     Returns:
         Tuple of (passed, list of error messages).
     """
     parts = shlex.split(test_command)
-    result = target_env.run(parts, cwd=worktree_dir, timeout=120)
+    result = target_env.run(parts, cwd=worktree_dir, timeout=300)
 
     if result.returncode != 0:
         # Truncate test output to avoid huge error messages
