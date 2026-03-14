@@ -68,6 +68,8 @@ class ReferenceCommit:
 class TestCaseStats:
     """Statistics about a test case's diff."""
 
+    __test__ = False  # Prevent pytest from collecting this dataclass
+
     total_hunks: int
     total_files: int
     reference_commit_count: int
@@ -78,6 +80,8 @@ class TestCaseStats:
 @dataclass
 class TestCase:
     """A complete eval test case."""
+
+    __test__ = False  # Prevent pytest from collecting this dataclass
 
     id: str  # e.g. "python_httpx_tier3_url_model"
     language: Language
