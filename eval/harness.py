@@ -125,6 +125,14 @@ def run_eval(
     result_path = save_result(run_result, out_dir)
     logger.info("Results saved to %s", result_path)
 
+    # Generate analysis report alongside the results
+    try:
+        from eval.analysis import run_analysis
+        _, terminal_report = run_analysis(result_path, web=True)
+        print(terminal_report)
+    except Exception:
+        logger.warning("Failed to generate analysis report", exc_info=True)
+
     # Print summary
     summary = run_result.get_summary()
     logger.info(

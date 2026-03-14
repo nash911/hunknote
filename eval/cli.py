@@ -461,6 +461,41 @@ def report_cmd(
         typer.echo(report)
 
 
+@eval_app.command("analyze")
+def analyze_cmd(
+    result_path: str = typer.Argument(..., help="Path to eval_results.json"),
+    web: bool = typer.Option(False, "--web", help="Generate interactive HTML dashboard"),
+    output_dir: Optional[str] = typer.Option(
+        None, help="Output directory (default: same dir as result file)"
+    ),
+) -> None:
+    """Generate a detailed analysis report from eval results.
+
+    Always produces a Markdown report (eval_analysis.md).
+    With --web, also produces an interactive HTML dashboard (eval_dashboard.html).
+    """
+    from eval.analysis import run_analysis
+
+    _setup_logging()
+
+    rpath = Path(result_path)
+    if not rpath.exists():
+        typer.echo(f"File not found: {result_path}", err=True)
+        raise typer.Exit(1)
+
+    out = Path(output_dir) if output_dir else None
+    md_path, terminal_report = run_analysis(rpath, web=web, output_dir=out)
+
+    # Print the terminal-friendly report
+    typer.echo(terminal_report)
+
+    typer.echo(f"Analysis report: {md_path}")
+    if web:
+        html_path = md_path.parent / "eval_dashboard.html"
+        typer.echo(f"Web dashboard:   {html_path}")
+
+
+
 @eval_app.command("cleanup")
 def cleanup_cmd() -> None:
     """Remove all cached venvs and bare repos."""
