@@ -55,6 +55,8 @@ def validate_agent_plan(
     worktree_branch = "eval_validation_tmp"
     per_commit: list[CommitValidation] = []
     first_failure: Optional[int] = None
+    final_state_matches: Optional[bool] = None
+    final_state_diff: Optional[str] = None
 
     try:
         # Create a worktree for validation
@@ -156,6 +158,13 @@ def validate_agent_plan(
             # Stage the applied changes in the worktree for the next commit
             _stage_and_commit_worktree(worktree_dir, commit.id)
 
+        # ── Layer 5: Final-state verification ──
+        # After all plan commits are applied, verify that the worktree
+        # matches the expected after-state (i.e. the staged.patch).
+        final_state_matches, final_state_diff = _check_final_state(
+            worktree_dir, test_case.case_dir / "staged.patch"
+        )
+
     finally:
         _cleanup_worktree(repo_dir, worktree_dir, worktree_branch)
 
@@ -185,11 +194,13 @@ def validate_agent_plan(
             test_pass_rate = sum(1 for c in test_results if c.tests_pass) / len(test_results)
 
     return MechanicalResult(
-        full_sequence_valid=all_valid,
+        full_sequence_valid=all_valid and final_state_matches is True,
         build_pass_rate=compile_pass / total,
         patch_apply_rate=patch_pass / total,
         import_integrity_rate=import_pass / total,
         test_pass_rate=test_pass_rate,
+        final_state_matches=final_state_matches,
+        final_state_diff=final_state_diff,
         per_commit=per_commit,
         first_failure_index=first_failure,
     )
@@ -234,6 +245,77 @@ def _check_patch_applies(worktree_dir: Path, patch_content: str) -> bool:
         text=True,
     )
     return result.returncode == 0
+
+
+def _check_final_state(
+    worktree_dir: Path, staged_patch_path: Path
+) -> tuple[Optional[bool], Optional[str]]:
+    """Verify the worktree matches the expected after-state.
+
+    After all plan commits have been applied, the cumulative change
+    should be identical to the ``staged.patch`` file.  We verify this
+    by reverse-applying the staged patch: if the worktree becomes
+    clean (no diff vs. the original HEAD), the state matches.
+
+    Returns:
+        Tuple of (matches: bool, diff_summary: str | None).
+        ``diff_summary`` is a short ``git diff --stat`` output when
+        there is a mismatch, or None when it matches.
+    """
+    if not staged_patch_path.exists():
+        logger.warning("No staged.patch found at %s — skipping final-state check", staged_patch_path)
+        return None, None
+
+    staged_patch = staged_patch_path.read_text()
+
+    # Try reverse-applying the staged patch.
+    # If the worktree is exactly at the after-state, this brings it
+    # back to the before-state with no residual diff.
+    result = subprocess.run(
+        ["git", "apply", "-R", "--check", "-"],
+        input=staged_patch,
+        cwd=worktree_dir,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0:
+        return True, None
+
+    # The reverse-apply failed — the plan didn't reproduce the full diff.
+    # Generate a diff summary showing what's different.
+    # First, get the cumulative diff of the worktree vs its initial state.
+    diff_result = subprocess.run(
+        ["git", "diff", "--stat", "HEAD~" + str(_count_commits(worktree_dir))],
+        cwd=worktree_dir,
+        capture_output=True,
+        text=True,
+    )
+    # Fallback: just diff vs initial commit
+    if diff_result.returncode != 0:
+        diff_result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            cwd=worktree_dir,
+            capture_output=True,
+            text=True,
+        )
+
+    diff_summary = diff_result.stdout[:2000] if diff_result.stdout else result.stderr[:500]
+    return False, diff_summary
+
+
+def _count_commits(worktree_dir: Path) -> int:
+    """Count commits on the current branch in the worktree."""
+    result = subprocess.run(
+        ["git", "rev-list", "--count", "HEAD"],
+        cwd=worktree_dir,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return int(result.stdout.strip())
+    except (ValueError, AttributeError):
+        return 1
 
 
 def _apply_patch(worktree_dir: Path, patch_content: str) -> None:
