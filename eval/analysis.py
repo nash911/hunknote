@@ -360,6 +360,7 @@ def generate_terminal_report(result: EvalRunResult) -> str:
     failures = result.get_failures()
 
     total_duration = sum(c.duration_s for c in result.cases)
+    total_duration = f"{int(total_duration // 3600):02d}:{int((total_duration % 3600) // 60):02d}:{int(total_duration % 60):02d}"
     total_tokens = sum(c.total_tokens for c in result.cases)
     provider = result.agent_config.get("provider", "?")
     model = result.agent_config.get("model", "?")
@@ -373,7 +374,7 @@ def generate_terminal_report(result: EvalRunResult) -> str:
     lines.append(f"{BOLD}{'═' * 72}{RST}")
     lines.append(f"  {DIM}Run:{RST}   {result.run_id}")
     lines.append(f"  {DIM}Agent:{RST} {provider}/{model} ({mode})")
-    lines.append(f"  {DIM}Suite:{RST} {result.suite}   {DIM}Time:{RST} {total_duration:.0f}s   {DIM}Tokens:{RST} {total_tokens:,}")
+    lines.append(f"  {DIM}Suite:{RST} {result.suite}   {DIM}Time:{RST} {total_duration}   {DIM}Tokens:{RST} {total_tokens:,}")
     lines.append("")
 
     # ── Summary bar ──
