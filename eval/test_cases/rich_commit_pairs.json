@@ -118,23 +118,21 @@
       "description": "15-40 hunks, 5-15 files — multi-file refactors, cross-cutting changes",
       "cases": [
         {
-          "id": "python_rich_tier3_markdown_styles",
-          "before": "c595fa95068dd2c5095d25446b2f0571bc0b3995",
-          "after": "e9b0e19158034a49f2d7048cdf82d7146e59715f",
-          "message": "Update to markdown styles",
-          "hunks": 21,
-          "files": 6,
-          "lines_added": 55,
-          "lines_removed": 36,
+          "id": "python_rich_tier3_traceback_locals_options",
+          "before": "f82a399d584092f0195d0f68add0c03531e02c84",
+          "after": "e8e797d19d84fc1c580e90e84c00bf6747b6a0d7",
+          "message": "Traceback - Expose more locals rendering options",
+          "hunks": 30,
+          "files": 4,
+          "lines_added": 39,
+          "lines_removed": 1,
           "file_list": [
-            "rich/default_styles.py",
-            "rich/markdown.py",
-            "rich/text.py",
-            "tests/test_markdown.py",
-            "tests/test_text.py",
-            "CHANGELOG.md"
+            "CHANGELOG.md",
+            "CONTRIBUTORS.md",
+            "rich/scope.py",
+            "rich/traceback.py"
           ],
-          "rationale": "Cross-cutting style refactor touching default styles, markdown renderer, text module, and multiple test files."
+          "rationale": "Feature addition exposing more locals rendering options in Traceback. Additive changes across scope and traceback modules — intermediate commits won't break existing tests since all changes add new optional parameters."
         },
         {
           "id": "python_rich_tier3_cell_tests_refactor",
