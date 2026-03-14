@@ -1,0 +1,205 @@
+{
+  "repo": "https://github.com/Textualize/rich",
+  "description": "Before/after commit SHA pairs for the Compose Agent eval on Textualize/rich, organized by difficulty tier. 'before' is the parent commit (the repo state before the change), 'after' is the commit that produces the change. The squashed diff from before..after is the agent's input.",
+  "install_commands": [
+    "pip install -e .",
+    "pip install pytest attrs typing-extensions"
+  ],
+  "test_command": "python -m pytest -x -q --tb=short --no-header -p no:warnings",
+  "tiers": {
+    "tier1": {
+      "description": "2-5 hunks, 1-3 files — small bug fixes and single-concern changes",
+      "cases": [
+        {
+          "id": "python_rich_tier1_split_graphemes_loop",
+          "before": "27701029082052c6541031b6f139097230253900",
+          "after": "60b064a70a9db813e96955b7b344f61f62817f4c",
+          "message": "Fix for infinite loop in split_graphemes",
+          "hunks": 3,
+          "files": 3,
+          "lines_added": 10,
+          "lines_removed": 0,
+          "file_list": [
+            "CHANGELOG.md",
+            "rich/cells.py",
+            "tests/test_cells.py"
+          ],
+          "rationale": "Bug fix for an infinite loop in cell-width splitting. Touches source, test, and changelog — a clean single-concern change."
+        },
+        {
+          "id": "python_rich_tier1_prompt_markup_fix",
+          "before": "4d6d631a3d2deddf8405522d4b8c976a6d35726c",
+          "after": "95fe8ff59249d9ac0534a82af7c746826a5999f4",
+          "message": "Fix raw markup printed on prompt errors sometimes",
+          "hunks": 2,
+          "files": 2,
+          "lines_added": 14,
+          "lines_removed": 1,
+          "file_list": [
+            "rich/prompt.py",
+            "tests/test_prompt.py"
+          ],
+          "rationale": "Small fix ensuring markup isn't printed raw on prompt validation errors. Source fix + test addition."
+        },
+        {
+          "id": "python_rich_tier1_softwrap_background",
+          "before": "05ff970926cbd0b5d0acb6fc18cdbd1fc971e582",
+          "after": "39ee57dfe70614381c3ebce34cb35cab557af2f5",
+          "message": "Fix background style with soft wrap",
+          "hunks": 3,
+          "files": 2,
+          "lines_added": 23,
+          "lines_removed": 5,
+          "file_list": [
+            "rich/console.py",
+            "tests/test_text.py"
+          ],
+          "rationale": "Fix for background style being lost during soft-wrap rendering. Console rendering logic + test update."
+        }
+      ]
+    },
+    "tier2": {
+      "description": "5-15 hunks, 2-5 files — feature additions with tests, config changes",
+      "cases": [
+        {
+          "id": "python_rich_tier2_zwj_edge_cases",
+          "before": "1d402e0c59f8765e420a5a4440eb2fca7465d1ae",
+          "after": "13f87a4007f629c00b491286034751d53ae9d63c",
+          "message": "Fix ZWJ and edge cases in cell width calculation",
+          "hunks": 13,
+          "files": 4,
+          "lines_added": 47,
+          "lines_removed": 15,
+          "file_list": [
+            "CHANGELOG.md",
+            "pyproject.toml",
+            "rich/cells.py",
+            "tests/test_cells.py"
+          ],
+          "rationale": "Multi-hunk fix for Zero-Width Joiner edge cases in cell width. Touches cell logic, tests, changelog, and version bump."
+        },
+        {
+          "id": "python_rich_tier2_tty_interactive",
+          "before": "49117ced6648a432d85951f72dce777038f6ce09",
+          "after": "0ab2467297190cdf09dde9256ce26d4e7e18ff3a",
+          "message": "Add TTY_INTERACTIVE env var support",
+          "hunks": 11,
+          "files": 5,
+          "lines_added": 44,
+          "lines_removed": 4,
+          "file_list": [
+            "CHANGELOG.md",
+            "docs/source/console.rst",
+            "rich/console.py",
+            "rich/diagnose.py",
+            "tests/test_console.py"
+          ],
+          "rationale": "New environment variable feature touching console, diagnostics, docs, tests, and changelog — good cross-module change."
+        },
+        {
+          "id": "python_rich_tier2_split_lines_terminator",
+          "before": "565087254a8c9f1e75dd6635b0c3df52190515fe",
+          "after": "9992173c74051e6f0b3e336775fea6feb5e56d33",
+          "message": "Fix split lines terminator handling",
+          "hunks": 4,
+          "files": 3,
+          "lines_added": 37,
+          "lines_removed": 2,
+          "file_list": [
+            "rich/cells.py",
+            "rich/text.py",
+            "tests/test_text.py"
+          ],
+          "rationale": "Fix for line splitting with terminators. Touches cells module, text module, and tests — dependency between text and cell logic."
+        }
+      ]
+    },
+    "tier3": {
+      "description": "15-40 hunks, 5-15 files — multi-file refactors, cross-cutting changes",
+      "cases": [
+        {
+          "id": "python_rich_tier3_markdown_styles",
+          "before": "c595fa95068dd2c5095d25446b2f0571bc0b3995",
+          "after": "e9b0e19158034a49f2d7048cdf82d7146e59715f",
+          "message": "Update to markdown styles",
+          "hunks": 21,
+          "files": 6,
+          "lines_added": 55,
+          "lines_removed": 36,
+          "file_list": [
+            "rich/default_styles.py",
+            "rich/markdown.py",
+            "rich/text.py",
+            "tests/test_markdown.py",
+            "tests/test_text.py",
+            "CHANGELOG.md"
+          ],
+          "rationale": "Cross-cutting style refactor touching default styles, markdown renderer, text module, and multiple test files."
+        },
+        {
+          "id": "python_rich_tier3_cell_tests_refactor",
+          "before": "d09cc4f6d51c0787bb6f9d631dc6a91363aac58d",
+          "after": "f924a21a314420a723a94a8d10b769dc855a67ec",
+          "message": "Refactor cell-related tests",
+          "hunks": 17,
+          "files": 6,
+          "lines_added": 101,
+          "lines_removed": 171,
+          "file_list": [
+            "rich/cells.py",
+            "rich/text.py",
+            "tests/test_cells.py",
+            "tests/test_console.py",
+            "tests/test_text.py",
+            "tests/test_pretty.py"
+          ],
+          "rationale": "Large test refactor touching cells source code and multiple test files. Tests tight coupling between text, console, and cells modules."
+        }
+      ]
+    },
+    "tier4": {
+      "description": "40-100 hunks, 10-25 files — large refactors, API redesigns",
+      "cases": [
+        {
+          "id": "python_rich_tier4_move_to_cells",
+          "before": "5ffec68c91d460eff61105b736df4768234e40be",
+          "after": "7001a52a356f8e51a3e1cc2ac48192ecb3b46d9d",
+          "message": "Move cell-width logic to cells.py",
+          "hunks": 56,
+          "files": 25,
+          "lines_added": 423,
+          "lines_removed": 541,
+          "file_list": [
+            "rich/cells.py",
+            "rich/text.py",
+            "rich/console.py",
+            "rich/table.py",
+            "rich/panel.py",
+            "rich/columns.py",
+            "rich/padding.py",
+            "rich/progress.py",
+            "rich/syntax.py",
+            "rich/markdown.py",
+            "rich/pretty.py",
+            "rich/traceback.py",
+            "rich/tree.py",
+            "rich/live.py",
+            "rich/align.py",
+            "rich/bar.py",
+            "rich/rule.py",
+            "rich/spinner.py",
+            "rich/segment.py",
+            "rich/constrain.py",
+            "rich/highlighter.py",
+            "rich/logging.py",
+            "rich/prompt.py",
+            "tests/test_cells.py",
+            "tests/test_text.py"
+          ],
+          "rationale": "Major module extraction — moves cell-width related logic from text.py/console.py into a new cells.py module, touching 25 files across the entire codebase. Classic large-scale import refactor."
+        }
+      ]
+    }
+  }
+}
+
