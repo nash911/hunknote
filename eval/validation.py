@@ -117,17 +117,26 @@ def validate_agent_plan(
                     worktree_dir, touched_files, target_env
                 )
 
-            # Layer 4: Tests (optional)
+            # Layer 4: Tests (optional) — only if earlier checks passed
             tests_pass: Optional[bool] = None
             test_errors: list[str] = []
-            if test_case.build_system.test_enabled and test_case.build_system.test_command:
+            if (
+                test_case.build_system.test_enabled
+                and test_case.build_system.test_command
+                and syntax_ok
+                and import_ok
+            ):
                 tests_pass, test_errors = _run_tests(
-                    worktree_dir, test_case.build_system.test_command, target_env
+                    worktree_dir,
+                    test_case.build_system.test_command,
+                    target_env,
                 )
 
             all_errors = syntax_errors + import_errors + test_errors
             compile_ok = syntax_ok
             commit_valid = patch_ok and syntax_ok and import_ok
+            if tests_pass is False:
+                commit_valid = False
 
             if not commit_valid and first_failure is None:
                 first_failure = i
@@ -165,6 +174,7 @@ def validate_agent_plan(
     import_pass = sum(1 for c in per_commit if c.import_resolves)
     all_valid = all(
         c.patch_applies and c.syntax_valid and c.import_resolves
+        and c.tests_pass is not False
         for c in per_commit
     )
 
