@@ -6,6 +6,7 @@ Run with: python -m eval.cli <command>
 
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -271,6 +272,9 @@ def run_eval_cmd(
     from eval.harness import run_eval
     from eval.registry import discover_cases, filter_cases_by_suite
 
+    # Record the start time to calculate total duration later
+    start_time = time.time()
+
     _setup_logging()
 
     # Discover and filter cases
@@ -336,6 +340,13 @@ def run_eval_cmd(
     typer.echo(f"\nResults: {summary['passed']}/{summary['total']} passed")
     typer.echo(f"Average score: {summary['avg_score']:.3f}")
     typer.echo(f"Mechanical pass rate: {summary.get('mechanical_pass_rate', 0):.1%}")
+
+    # Total time taken
+    total_duration = time.time() - start_time
+    total_duration_minutes = int(total_duration // 60)
+    total_duration_seconds = total_duration % 60
+    typer.echo(f"Total duration: {total_duration_minutes}:{total_duration_seconds:.2f}")
+
 
     failures = result.get_failures()
     if failures:
