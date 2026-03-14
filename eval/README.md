@@ -364,7 +364,9 @@ Reports:
 
 ---
 
-## Current Test Cases (httpx)
+## Current Test Cases
+
+### httpx (`encode/httpx`)
 
 | Tier | Case ID | Hunks | Files | Description |
 |------|---------|-------|-------|-------------|
@@ -381,6 +383,20 @@ Reports:
 | 4 | `tier4_url_signature_cleanup` | 41 | 5 | URL class signature cleanup |
 | 5 | `tier5_future_annotations` | 225 | 25 | Add `from __future__ import annotations` |
 | 5 | `tier5_sslcontext_release` | 168 | 44 | SSL context release + major refactor |
+
+### rich (`Textualize/rich`)
+
+| Tier | Case ID | Hunks | Files | Description |
+|------|---------|-------|-------|-------------|
+| 1 | `tier1_split_graphemes_loop` | 3 | 3 | Fix infinite loop in split_graphemes |
+| 1 | `tier1_prompt_markup_fix` | 2 | 2 | Fix raw markup on prompt errors |
+| 1 | `tier1_softwrap_background` | 3 | 2 | Fix background style with soft wrap |
+| 2 | `tier2_zwj_edge_cases` | 5 | 4 | Fix ZWJ and edge cases in cell width |
+| 2 | `tier2_tty_interactive` | 7 | 5 | Add TTY_INTERACTIVE env var support |
+| 2 | `tier2_split_lines_terminator` | 3 | 3 | Fix split lines terminator handling |
+| 3 | `tier3_markdown_styles` | 16 | 6 | Update to markdown styles |
+| 3 | `tier3_cell_tests_refactor` | 14 | 6 | Refactor cell-related tests |
+| 4 | `tier4_move_to_cells` | 32 | 25 | Move cell-width logic to cells.py |
 
 ---
 
