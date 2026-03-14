@@ -1,6 +1,10 @@
 {
   "repo": "https://github.com/encode/httpx",
   "description": "Before/after commit SHA pairs for the Compose Agent eval, organized by difficulty tier. 'before' is the parent commit (the repo state before the change), 'after' is the commit (or last commit in a range) that produces the change. The squashed diff from before..after is the agent's input.",
+  "install_commands": [
+    "pip install -r requirements.txt"
+  ],
+  "test_command": "python -m pytest -x -q --tb=short --no-header -p no:warnings",
   "tiers": {
     "tier1": {
       "description": "2-5 hunks, 1-3 files — small bug fixes and single-concern changes",

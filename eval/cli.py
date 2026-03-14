@@ -153,14 +153,25 @@ def generate_batch_cmd(
             typer.echo(f"Invalid --tiers value: {tiers}. Expected comma-separated integers.", err=True)
             raise typer.Exit(1)
 
-    # Build system config
-    effective_install = list(install_cmd) if install_cmd else ["pip install -e ."]
+    # Build system config:
+    # CLI --install-cmd overrides JSON "install_commands" overrides default
+    if install_cmd:
+        effective_install = list(install_cmd)
+    elif data.get("install_commands"):
+        effective_install = list(data["install_commands"])
+    else:
+        effective_install = ["pip install -e ."]
+
+    # Test command from JSON (CLI doesn't expose this; use JSON or None)
+    test_command = data.get("test_command")
+
     build_system = BuildSystemConfig(
         type=language,
         install_commands=effective_install,
         check_command=check_command,
         import_check=True,
-        test_enabled=False,
+        test_command=test_command,
+        test_enabled=test_command is not None,
         python_version_min=python_version_min,
     )
 
