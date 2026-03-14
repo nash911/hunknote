@@ -43,6 +43,10 @@ python eval/cli.py run --suite smoke
 # Run the full suite (all tiers)
 python eval/cli.py run --suite full
 
+# Run only cases from a specific repo
+python eval/cli.py run --suite full --repo rich
+python eval/cli.py run --suite smoke --repo httpx
+
 # Run a single test case
 python eval/cli.py run --case python_httpx_tier2_move_utils_to_models
 
@@ -229,12 +233,29 @@ python eval/cli.py generate \
 ```bash
 python eval/cli.py run \
     --suite full \
+    --repo rich \            # Filter by source repo (e.g. 'httpx', 'rich')
     --provider google \
     --model gemini-2.5-flash \
     --max-commits 8 \
     --max-retries 2 \
     --no-agent        # Use single-shot LLM (agent module not yet implemented)
 ```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--suite` | Suite to run: `smoke`, `standard`, `full` | `standard` |
+| `--repo` | Filter by source repo name (e.g. `httpx`, `rich`) | None (all repos) |
+| `--tier` | Filter by difficulty tier (1-5) | None (all tiers) |
+| `--case` | Run a single test case by ID | None |
+| `--language` | Filter by language | None |
+| `--provider` | LLM provider | From config |
+| `--model` | LLM model | From config |
+| `--max-commits` | Max commits per plan | 8 |
+| `--max-retries` | Max retries for agent | 2 |
+| `--agent/--no-agent` | Use Compose Agent or single-shot LLM | `--agent` (falls back if unavailable) |
+| `--judge` | Enable LLM-as-judge scoring | Off |
+| `--judge-model` | Model for LLM-as-judge | From config |
+| `--output-dir` | Custom output directory for results | Auto-generated |
 
 ### Output
 
