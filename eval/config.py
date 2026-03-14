@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Default paths
 EVAL_TEST_CASES_DIR = Path(__file__).parent / "test_cases" / "cases"
-EVAL_RESULTS_DIR = Path(__file__).parent.parent.parent / "eval_results"
+EVAL_RESULTS_DIR = Path(__file__).parent.parent / "eval_results"
 EVAL_CACHE_DIR = Path.home() / ".hunknote" / "eval_cache"
 EVAL_VENVS_CACHE_DIR = EVAL_CACHE_DIR / "venvs"
 EVAL_REPOS_CACHE_DIR = EVAL_CACHE_DIR / "repos"
