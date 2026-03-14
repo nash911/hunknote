@@ -293,7 +293,17 @@ def run_eval_cmd(
             typer.echo(f"Case not found: {case}", err=True)
             raise typer.Exit(1)
     else:
-        cases = filter_cases_by_suite(cases, suite)
+        # When explicit filters (--tier, --repo) are set and the user
+        # hasn't provided --suite, skip the suite filter so that explicit
+        # filters aren't silently narrowed by the default suite.
+        # E.g. `--tier 4` with default suite "standard" would drop all
+        # tier-4 cases since "standard" only includes tiers 1-3.
+        has_explicit_filter = tier is not None or repo is not None
+        if not has_explicit_filter:
+            cases = filter_cases_by_suite(cases, suite)
+        elif suite != "standard":
+            # User explicitly set --suite alongside --tier/--repo
+            cases = filter_cases_by_suite(cases, suite)
 
     # Filter by repo name if specified
     if repo:
