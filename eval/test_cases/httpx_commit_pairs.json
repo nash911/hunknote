@@ -115,28 +115,43 @@
       "description": "15-40 hunks, 5-15 files — multi-file features and cross-cutting changes",
       "cases": [
         {
-          "id": "python_httpx_tier3_charset_autodetect",
-          "before": "940d61b239d0f387405f56005b13ad5aed3216b0",
-          "after": "1c33a2854e5d18955c8766c5c01e6229716b5b7a",
-          "message": "Make charset auto-detection optional (#2165)",
-          "hunks": 39,
-          "files": 11,
-          "lines_added": 245,
-          "lines_removed": 54,
+          "id": "python_httpx_tier3_deprecate_app_kwarg",
+          "before": "6f461522a5c58839c31be3c82b7bd47fba77109b",
+          "after": "cabd1c095e52e2f67ab63ec17941d3a539d7c877",
+          "message": "Deprecate `app=...` in favor of explicit `WSGITransport`/`ASGITransport`. (#3050)",
+          "hunks": 28,
+          "files": 6,
+          "lines_added": 145,
+          "lines_removed": 72,
           "file_list": [
-            "README.md",
-            "README_chinese.md",
-            "docs/advanced.md",
-            "docs/index.md",
+            "CHANGELOG.md",
+            "docs/advanced/transports.md",
+            "docs/async.md",
             "httpx/_client.py",
-            "httpx/_models.py",
-            "requirements.txt",
-            "setup.py",
-            "tests/client/test_client.py",
-            "tests/models/test_responses.py",
-            "tests/test_decoders.py"
+            "tests/test_asgi.py",
+            "tests/test_wsgi.py"
           ],
-          "rationale": "Cross-cutting feature change: optional charset detection touches client API, models, dependencies, docs, and multiple test files. Deep dependency chains between the client config change and downstream test expectations."
+          "rationale": "API deprecation replacing the `app` keyword argument with explicit transport classes. Touches client constructor, both ASGI and WSGI test suites, docs, and changelog. The client changes must be co-committed with the test refactors that switch from app= to ASGITransport/WSGITransport."
+        },
+        {
+          "id": "python_httpx_tier3_lazy_load_deps",
+          "before": "eeb5e3c2a3ff2403ec47b5926715ecd61143d92d",
+          "after": "e9cabc8e1deb6548c5c5e2f453e343d39a2a5321",
+          "message": "made dependencies on certifi and httpcore only load when required (#3377)",
+          "hunks": 19,
+          "files": 7,
+          "lines_added": 75,
+          "lines_removed": 26,
+          "file_list": [
+            "CHANGELOG.md",
+            "httpx/__version__.py",
+            "httpx/_config.py",
+            "httpx/_main.py",
+            "httpx/_transports/default.py",
+            "tests/test_api.py",
+            "tests/test_config.py"
+          ],
+          "rationale": "Refactor to lazy-load certifi and httpcore, touching config, CLI main, transport defaults, version module, and test files. The import restructuring in _config.py and _transports/default.py must be coordinated with the test changes that validate the lazy-loading behavior."
         },
         {
           "id": "python_httpx_tier3_zstd_decoding",
