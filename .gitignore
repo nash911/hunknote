@@ -215,3 +215,4 @@ temp/
 .hunknote/
 bugfiles/
 integration_tests/evals/
+eval_results/
