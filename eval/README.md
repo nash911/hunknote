@@ -81,14 +81,19 @@ eval/
 ├── reporting.py         # Result serialization, comparison
 ├── analysis.py          # Terminal reports, markdown reports, HTML dashboards
 └── test_cases/
-    ├── httpx_commit_pairs.json    # SHA pair definitions
+    ├── httpx_commit_pairs.json    # SHA pair definitions (httpx)
+    ├── rich_commit_pairs.json     # SHA pair definitions (rich)
     └── cases/
         └── python/
             ├── python_httpx_tier1_*/
             ├── python_httpx_tier2_*/
             ├── python_httpx_tier3_*/
             ├── python_httpx_tier4_*/
-            └── python_httpx_tier5_*/
+            ├── python_httpx_tier5_*/
+            ├── python_rich_tier1_*/
+            ├── python_rich_tier2_*/
+            ├── python_rich_tier3_*/
+            └── python_rich_tier4_*/
 ```
 
 ### Module Responsibilities
