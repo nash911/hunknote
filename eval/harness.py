@@ -71,6 +71,19 @@ def run_eval(
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     run_id = f"eval_{timestamp}"
 
+    # Create the run output directory and set up file logging
+    run_dir = out_dir / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / "eval_logs.log"
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    # Attach to root logger so all eval.* loggers are captured
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+
     run_result = EvalRunResult(
         run_id=run_id,
         timestamp=timestamp,
@@ -109,7 +122,6 @@ def run_eval(
         )
 
     # Save results
-    out_dir.mkdir(parents=True, exist_ok=True)
     result_path = save_result(run_result, out_dir)
     logger.info("Results saved to %s", result_path)
 
@@ -121,6 +133,10 @@ def run_eval(
         summary["total"],
         summary["avg_score"],
     )
+
+    # Remove file handler to avoid leaking
+    root_logger.removeHandler(file_handler)
+    file_handler.close()
 
     return run_result
 
