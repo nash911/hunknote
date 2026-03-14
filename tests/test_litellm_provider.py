@@ -200,18 +200,18 @@ class TestEffectiveMaxTokens:
     def test_raw_mode_floor(self):
         p = LiteLLMProvider(LLMProvider.OPENAI, "gpt-4o")
         with patch("hunknote.config.MAX_TOKENS", 1500):
-            assert p._effective_max_tokens(for_raw=True) == 8192
+            assert p._effective_max_tokens(for_raw=True) == 16384
 
     def test_raw_mode_thinking_model(self):
         p = LiteLLMProvider(LLMProvider.GOOGLE, "gemini-2.5-pro")
         with patch("hunknote.config.MAX_TOKENS", 1500):
-            assert p._effective_max_tokens(for_raw=True) == 8192 * 3
+            assert p._effective_max_tokens(for_raw=True) == 16384 * 3
 
     def test_raw_mode_large_config(self):
-        """If MAX_TOKENS > 8192, raw mode uses the larger value."""
+        """If MAX_TOKENS > 16384, raw mode uses the larger value."""
         p = LiteLLMProvider(LLMProvider.OPENAI, "gpt-4o")
-        with patch("hunknote.config.MAX_TOKENS", 10000):
-            assert p._effective_max_tokens(for_raw=True) == 10000
+        with patch("hunknote.config.MAX_TOKENS", 20000):
+            assert p._effective_max_tokens(for_raw=True) == 20000
 
 
 # ============================================================
@@ -356,7 +356,7 @@ class TestLiteLLMProviderGenerateRaw:
                     p.generate_raw("system", "user")
 
         call_kwargs = mock_comp.call_args
-        assert call_kwargs.kwargs["max_tokens"] == 8192
+        assert call_kwargs.kwargs["max_tokens"] == 16384
 
     def test_generate_raw_raises_on_empty_response(self):
         p = LiteLLMProvider(LLMProvider.OPENAI, "gpt-4o")
