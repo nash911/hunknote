@@ -129,6 +129,8 @@ class MechanicalResult:
     patch_apply_rate: float
     import_integrity_rate: float
     test_pass_rate: Optional[float] = None
+    final_state_matches: Optional[bool] = None  # Does worktree match expected after-state?
+    final_state_diff: Optional[str] = None  # git diff summary if mismatch
     per_commit: list[CommitValidation] = field(default_factory=list)
     first_failure_index: Optional[int] = None
 
