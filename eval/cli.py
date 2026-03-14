@@ -253,6 +253,11 @@ def run_eval_cmd(
     language: Optional[str] = typer.Option(None, help="Filter by language"),
     tier: Optional[int] = typer.Option(None, help="Filter by tier"),
     case: Optional[str] = typer.Option(None, help="Run a specific case by ID"),
+    repo: Optional[str] = typer.Option(
+        None,
+        help="Filter by source repo name (e.g. 'httpx', 'rich'). "
+             "Matches against the repo name in the source URL.",
+    ),
     model: Optional[str] = typer.Option(None, help="LLM model to use"),
     provider: Optional[str] = typer.Option(None, help="LLM provider"),
     max_retries: int = typer.Option(2, help="Max retries for agent"),
@@ -289,6 +294,17 @@ def run_eval_cmd(
             raise typer.Exit(1)
     else:
         cases = filter_cases_by_suite(cases, suite)
+
+    # Filter by repo name if specified
+    if repo:
+        repo_lower = repo.lower().strip("/")
+        cases = [
+            c for c in cases
+            if repo_lower in c.source_repo.lower().rstrip("/").split("/")[-1]
+        ]
+        if not cases:
+            typer.echo(f"No test cases found for repo: {repo}", err=True)
+            raise typer.Exit(1)
 
     if not cases:
         typer.echo("No test cases found matching filters.", err=True)
