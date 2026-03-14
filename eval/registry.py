@@ -178,11 +178,13 @@ def filter_cases_by_suite(
     patterns = SUITES.get(suite, ["*"])
 
     if suite == "smoke":
-        # For smoke suite, only include one case per language/tier to keep it small and fast
-        seen = set()
+        # For smoke suite, include one case per (language, tier, repo) to keep
+        # it small and fast while still covering every source repository
+        seen: set[tuple] = set()
         filtered = []
         for c in cases:
-            key = (c.language, c.tier)
+            repo_name = c.source_repo.rstrip("/").split("/")[-1].lower() if c.source_repo else ""
+            key = (c.language, c.tier, repo_name)
             if key not in seen and any(fnmatch.fnmatch(c.id, pat) for pat in patterns):
                 filtered.append(c)
                 seen.add(key)
