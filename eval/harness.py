@@ -38,7 +38,7 @@ from eval.models import (
     TestCase,
 )
 from eval.reporting import save_result
-from eval.scoring import compute_overall_score, compute_semantic_scores
+from eval.scoring import compute_hunk_coverage, compute_overall_score, compute_semantic_scores
 from eval.validation import validate_agent_plan
 
 logger = logging.getLogger(__name__)
@@ -240,6 +240,30 @@ def _run_single_case(
             mechanical = validate_agent_plan(
                 test_case, plan, target_env, repo_dir, inventory, file_diffs
             )
+
+            # 6b. Hunk coverage check (independent of compose validation)
+            coverage, missing_ids, hallucinated_ids = compute_hunk_coverage(
+                plan, inventory
+            )
+            mechanical.hunk_coverage = coverage
+            mechanical.missing_hunk_ids = missing_ids if missing_ids else None
+            mechanical.hallucinated_hunk_ids = hallucinated_ids if hallucinated_ids else None
+
+            if missing_ids:
+                logger.warning(
+                    "Hunk coverage %.1f%% — %d missing: %s",
+                    coverage * 100,
+                    len(missing_ids),
+                    ", ".join(missing_ids[:5])
+                    + (f" (+{len(missing_ids) - 5} more)" if len(missing_ids) > 5 else ""),
+                )
+            if hallucinated_ids:
+                logger.warning(
+                    "Plan contains %d hallucinated hunk IDs: %s",
+                    len(hallucinated_ids),
+                    ", ".join(hallucinated_ids[:5])
+                    + (f" (+{len(hallucinated_ids) - 5} more)" if len(hallucinated_ids) > 5 else ""),
+                )
 
             # 7. Semantic scoring
             semantic = compute_semantic_scores(plan, test_case, inventory)

@@ -135,6 +135,43 @@ def _build_assignment_from_plan(plan: ComposePlan) -> dict[str, str]:
     return assignment
 
 
+def compute_hunk_coverage(
+    plan: ComposePlan,
+    inventory: dict[str, HunkRef],
+) -> tuple[float, list[str], list[str]]:
+    """Check that every inventory hunk appears in the plan exactly once.
+
+    This is an independent verification that the Compose command (or
+    Agent) output covers all hunks in the input patch. It detects:
+    - **Missing** hunks: present in inventory but absent from the plan.
+    - **Hallucinated** hunks: present in the plan but absent from inventory.
+
+    Args:
+        plan: The agent/LLM's ComposePlan.
+        inventory: The full hunk inventory (hunk_id -> HunkRef).
+
+    Returns:
+        Tuple of (coverage_rate, missing_ids, hallucinated_ids).
+        ``coverage_rate`` is in [0, 1]: fraction of inventory hunks
+        that appear in the plan.
+    """
+    plan_hunk_ids: set[str] = set()
+    for commit in plan.commits:
+        for hid in commit.hunks:
+            plan_hunk_ids.add(hid)
+
+    inventory_ids = set(inventory.keys())
+
+    missing = sorted(inventory_ids - plan_hunk_ids)
+    hallucinated = sorted(plan_hunk_ids - inventory_ids)
+
+    if not inventory_ids:
+        return 1.0, missing, hallucinated
+
+    coverage = len(inventory_ids - set(missing)) / len(inventory_ids)
+    return coverage, missing, hallucinated
+
+
 def _build_reference_assignment(test_case: TestCase) -> dict[str, str]:
     """Build a hunk_id -> commit_id mapping from reference commits."""
     assignment: dict[str, str] = {}

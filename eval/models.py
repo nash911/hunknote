@@ -135,6 +135,9 @@ class MechanicalResult:
     test_pass_rate: Optional[float] = None
     final_state_matches: Optional[bool] = None  # Does worktree match expected after-state?
     final_state_diff: Optional[str] = None  # git diff summary if mismatch
+    hunk_coverage: Optional[float] = None  # Fraction of inventory hunks present in plan
+    missing_hunk_ids: Optional[list[str]] = None  # Hunk IDs in inventory but not in plan
+    hallucinated_hunk_ids: Optional[list[str]] = None  # Hunk IDs in plan but not in inventory
     per_commit: list[CommitValidation] = field(default_factory=list)
     first_failure_index: Optional[int] = None
 
