@@ -59,6 +59,13 @@ python eval/cli.py analyze eval_results/<timestamp>/eval_results.json
 
 # Analyze with web dashboard
 python eval/cli.py analyze eval_results/<timestamp>/eval_results.json --web
+
+# Meta-analysis across multiple runs
+python eval/cli.py analyze \
+    eval_results/<run1>/eval_results.json \
+    eval_results/<run2>/eval_results.json \
+    eval_results/<run3>/eval_results.json \
+    --web
 ```
 
 ---
@@ -116,7 +123,7 @@ eval/
 | **judge.py** | Optional LLM-as-judge for subjective quality dimensions: cohesion, separation, ordering. |
 | **harness.py** | Orchestrates the full eval loop: extract repo → create venv → install deps → parse patch → run agent → validate → score → save results. |
 | **reporting.py** | Serializes `EvalRunResult` to JSON, loads results, compares two runs for regressions. |
-| **analysis.py** | Generates: (1) Markdown analysis report, (2) ANSI terminal report with color-coded commit dots, (3) single-page HTML dashboard with interactive drill-down. |
+| **analysis.py** | Generates: (1) Markdown analysis report, (2) ANSI terminal report with color-coded commit dots, (3) single-page HTML dashboard with interactive drill-down, (4) multi-run meta-analysis reports (Markdown, terminal, HTML) comparing consistency and failure root causes across runs. |
 | **config.py** | Constants: paths, suite definitions, default agent/judge config, scoring weights. |
 | **cli.py** | Typer CLI: `generate`, `generate-batch`, `run`, `list`, `report`, `analyze`, `compare`, `cleanup`. |
 
@@ -399,6 +406,75 @@ Reports:
 - New failures (cases that passed before but fail now)
 - Score regressions (score dropped by > 0.05)
 - Score improvements
+
+---
+
+## Meta-Analysis (Multi-Run Comparison)
+
+When multiple `eval_results.json` files are passed to the `analyze` command,
+the framework performs a **meta-analysis** — comparing per-case results across
+all runs to identify consistency patterns, false positives, and root causes.
+
+### Usage
+
+```bash
+# Meta-analysis across 3 runs (terminal + Markdown)
+python eval/cli.py analyze \
+    eval_results/2026-03-15_15-30-13/eval_results.json \
+    eval_results/2026-03-15_16-21-06/eval_results.json \
+    eval_results/2026-03-15_17-37-30/eval_results.json
+
+# With interactive HTML dashboard
+python eval/cli.py analyze \
+    eval_results/run1/eval_results.json \
+    eval_results/run2/eval_results.json \
+    eval_results/run3/eval_results.json \
+    --web
+
+# Custom output directory
+python eval/cli.py analyze \
+    eval_results/run1/eval_results.json \
+    eval_results/run2/eval_results.json \
+    --output-dir eval_results/comparison/
+```
+
+### Output
+
+Reports are saved in the directory of the most recent (lexicographically last)
+result file:
+
+```
+eval_results/2026-03-15_17-37-30/
+├── eval_results.json     # Original run results
+├── meta_analysis.md      # Detailed Markdown meta-analysis
+└── meta_dashboard.html   # Interactive HTML dashboard (with --web)
+```
+
+### What the Meta-Analysis Reports
+
+**Consistency Summary** — classifies every case into one of four categories:
+
+| Category | Description |
+|----------|-------------|
+| **Always pass** | Mechanically passes in all N runs |
+| **Consistent fail** | Mechanically fails in all N runs (genuine LLM issue) |
+| **Intermittent** | Passes in some runs, fails in others (LLM non-determinism) |
+| **False positive** | Tests fail at the final commit in all runs — environment issue, not LLM |
+
+**Failure Root Cause Classification** — groups genuine failures by type:
+
+| Root Cause | Description |
+|------------|-------------|
+| **Ordering** | LLM puts behavior changes and their tests in different commits |
+| **Import-only** | LLM splits cross-file import dependencies |
+| **Import + test** | Import failures causing cascading test failures |
+| **Hunk coverage** | LLM drops hunk IDs from its output (T5 scale issue) |
+
+**Additional sections:**
+- Per-tier and per-repo consistency breakdown
+- Case-by-run matrix (pass/fail per run)
+- Score stability analysis (range, standard deviation across runs)
+- Over-splitting analysis (single-commit refs split into 3+ commits)
 
 ---
 
