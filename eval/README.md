@@ -238,7 +238,7 @@ python eval/cli.py generate \
 ```bash
 python eval/cli.py run \
     --suite full \
-    --repo rich \            # Filter by source repo (e.g. 'httpx', 'rich')
+    --repo rich \            # Filter by source repo (e.g. 'httpx', 'rich', 'marshmallow')
     --provider google \
     --model gemini-2.5-flash \
     --max-commits 8 \
@@ -249,7 +249,7 @@ python eval/cli.py run \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--suite` | Suite to run: `smoke`, `standard`, `full` | `standard` |
-| `--repo` | Filter by source repo name (e.g. `httpx`, `rich`) | None (all repos) |
+| `--repo` | Filter by source repo name (e.g. `httpx`, `rich`, `marshmallow`) | None (all repos) |
 | `--tier` | Filter by difficulty tier (1-5) | None (all tiers) |
 | `--case` | Run a single test case by ID | None |
 | `--language` | Filter by language | None |

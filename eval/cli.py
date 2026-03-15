@@ -255,7 +255,7 @@ def run_eval_cmd(
     case: Optional[str] = typer.Option(None, help="Run a specific case by ID"),
     repo: Optional[str] = typer.Option(
         None,
-        help="Filter by source repo name (e.g. 'httpx', 'rich'). "
+        help="Filter by source repo name (e.g. 'httpx', 'rich', 'marshmallow'). "
              "Matches against the repo name in the source URL.",
     ),
     model: Optional[str] = typer.Option(None, help="LLM model to use"),
