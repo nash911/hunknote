@@ -208,6 +208,32 @@
             "tests/test_decorators.py"
           ],
           "rationale": "API rename across decorators, schema, docs, examples, and tests. Cross-cutting rename requiring consistent changes."
+        },
+        {
+          "id": "python_marshmallow_tier4_remove_deprecations",
+          "before": "fca871ab49f7b7454ac1bdf7bede865b6693d294",
+          "after": "20d19a79e76e1a6d34d50ecffa99b39b297d2cea",
+          "message": "Remove deprecated APIs: metadata kwargs, default/missing params, TimeDelta serialization_type, and use fromisoformat (multi-commit)",
+          "hunks": 83,
+          "files": 11,
+          "lines_added": 159,
+          "lines_removed": 341,
+          "type": "multi_commit_range",
+          "source_commits_count": 4,
+          "file_list": [
+            "CHANGELOG.rst",
+            "docs/changelog.rst",
+            "docs/conf.py",
+            "examples/peewee_example.py",
+            "pyproject.toml",
+            "src/marshmallow/fields.py",
+            "src/marshmallow/utils.py",
+            "tests/test_deserialization.py",
+            "tests/test_fields.py",
+            "tests/test_serialization.py",
+            "tests/test_utils.py"
+          ],
+          "rationale": "Four consecutive commits removing deprecated APIs: TimeDelta serialization_type parameter removal, fromisoformat adoption, deprecated default/missing parameter removal, and metadata kwargs removal. Each commit is an independent deprecation cleanup touching fields, utils, and tests — diverse changes that should be kept separate."
         }
       ]
     },
@@ -277,6 +303,50 @@
             "tests/test_validate.py"
           ],
           "rationale": "Massive cross-cutting linting refactor touching 25 files across source, tests, examples, and config. Tests comprehensive code-style changes."
+        },
+        {
+          "id": "python_marshmallow_tier5_dev_chores_migration",
+          "before": "2f2dac5ece9e622351855ce703b45b02fa2d62ea",
+          "after": "937141daa37aff3e64c95c387c9e6a3556d80beb",
+          "message": "Alabaster bump, sidebar fix, and dev chores migration (multi-commit)",
+          "hunks": 131,
+          "files": 36,
+          "lines_added": 265,
+          "lines_removed": 296,
+          "type": "multi_commit_range",
+          "source_commits_count": 3,
+          "file_list": [
+            ".gitignore",
+            "MANIFEST.in",
+            "docs/conf.py",
+            "examples/flask_example.py",
+            "examples/package_json_example.py",
+            "examples/peewee_example.py",
+            "examples/textblob_example.py",
+            "performance/benchmark.py",
+            "setup.py",
+            "src/marshmallow/__init__.py",
+            "src/marshmallow/base.py",
+            "src/marshmallow/class_registry.py",
+            "src/marshmallow/exceptions.py",
+            "src/marshmallow/fields.py",
+            "src/marshmallow/schema.py",
+            "src/marshmallow/utils.py",
+            "src/marshmallow/validate.py",
+            "tests/base.py",
+            "tests/conftest.py",
+            "tests/test_decorators.py",
+            "tests/test_deserialization.py",
+            "tests/test_exceptions.py",
+            "tests/test_fields.py",
+            "tests/test_options.py",
+            "tests/test_registry.py",
+            "tests/test_schema.py",
+            "tests/test_serialization.py",
+            "tests/test_utils.py",
+            "tests/test_validate.py"
+          ],
+          "rationale": "Three commits: alabaster dependency bump, docs sidebar fix, and a large dev chores commit migrating build tooling, removing setup.py, updating all imports and test infrastructure. The dev chores commit alone touches 30+ files across source, tests, examples, and config — combined with the two smaller commits, this creates a diverse multi-commit range."
         }
       ]
     }

@@ -227,6 +227,30 @@
             "httpx/_urls.py"
           ],
           "rationale": "API cleanup refactor changing URL constructor signature across all call sites — API layer, client, config, types, and URL model. Every file's changes depend on the new URL signature definition, creating tight cross-file coupling."
+        },
+        {
+          "id": "python_httpx_tier4_drop_rfc3986_and_encoding",
+          "before": "7c53d99da8351eea5ff71e1fa829e1d2e9727c0d",
+          "after": "7947b56076db933079ec0c33d1f81406e33008e7",
+          "message": "Drop rfc3986, URL encoding changes, and test cleanup (multi-commit)",
+          "hunks": 73,
+          "files": 9,
+          "lines_added": 962,
+          "lines_removed": 418,
+          "type": "multi_commit_range",
+          "source_commits_count": 3,
+          "file_list": [
+            "README.md",
+            "docs/index.md",
+            "httpx/_urlparse.py",
+            "httpx/_urls.py",
+            "pyproject.toml",
+            "tests/models/test_url.py",
+            "tests/test_asgi.py",
+            "tests/test_multipart.py",
+            "tests/test_urlparse.py"
+          ],
+          "rationale": "Three consecutive commits: dropping the rfc3986 dependency (replacing with internal URL parsing), switching URL space encoding to %20, and cleaning up test imports. The URL parsing replacement is a major refactor touching the core URL model, while the encoding change and test cleanup are independent but co-located changes."
         }
       ]
     },
@@ -331,6 +355,37 @@
             "tests/test_wsgi.py"
           ],
           "rationale": "The full v0.28 release cycle: new SSLContext API, deprecation escalations, utility function reorganization, and release. 23 original commits squashed into one diff with 168 hunks across 44 files. Deep cross-cutting dependencies between API changes, config, transports, and tests. The ideal Tier 5 case — the agent must recover the original commit boundaries from a massive squashed diff."
+        },
+        {
+          "id": "python_httpx_tier5_test_framework_migration",
+          "before": "c6084c0f63531b1e62c798fc615805e515386edc",
+          "after": "e27d1b83330d0520f87a7d1da1818e4dcb2add02",
+          "message": "Replace pytest-asyncio/trio with anyio, chardet bump, and readme fix (multi-commit)",
+          "hunks": 126,
+          "files": 16,
+          "lines_added": 132,
+          "lines_removed": 147,
+          "type": "multi_commit_range",
+          "source_commits_count": 3,
+          "file_list": [
+            "pyproject.toml",
+            "requirements.txt",
+            "setup.cfg",
+            "tests/client/test_async_client.py",
+            "tests/client/test_auth.py",
+            "tests/client/test_event_hooks.py",
+            "tests/client/test_proxies.py",
+            "tests/client/test_redirects.py",
+            "tests/conftest.py",
+            "tests/models/test_requests.py",
+            "tests/models/test_responses.py",
+            "tests/test_asgi.py",
+            "tests/test_content.py",
+            "tests/test_decoders.py",
+            "tests/test_timeouts.py",
+            "tests/test_utils.py"
+          ],
+          "rationale": "Three commits: chardet dependency bump, PyPI readme screenshot fix, and major test framework migration from pytest-asyncio/pytest-trio to anyio. The test migration touches 13 test files with systematic fixture and marker changes, while the other two commits are independent. Tests the agent's ability to separate a large mechanical test migration from unrelated dependency and doc changes."
         }
       ]
     }
