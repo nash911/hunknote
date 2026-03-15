@@ -371,7 +371,8 @@ def run_eval_cmd(
     total_duration = time.time() - start_time
     total_duration_minutes = int(total_duration // 60)
     total_duration_seconds = total_duration % 60
-    typer.echo(f"Total duration: {total_duration_minutes}:{total_duration_seconds:.2f}")
+    typer.echo(f"Total duration: "
+               f"{total_duration_minutes}:{total_duration_seconds:.1f} minutes")
 
 
     failures = result.get_failures()
