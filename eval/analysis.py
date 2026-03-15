@@ -330,6 +330,573 @@ def generate_web_report(result: EvalRunResult) -> str:
     return _HTML_TEMPLATE.replace("/*__DATA__*/", f"const DATA = {data_json};")
 
 
+# ── Meta-analysis (multi-run comparison) ─────────────────────────────────────
+
+
+def _collect_meta_data(results: list[EvalRunResult]) -> dict:
+    """Aggregate per-case data across multiple runs.
+
+    Returns a dict keyed by case_id, each value is a list of
+    EvalCaseResult objects (one per run).
+    """
+    per_case: dict[str, list] = {}
+    for result in results:
+        for case in result.cases:
+            per_case.setdefault(case.case_id, []).append(case)
+    return per_case
+
+
+def _classify_failure(
+    case_id: str, runs: list, n_runs: int
+) -> dict:
+    """Classify a case's failure pattern across runs.
+
+    Returns a dict with classification, counts, and details.
+    """
+    fail_count = sum(1 for c in runs if not c.mechanical.full_sequence_valid)
+    pass_count = n_runs - fail_count
+
+    # Check if last commit also fails tests (false positive indicator)
+    last_commit_test_fails = 0
+    for c in runs:
+        commits = c.mechanical.per_commit
+        if commits:
+            last = commits[-1]
+            if last.tests_pass is False:
+                last_commit_test_fails += 1
+
+    # Failure type analysis
+    has_import_fail = any(
+        not cv.import_resolves
+        for c in runs
+        for cv in c.mechanical.per_commit
+    )
+    has_test_fail = any(
+        cv.tests_pass is False
+        for c in runs
+        for cv in c.mechanical.per_commit
+    )
+    has_hunk_miss = any(
+        (c.mechanical.hunk_coverage or 1.0) < 1.0
+        for c in runs
+    )
+    has_fs_fail = any(
+        c.mechanical.final_state_matches is False
+        for c in runs
+    )
+
+    # Classify
+    if fail_count == 0:
+        category = "always_pass"
+    elif last_commit_test_fails == n_runs and fail_count == n_runs:
+        category = "false_positive"
+    elif has_hunk_miss or has_fs_fail:
+        category = "hunk_coverage"
+    elif has_import_fail and not has_test_fail:
+        category = "import_only"
+    elif has_import_fail:
+        category = "import_and_test"
+    elif has_test_fail:
+        category = "ordering"
+    else:
+        category = "other"
+
+    stability = "consistent" if fail_count == 0 or fail_count == n_runs else "intermittent"
+
+    avg_score = sum(c.overall_score for c in runs) / len(runs)
+    avg_tpr = sum((c.mechanical.test_pass_rate or 0) for c in runs) / len(runs)
+    agent_counts = [c.agent_commit_count for c in runs]
+    ref_count = runs[0].reference_commit_count
+    tier = runs[0].tier.value
+
+    return {
+        "case_id": case_id,
+        "tier": tier,
+        "ref_commits": ref_count,
+        "agent_counts": agent_counts,
+        "fail_count": fail_count,
+        "pass_count": pass_count,
+        "category": category,
+        "stability": stability,
+        "avg_score": avg_score,
+        "avg_tpr": avg_tpr,
+        "has_import_fail": has_import_fail,
+        "has_test_fail": has_test_fail,
+        "has_hunk_miss": has_hunk_miss,
+        "has_fs_fail": has_fs_fail,
+        "last_commit_test_fails": last_commit_test_fails,
+        "mech_pass_per_run": [c.mechanical.full_sequence_valid for c in runs],
+        "hunk_coverages": [(c.mechanical.hunk_coverage or 1.0) for c in runs],
+        "scores": [c.overall_score for c in runs],
+    }
+
+
+def generate_meta_analysis_report(results: list[EvalRunResult]) -> str:
+    """Generate a Markdown meta-analysis report comparing multiple runs."""
+    per_case = _collect_meta_data(results)
+    n_runs = len(results)
+    lines: list[str] = []
+
+    # Classify all cases
+    classifications: list[dict] = []
+    for cid in sorted(per_case.keys()):
+        runs = per_case[cid]
+        classifications.append(_classify_failure(cid, runs, n_runs))
+
+    always_pass = [c for c in classifications if c["category"] == "always_pass"]
+    false_pos = [c for c in classifications if c["category"] == "false_positive"]
+    genuine_fail = [c for c in classifications if c["category"] not in ("always_pass", "false_positive")]
+    consistent_fail = [c for c in genuine_fail if c["stability"] == "consistent"]
+    intermittent = [c for c in genuine_fail if c["stability"] == "intermittent"]
+
+    # ── Header ──
+    lines.append("# Meta-Analysis Report")
+    lines.append("")
+    lines.append(f"**Runs compared**: {n_runs}")
+    for i, r in enumerate(results):
+        provider = r.agent_config.get("provider", "?")
+        model = r.agent_config.get("model", "?")
+        lines.append(f"  - Run {i+1}: `{r.run_id}` — {provider}/{model}, suite={r.suite}")
+    lines.append(f"**Total unique cases**: {len(per_case)}")
+    lines.append("")
+
+    # ── Overall stats ──
+    lines.append("## Overall Consistency")
+    lines.append("")
+    lines.append("| Category | Count | Percentage |")
+    lines.append("|----------|-------|------------|")
+    lines.append(f"| Always pass ({n_runs}/{n_runs}) | {len(always_pass)} | {len(always_pass)/len(classifications)*100:.0f}% |")
+    lines.append(f"| False positive | {len(false_pos)} | {len(false_pos)/len(classifications)*100:.0f}% |")
+    lines.append(f"| Consistent genuine failure | {len(consistent_fail)} | {len(consistent_fail)/len(classifications)*100:.0f}% |")
+    lines.append(f"| Intermittent failure | {len(intermittent)} | {len(intermittent)/len(classifications)*100:.0f}% |")
+    lines.append("")
+
+    # ── Per-tier consistency ──
+    tiers: dict[int, list[dict]] = {}
+    for c in classifications:
+        tiers.setdefault(c["tier"], []).append(c)
+
+    lines.append("## Per-Tier Consistency")
+    lines.append("")
+    lines.append("| Tier | Cases | Always Pass | Consistent Fail | Intermittent | Avg Score | Avg TPR |")
+    lines.append("|------|-------|-------------|-----------------|--------------|-----------|---------|")
+    for t in sorted(tiers.keys()):
+        tc = tiers[t]
+        ap = sum(1 for c in tc if c["category"] == "always_pass")
+        cf = sum(1 for c in tc if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive"))
+        inter = sum(1 for c in tc if c["stability"] == "intermittent")
+        avg_s = sum(c["avg_score"] for c in tc) / len(tc)
+        avg_t = sum(c["avg_tpr"] for c in tc) / len(tc)
+        lines.append(f"| T{t} | {len(tc)} | {ap} ({ap/len(tc)*100:.0f}%) | {cf} | {inter} | {avg_s:.3f} | {avg_t:.2f} |")
+    lines.append("")
+
+    # ── Per-repo consistency ──
+    repos: dict[str, list[dict]] = {}
+    for c in classifications:
+        if "httpx" in c["case_id"]:
+            repo = "httpx"
+        elif "rich" in c["case_id"]:
+            repo = "rich"
+        elif "marshmallow" in c["case_id"]:
+            repo = "marshmallow"
+        else:
+            repo = "other"
+        repos.setdefault(repo, []).append(c)
+
+    lines.append("## Per-Repo Consistency")
+    lines.append("")
+    lines.append("| Repo | Cases | Always Pass | Consistent Fail | Intermittent | Avg Score |")
+    lines.append("|------|-------|-------------|-----------------|--------------|-----------|")
+    for repo in sorted(repos.keys()):
+        rc = repos[repo]
+        ap = sum(1 for c in rc if c["category"] == "always_pass")
+        cf = sum(1 for c in rc if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive"))
+        inter = sum(1 for c in rc if c["stability"] == "intermittent")
+        avg_s = sum(c["avg_score"] for c in rc) / len(rc)
+        lines.append(f"| {repo} | {len(rc)} | {ap} ({ap/len(rc)*100:.0f}%) | {cf} | {inter} | {avg_s:.3f} |")
+    lines.append("")
+
+    # ── Full case matrix ──
+    lines.append("## Case-by-Run Matrix")
+    lines.append("")
+    run_hdrs = " | ".join(f"R{i+1}" for i in range(n_runs))
+    lines.append(f"| Case ID | {run_hdrs} | Avg Score | HC | FS | TPR | Category |")
+    lines.append(f"|---------|{'---|' * n_runs} ---------|-----|-----|------|----------|")
+    for c in sorted(classifications, key=lambda x: (x["tier"], x["case_id"])):
+        run_cells = " | ".join("PASS" if p else "FAIL" for p in c["mech_pass_per_run"])
+        hc_min = min(c["hunk_coverages"])
+        fs_all = not c["has_fs_fail"]
+        lines.append(
+            f"| `{c['case_id']}` | {run_cells} | {c['avg_score']:.3f} "
+            f"| {hc_min:.2f} | {'Y' if fs_all else 'N'} | {c['avg_tpr']:.2f} | {c['category']} |"
+        )
+    lines.append("")
+
+    # ── False positives ──
+    if false_pos:
+        lines.append("## False Positives")
+        lines.append("")
+        for c in false_pos:
+            lines.append(f"### `{c['case_id']}`")
+            lines.append(f"- Tests fail at **every** commit including the final commit, across all {n_runs} runs")
+            lines.append(f"- Final state matches: {'Yes' if not c['has_fs_fail'] else 'No'}")
+            lines.append(f"- This is an environment-specific issue, not an LLM composition issue")
+            lines.append(f"- **Recommendation**: Exclude failing tests from test command or replace this eval case")
+            lines.append("")
+
+    # ── Failure root cause analysis ──
+    if genuine_fail:
+        lines.append("## Failure Root Cause Analysis")
+        lines.append("")
+
+        # Group by category
+        by_cat: dict[str, list[dict]] = {}
+        for c in genuine_fail:
+            by_cat.setdefault(c["category"], []).append(c)
+
+        cat_labels = {
+            "ordering": "Incorrect Hunk Ordering (test failures at intermediate commits)",
+            "import_only": "Cross-File Import Dependencies (import failures, no test failures)",
+            "import_and_test": "Import + Test Failures (cross-file deps causing cascading failures)",
+            "hunk_coverage": "Hunk Coverage Issues (LLM dropped hunks)",
+            "other": "Other Failures",
+        }
+        for cat, label in cat_labels.items():
+            if cat not in by_cat:
+                continue
+            cases = by_cat[cat]
+            lines.append(f"### {label} ({len(cases)} cases)")
+            lines.append("")
+            lines.append("| Case | Tier | Ref | Agent Commits | Fails | Avg Score | TPR |")
+            lines.append("|------|------|-----|---------------|-------|-----------|-----|")
+            for c in cases:
+                ac = "/".join(str(x) for x in c["agent_counts"])
+                lines.append(
+                    f"| `{c['case_id']}` | T{c['tier']} | {c['ref_commits']} "
+                    f"| [{ac}] | {c['fail_count']}/{n_runs} | {c['avg_score']:.3f} | {c['avg_tpr']:.2f} |"
+                )
+            lines.append("")
+
+    # ── Over-splitting analysis ──
+    over_split = [c for c in classifications if c["ref_commits"] == 1 and all(a >= 3 for a in c["agent_counts"])]
+    if over_split:
+        lines.append("## Over-Splitting Analysis")
+        lines.append("")
+        lines.append("Cases where reference = 1 commit but LLM consistently produces 3+ commits:")
+        lines.append("")
+        lines.append("| Case | Tier | Agent Commits | Result | Avg TPR |")
+        lines.append("|------|------|---------------|--------|---------|")
+        for c in over_split:
+            ac = "/".join(str(x) for x in c["agent_counts"])
+            status = "PASS" if c["category"] == "always_pass" else f"FAIL({c['fail_count']}/{n_runs})"
+            lines.append(f"| `{c['case_id']}` | T{c['tier']} | [{ac}] | {status} | {c['avg_tpr']:.2f} |")
+        lines.append("")
+
+    # ── Score stability ──
+    lines.append("## Score Stability Across Runs")
+    lines.append("")
+    lines.append("| Case | Tier | Scores | Range | Std Dev |")
+    lines.append("|------|------|--------|-------|---------|")
+    for c in sorted(classifications, key=lambda x: (x["tier"], x["case_id"])):
+        scores = c["scores"]
+        score_str = " / ".join(f"{s:.3f}" for s in scores)
+        rng = max(scores) - min(scores)
+        mean = sum(scores) / len(scores)
+        std = (sum((s - mean) ** 2 for s in scores) / len(scores)) ** 0.5
+        lines.append(f"| `{c['case_id']}` | T{c['tier']} | {score_str} | {rng:.3f} | {std:.3f} |")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def generate_meta_terminal_report(results: list[EvalRunResult]) -> str:
+    """Generate a compact terminal report for meta-analysis across runs."""
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RST = "\033[0m"
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    YELLOW = "\033[33m"
+    CYAN = "\033[36m"
+
+    per_case = _collect_meta_data(results)
+    n_runs = len(results)
+
+    classifications: list[dict] = []
+    for cid in sorted(per_case.keys()):
+        runs = per_case[cid]
+        classifications.append(_classify_failure(cid, runs, n_runs))
+
+    always_pass = [c for c in classifications if c["category"] == "always_pass"]
+    false_pos = [c for c in classifications if c["category"] == "false_positive"]
+    genuine_fail = [c for c in classifications if c["category"] not in ("always_pass", "false_positive")]
+    consistent_fail = [c for c in genuine_fail if c["stability"] == "consistent"]
+    intermittent = [c for c in genuine_fail if c["stability"] == "intermittent"]
+
+    lines: list[str] = []
+
+    # ── Header ──
+    lines.append("")
+    lines.append(f"{BOLD}{'═' * 78}{RST}")
+    lines.append(f"{BOLD}  🔬  Meta-Analysis Report — {n_runs} Runs × {len(per_case)} Cases{RST}")
+    lines.append(f"{BOLD}{'═' * 78}{RST}")
+    for i, r in enumerate(results):
+        provider = r.agent_config.get("provider", "?")
+        model = r.agent_config.get("model", "?")
+        lines.append(f"  {DIM}Run {i+1}:{RST} {r.run_id} ({provider}/{model})")
+    lines.append("")
+
+    # ── Summary bar ──
+    total = len(classifications)
+    lines.append(f"  {BOLD}Consistency Summary{RST}")
+    lines.append(f"  ┌────────────────────┬────────────────────┬────────────────────┬────────────────────┐")
+    lines.append(f"  │ {BOLD}Always Pass{RST}        │ {BOLD}Consistent Fail{RST}    │ {BOLD}Intermittent{RST}       │ {BOLD}False Positive{RST}     │")
+    lines.append(f"  ├────────────────────┼────────────────────┼────────────────────┼────────────────────┤")
+    ap_pct = len(always_pass) / total * 100
+    cf_pct = len(consistent_fail) / total * 100
+    it_pct = len(intermittent) / total * 100
+    fp_pct = len(false_pos) / total * 100
+    ap_c = GREEN if ap_pct >= 50 else YELLOW
+    cf_c = RED if cf_pct > 30 else YELLOW
+    lines.append(
+        f"  │ {ap_c}{len(always_pass):>2}/{total}{RST} ({ap_pct:>4.0f}%)      "
+        f"│ {cf_c}{len(consistent_fail):>2}/{total}{RST} ({cf_pct:>4.0f}%)      "
+        f"│ {YELLOW}{len(intermittent):>2}/{total}{RST} ({it_pct:>4.0f}%)      "
+        f"│ {RED if false_pos else GREEN}{len(false_pos):>2}/{total}{RST} ({fp_pct:>4.0f}%)      │"
+    )
+    lines.append(f"  └────────────────────┴────────────────────┴────────────────────┴────────────────────┘")
+    lines.append("")
+
+    # ── Per-tier table ──
+    tiers: dict[int, list[dict]] = {}
+    for c in classifications:
+        tiers.setdefault(c["tier"], []).append(c)
+
+    lines.append(f"  {BOLD}Per-Tier Breakdown{RST}")
+    lines.append(f"  {DIM}{'─' * 74}{RST}")
+    lines.append(f"  {DIM}{'Tier':>6}  {'Cases':>5}  {'Pass':>8}  {'ConsFail':>9}  {'Interm':>7}  {'Avg Score':>9}  {'Avg TPR':>8}{RST}")
+    lines.append(f"  {DIM}{'─' * 74}{RST}")
+    for t in sorted(tiers.keys()):
+        tc = tiers[t]
+        ap = sum(1 for c in tc if c["category"] == "always_pass")
+        cf = sum(1 for c in tc if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive"))
+        inter = sum(1 for c in tc if c["stability"] == "intermittent")
+        avg_s = sum(c["avg_score"] for c in tc) / len(tc)
+        avg_t = sum(c["avg_tpr"] for c in tc) / len(tc)
+        ap_str = f"{ap}/{len(tc)}"
+        s_color = GREEN if avg_s >= 0.8 else (YELLOW if avg_s >= 0.6 else RED)
+        lines.append(
+            f"  {'T'+str(t):>6}  {len(tc):>5}  {GREEN}{ap_str:>8}{RST}  {cf:>9}  {inter:>7}  "
+            f"{s_color}{avg_s:.3f}{RST}     {avg_t:.2f}"
+        )
+    lines.append(f"  {DIM}{'─' * 74}{RST}")
+    lines.append("")
+
+    # ── Case matrix ──
+    lines.append(f"  {BOLD}Case-by-Run Matrix{RST}")
+    run_hdr = "  ".join(f"R{i+1}" for i in range(n_runs))
+    lines.append(f"  {DIM}{'─' * 78}{RST}")
+    lines.append(f"  {DIM}{'':>3}  {'Case':<45} {'T':>2}  {run_hdr}  {'Score':>6}  {'Category'}{RST}")
+    lines.append(f"  {DIM}{'─' * 78}{RST}")
+    for c in sorted(classifications, key=lambda x: (x["tier"], x["case_id"])):
+        name = c["case_id"]
+        if len(name) > 45:
+            name = name[:42] + "..."
+        run_dots = []
+        for p in c["mech_pass_per_run"]:
+            if p:
+                run_dots.append(f"{GREEN}✓{RST} ")
+            else:
+                run_dots.append(f"{RED}✗{RST} ")
+        dots_str = "".join(run_dots)
+        s_color = GREEN if c["avg_score"] >= 0.8 else (YELLOW if c["avg_score"] >= 0.6 else RED)
+        cat = c["category"]
+        cat_color = GREEN if cat == "always_pass" else (RED if cat == "false_positive" else YELLOW)
+        lines.append(
+            f"   {'':>1}  {name:<45} T{c['tier']}  {dots_str} {s_color}{c['avg_score']:.3f}{RST}  {cat_color}{cat}{RST}"
+        )
+    lines.append(f"  {DIM}{'─' * 78}{RST}")
+    lines.append("")
+
+    # ── Failure root cause digest ──
+    if genuine_fail:
+        by_cat: dict[str, list[dict]] = {}
+        for c in genuine_fail:
+            by_cat.setdefault(c["category"], []).append(c)
+
+        lines.append(f"  {BOLD}Failure Root Causes{RST}")
+        lines.append(f"  {DIM}{'─' * 74}{RST}")
+        cat_labels = {
+            "ordering": "Incorrect ordering",
+            "import_only": "Import-only failures",
+            "import_and_test": "Import + test failures",
+            "hunk_coverage": "Hunk coverage drops",
+            "other": "Other",
+        }
+        for cat, label in cat_labels.items():
+            if cat not in by_cat:
+                continue
+            cases = by_cat[cat]
+            n_cons = sum(1 for c in cases if c["stability"] == "consistent")
+            n_int = sum(1 for c in cases if c["stability"] == "intermittent")
+            lines.append(
+                f"  {YELLOW}▸{RST} {label}: {len(cases)} cases "
+                f"({n_cons} consistent, {n_int} intermittent)"
+            )
+            for c in cases:
+                status = f"{RED}always{RST}" if c["stability"] == "consistent" else f"{YELLOW}interm{RST}"
+                lines.append(
+                    f"    {DIM}•{RST} {c['case_id']} T{c['tier']} [{status}] "
+                    f"fails={c['fail_count']}/{n_runs} TPR={c['avg_tpr']:.2f}"
+                )
+        lines.append("")
+
+    # ── False positives ──
+    if false_pos:
+        lines.append(f"  {BOLD}{RED}False Positives{RST}")
+        lines.append(f"  {DIM}{'─' * 74}{RST}")
+        for c in false_pos:
+            lines.append(f"  {RED}⚠{RST} {c['case_id']} — tests fail at final commit in all {n_runs} runs")
+        lines.append("")
+
+    lines.append(f"{BOLD}{'═' * 78}{RST}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_meta_web_report(results: list[EvalRunResult]) -> str:
+    """Generate a single-page HTML meta-analysis dashboard."""
+    per_case = _collect_meta_data(results)
+    n_runs = len(results)
+
+    classifications: list[dict] = []
+    for cid in sorted(per_case.keys()):
+        runs = per_case[cid]
+        classifications.append(_classify_failure(cid, runs, n_runs))
+
+    # Build data for JS
+    runs_meta = []
+    for i, r in enumerate(results):
+        runs_meta.append({
+            "index": i + 1,
+            "run_id": r.run_id,
+            "timestamp": r.timestamp,
+            "provider": r.agent_config.get("provider", "?"),
+            "model": r.agent_config.get("model", "?"),
+            "suite": r.suite,
+        })
+
+    cases_data = []
+    for c in classifications:
+        cases_data.append({
+            "case_id": c["case_id"],
+            "tier": c["tier"],
+            "ref_commits": c["ref_commits"],
+            "agent_counts": c["agent_counts"],
+            "fail_count": c["fail_count"],
+            "pass_count": c["pass_count"],
+            "category": c["category"],
+            "stability": c["stability"],
+            "avg_score": round(c["avg_score"], 3),
+            "avg_tpr": round(c["avg_tpr"], 3),
+            "has_import_fail": c["has_import_fail"],
+            "has_test_fail": c["has_test_fail"],
+            "has_hunk_miss": c["has_hunk_miss"],
+            "has_fs_fail": c["has_fs_fail"],
+            "mech_pass_per_run": c["mech_pass_per_run"],
+            "hunk_coverages": [round(h, 3) for h in c["hunk_coverages"]],
+            "scores": [round(s, 3) for s in c["scores"]],
+        })
+
+    # Per-tier summary
+    tiers_data: dict[int, dict] = {}
+    for c in classifications:
+        t = c["tier"]
+        if t not in tiers_data:
+            tiers_data[t] = {"tier": t, "total": 0, "always_pass": 0, "consistent_fail": 0, "intermittent": 0, "false_positive": 0, "scores": [], "tprs": []}
+        td = tiers_data[t]
+        td["total"] += 1
+        td["scores"].append(c["avg_score"])
+        td["tprs"].append(c["avg_tpr"])
+        if c["category"] == "always_pass":
+            td["always_pass"] += 1
+        elif c["category"] == "false_positive":
+            td["false_positive"] += 1
+        elif c["stability"] == "consistent":
+            td["consistent_fail"] += 1
+        else:
+            td["intermittent"] += 1
+
+    tiers_summary = []
+    for t in sorted(tiers_data.keys()):
+        td = tiers_data[t]
+        td["avg_score"] = round(sum(td["scores"]) / len(td["scores"]), 3) if td["scores"] else 0
+        td["avg_tpr"] = round(sum(td["tprs"]) / len(td["tprs"]), 3) if td["tprs"] else 0
+        del td["scores"]
+        del td["tprs"]
+        tiers_summary.append(td)
+
+    data = json.dumps({
+        "n_runs": n_runs,
+        "runs": runs_meta,
+        "cases": cases_data,
+        "tiers": tiers_summary,
+        "summary": {
+            "total": len(classifications),
+            "always_pass": sum(1 for c in classifications if c["category"] == "always_pass"),
+            "false_positive": sum(1 for c in classifications if c["category"] == "false_positive"),
+            "consistent_fail": sum(1 for c in classifications if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive")),
+            "intermittent": sum(1 for c in classifications if c["stability"] == "intermittent"),
+        },
+    })
+
+    return _META_HTML_TEMPLATE.replace("/*__META_DATA__*/", f"const DATA = {data};")
+
+
+def run_meta_analysis(
+    result_paths: list[Path],
+    web: bool = False,
+    output_dir: Optional[Path] = None,
+) -> tuple[Path, str]:
+    """Run meta-analysis across multiple eval runs.
+
+    Writes Markdown report (and optionally HTML dashboard) to the
+    output directory, which defaults to the directory of the most
+    recent (last) result file.
+
+    Returns:
+        Tuple of (path to Markdown report, terminal report string).
+    """
+    results = [load_result(p) for p in result_paths]
+
+    # Default output to the most-recent result's directory
+    if output_dir is None:
+        # Pick the directory with the lexicographically largest name (most recent timestamp)
+        candidates = [p.parent for p in result_paths]
+        out_dir = max(candidates, key=lambda d: d.name)
+    else:
+        out_dir = output_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Markdown
+    md_report = generate_meta_analysis_report(results)
+    md_path = out_dir / "meta_analysis.md"
+    md_path.write_text(md_report)
+    logger.info("Meta-analysis report saved to %s", md_path)
+
+    # HTML
+    if web:
+        html_report = generate_meta_web_report(results)
+        html_path = out_dir / "meta_dashboard.html"
+        html_path.write_text(html_report)
+        logger.info("Meta-analysis dashboard saved to %s", html_path)
+
+    # Terminal
+    terminal_report = generate_meta_terminal_report(results)
+
+    return md_path, terminal_report
+
+
 # ── Convenience helpers ──────────────────────────────────────────────────────
 
 
@@ -962,6 +1529,233 @@ function renderFailures() {
   document.getElementById('failures-list').innerHTML = html;
 }
 renderFailures();
+</script>
+</body>
+</html>"""
+
+
+# ── Meta-analysis HTML template ──────────────────────────────────────────────
+
+_META_HTML_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Meta-Analysis Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #d29922; --orange: #db6d28;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans,Helvetica,Arial,sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; padding: 24px; }
+.container { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin-bottom: 4px; }
+h2 { font-size: 1.2rem; margin: 24px 0 12px; color: var(--accent); }
+h3 { font-size: 1rem; margin: 16px 0 8px; }
+.subtitle { color: var(--text-dim); font-size: .9rem; margin-bottom: 20px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 16px; text-align: center; }
+.card .value { font-size: 1.8rem; font-weight: 700; }
+.card .label { font-size: .8rem; color: var(--text-dim); margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: .85rem; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--surface); color: var(--text-dim); font-weight: 600; position: sticky; top: 0; z-index: 1; }
+tr:hover { background: rgba(88,166,255,.06); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+.badge-pass { background: rgba(63,185,80,.15); color: var(--green); }
+.badge-fail { background: rgba(248,81,73,.15); color: var(--red); }
+.badge-fp { background: rgba(219,109,40,.15); color: var(--orange); }
+.badge-interm { background: rgba(210,153,34,.15); color: var(--yellow); }
+.dot { display: inline-block; width: 18px; text-align: center; font-weight: 700; }
+.dot-pass { color: var(--green); }
+.dot-fail { color: var(--red); }
+.score-bar { display: inline-block; width: 60px; height: 8px; background: var(--border); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.score-bar-inner { height: 100%; border-radius: 4px; }
+.tab-group { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab { padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);
+       color: var(--text-dim); cursor: pointer; font-size: .85rem; }
+.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 16px; margin-bottom: 16px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔬 Meta-Analysis Dashboard</h1>
+<div class="subtitle" id="meta-subtitle"></div>
+
+<!-- Summary Cards -->
+<div class="cards" id="summary-cards"></div>
+
+<!-- Tabs -->
+<div class="tab-group" id="tabs"></div>
+
+<!-- Tab Content: Overview -->
+<div id="tab-overview" class="tab-content">
+  <h2>Per-Tier Consistency</h2>
+  <div class="section"><table><thead id="tier-hdr"></thead><tbody id="tier-body"></tbody></table></div>
+  <h2>Failure Root Causes</h2>
+  <div class="section" id="root-causes"></div>
+</div>
+
+<!-- Tab Content: Case Matrix -->
+<div id="tab-matrix" class="tab-content hidden">
+  <h2>Case-by-Run Matrix</h2>
+  <div class="section"><table><thead id="matrix-hdr"></thead><tbody id="matrix-body"></tbody></table></div>
+</div>
+
+<!-- Tab Content: Score Stability -->
+<div id="tab-scores" class="tab-content hidden">
+  <h2>Score Stability Across Runs</h2>
+  <div class="section"><table><thead id="score-hdr"></thead><tbody id="score-body"></tbody></table></div>
+</div>
+
+<!-- Tab Content: Over-Splitting -->
+<div id="tab-split" class="tab-content hidden">
+  <h2>Over-Splitting Analysis</h2>
+  <p style="color:var(--text-dim);margin-bottom:12px;font-size:.9rem">Cases where reference = 1 commit but LLM consistently produces 3+ commits</p>
+  <div class="section"><table><thead id="split-hdr"></thead><tbody id="split-body"></tbody></table></div>
+</div>
+
+</div>
+
+<script>
+/*__META_DATA__*/
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function pct(v) { return v == null ? 'n/a' : (v * 100).toFixed(1) + '%'; }
+function scoreColor(v) { return v >= 0.8 ? 'var(--green)' : v >= 0.6 ? 'var(--yellow)' : 'var(--red)'; }
+function scoreBar(v) {
+  const c = scoreColor(v);
+  return `<span style="color:${c};font-weight:600;margin-right:6px">${v.toFixed(3)}</span>` +
+    `<span class="score-bar"><span class="score-bar-inner" style="width:${v*100}%;background:${c}"></span></span>`;
+}
+function badge(pass) { return pass ? '<span class="badge badge-pass">PASS</span>' : '<span class="badge badge-fail">FAIL</span>'; }
+function catBadge(cat) {
+  const map = {
+    always_pass: ['PASS', 'badge-pass'],
+    false_positive: ['FALSE POS', 'badge-fp'],
+    ordering: ['ORDERING', 'badge-interm'],
+    import_only: ['IMPORT', 'badge-fail'],
+    import_and_test: ['IMPORT+TEST', 'badge-fail'],
+    hunk_coverage: ['HUNK DROP', 'badge-fail'],
+    other: ['OTHER', 'badge-interm'],
+  };
+  const [label, cls] = map[cat] || ['?', 'badge-interm'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// Subtitle
+const runDescs = DATA.runs.map(r => `<b>Run ${r.index}</b>: ${esc(r.run_id)} (${r.provider}/${r.model})`).join(' &nbsp;·&nbsp; ');
+document.getElementById('meta-subtitle').innerHTML = `${DATA.n_runs} runs × ${DATA.summary.total} cases &nbsp;|&nbsp; ${runDescs}`;
+
+// Summary cards
+const s = DATA.summary;
+document.getElementById('summary-cards').innerHTML = [
+  { v: `${s.always_pass}/${s.total}`, l: 'Always Pass', c: 'var(--green)' },
+  { v: `${s.consistent_fail}/${s.total}`, l: 'Consistent Fail', c: 'var(--red)' },
+  { v: `${s.intermittent}/${s.total}`, l: 'Intermittent', c: 'var(--yellow)' },
+  { v: `${s.false_positive}/${s.total}`, l: 'False Positive', c: 'var(--orange)' },
+].map(c => `<div class="card"><div class="value" style="color:${c.c}">${c.v}</div><div class="label">${c.l}</div></div>`).join('');
+
+// Tabs
+const tabs = ['Overview', 'Case Matrix', 'Score Stability', 'Over-Splitting'];
+const tabIds = ['tab-overview', 'tab-matrix', 'tab-scores', 'tab-split'];
+document.getElementById('tabs').innerHTML = tabs.map((t, i) =>
+  `<div class="tab${i===0?' active':''}" data-tab="${tabIds[i]}">${t}</div>`
+).join('');
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.remove('hidden');
+  });
+});
+
+// Per-Tier table
+document.getElementById('tier-hdr').innerHTML = '<tr><th>Tier</th><th>Cases</th><th>Always Pass</th><th>Cons. Fail</th><th>Intermittent</th><th>Avg Score</th><th>Avg TPR</th></tr>';
+document.getElementById('tier-body').innerHTML = DATA.tiers.map(t =>
+  `<tr><td>T${t.tier}</td><td>${t.total}</td><td>${t.always_pass}/${t.total}</td>` +
+  `<td>${t.consistent_fail}</td><td>${t.intermittent}</td>` +
+  `<td>${scoreBar(t.avg_score)}</td><td>${pct(t.avg_tpr)}</td></tr>`
+).join('');
+
+// Root causes
+const cats = {};
+DATA.cases.filter(c => c.category !== 'always_pass' && c.category !== 'false_positive').forEach(c => {
+  if (!cats[c.category]) cats[c.category] = [];
+  cats[c.category].push(c);
+});
+const catLabels = {
+  ordering: 'Incorrect Hunk Ordering',
+  import_only: 'Import-Only Failures',
+  import_and_test: 'Import + Test Failures',
+  hunk_coverage: 'Hunk Coverage Drops',
+  other: 'Other',
+};
+let rcHtml = '';
+for (const [cat, label] of Object.entries(catLabels)) {
+  if (!cats[cat]) continue;
+  const items = cats[cat];
+  const cons = items.filter(c => c.stability === 'consistent').length;
+  const interm = items.filter(c => c.stability === 'intermittent').length;
+  rcHtml += `<h3>${label} (${items.length} cases: ${cons} consistent, ${interm} intermittent)</h3>`;
+  rcHtml += '<table><thead><tr><th>Case</th><th>Tier</th><th>Fails</th><th>Stability</th><th>Score</th><th>TPR</th></tr></thead><tbody>';
+  items.forEach(c => {
+    const stabBadge = c.stability === 'consistent' ? '<span class="badge badge-fail">CONSISTENT</span>' : '<span class="badge badge-interm">INTERMITTENT</span>';
+    rcHtml += `<tr><td>${esc(c.case_id)}</td><td>T${c.tier}</td><td>${c.fail_count}/${DATA.n_runs}</td>` +
+      `<td>${stabBadge}</td><td>${scoreBar(c.avg_score)}</td><td>${pct(c.avg_tpr)}</td></tr>`;
+  });
+  rcHtml += '</tbody></table>';
+}
+if (DATA.cases.some(c => c.category === 'false_positive')) {
+  rcHtml += '<h3 style="color:var(--orange)">False Positives</h3>';
+  DATA.cases.filter(c => c.category === 'false_positive').forEach(c => {
+    rcHtml += `<p style="margin:4px 0 4px 12px;font-size:.9rem"><span class="badge badge-fp">FALSE POSITIVE</span> ${esc(c.case_id)} — tests fail at final commit in all runs</p>`;
+  });
+}
+if (!rcHtml) rcHtml = '<p style="color:var(--green)">No failures detected.</p>';
+document.getElementById('root-causes').innerHTML = rcHtml;
+
+// Case Matrix
+const runHdrs = DATA.runs.map(r => `<th>R${r.index}</th>`).join('');
+document.getElementById('matrix-hdr').innerHTML = `<tr><th>Case</th><th>Tier</th>${runHdrs}<th>Avg Score</th><th>TPR</th><th>Category</th></tr>`;
+document.getElementById('matrix-body').innerHTML = DATA.cases.map(c => {
+  const dots = c.mech_pass_per_run.map(p =>
+    `<td><span class="dot ${p ? 'dot-pass' : 'dot-fail'}">${p ? '✓' : '✗'}</span></td>`
+  ).join('');
+  return `<tr><td>${esc(c.case_id)}</td><td>T${c.tier}</td>${dots}` +
+    `<td>${scoreBar(c.avg_score)}</td><td>${pct(c.avg_tpr)}</td><td>${catBadge(c.category)}</td></tr>`;
+}).join('');
+
+// Score Stability
+const scoreHdrs = DATA.runs.map(r => `<th>R${r.index} Score</th>`).join('');
+document.getElementById('score-hdr').innerHTML = `<tr><th>Case</th><th>Tier</th>${scoreHdrs}<th>Range</th><th>Std Dev</th></tr>`;
+document.getElementById('score-body').innerHTML = DATA.cases.map(c => {
+  const scoreCells = c.scores.map(s => `<td style="color:${scoreColor(s)}">${s.toFixed(3)}</td>`).join('');
+  const range = (Math.max(...c.scores) - Math.min(...c.scores)).toFixed(3);
+  const mean = c.scores.reduce((a,b) => a+b, 0) / c.scores.length;
+  const std = Math.sqrt(c.scores.reduce((a,s) => a + (s-mean)**2, 0) / c.scores.length).toFixed(3);
+  return `<tr><td>${esc(c.case_id)}</td><td>T${c.tier}</td>${scoreCells}<td>${range}</td><td>${std}</td></tr>`;
+}).join('');
+
+// Over-Splitting
+const overSplit = DATA.cases.filter(c => c.ref_commits === 1 && c.agent_counts.every(a => a >= 3));
+document.getElementById('split-hdr').innerHTML = '<tr><th>Case</th><th>Tier</th><th>Agent Commits</th><th>Result</th><th>TPR</th></tr>';
+document.getElementById('split-body').innerHTML = overSplit.map(c => {
+  const ac = c.agent_counts.join('/');
+  const result = c.category === 'always_pass'
+    ? '<span class="badge badge-pass">PASS</span>'
+    : `<span class="badge badge-fail">FAIL (${c.fail_count}/${DATA.n_runs})</span>`;
+  return `<tr><td>${esc(c.case_id)}</td><td>T${c.tier}</td><td>[${ac}]</td><td>${result}</td><td>${pct(c.avg_tpr)}</td></tr>`;
+}).join('');
 </script>
 </body>
 </html>"""

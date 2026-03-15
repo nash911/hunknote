@@ -490,36 +490,45 @@ def report_cmd(
 
 @eval_app.command("analyze")
 def analyze_cmd(
-    result_path: str = typer.Argument(..., help="Path to eval_results.json"),
+    result_paths: list[str] = typer.Argument(..., help="Path(s) to eval_results.json file(s)"),
     web: bool = typer.Option(False, "--web", help="Generate interactive HTML dashboard"),
     output_dir: Optional[str] = typer.Option(
-        None, help="Output directory (default: same dir as result file)"
+        None, help="Output directory (default: same dir as most recent result file)"
     ),
 ) -> None:
-    """Generate a detailed analysis report from eval results.
+    """Generate analysis report(s) from eval results.
 
-    Always produces a Markdown report (eval_analysis.md).
-    With --web, also produces an interactive HTML dashboard (eval_dashboard.html).
+    With a single path, produces a per-run analysis report.
+    With multiple paths, produces a meta-analysis comparing all runs
+    (consistency, false-positive detection, failure-root-cause classification).
+    Always produces Markdown; with --web also produces an HTML dashboard.
     """
-    from eval.analysis import run_analysis
+    from eval.analysis import run_analysis, run_meta_analysis
 
     _setup_logging()
 
-    rpath = Path(result_path)
-    if not rpath.exists():
-        typer.echo(f"File not found: {result_path}", err=True)
-        raise typer.Exit(1)
+    paths = [Path(p) for p in result_paths]
+    for p in paths:
+        if not p.exists():
+            typer.echo(f"File not found: {p}", err=True)
+            raise typer.Exit(1)
 
     out = Path(output_dir) if output_dir else None
-    md_path, terminal_report = run_analysis(rpath, web=web, output_dir=out)
 
-    # Print the terminal-friendly report
-    typer.echo(terminal_report)
-
-    typer.echo(f"Analysis report: {md_path}")
-    if web:
-        html_path = md_path.parent / "eval_dashboard.html"
-        typer.echo(f"Web dashboard:   {html_path}")
+    if len(paths) == 1:
+        md_path, terminal_report = run_analysis(paths[0], web=web, output_dir=out)
+        typer.echo(terminal_report)
+        typer.echo(f"Analysis report: {md_path}")
+        if web:
+            html_path = md_path.parent / "eval_dashboard.html"
+            typer.echo(f"Web dashboard:   {html_path}")
+    else:
+        md_path, terminal_report = run_meta_analysis(paths, web=web, output_dir=out)
+        typer.echo(terminal_report)
+        typer.echo(f"Meta-analysis report: {md_path}")
+        if web:
+            html_path = md_path.parent / "meta_dashboard.html"
+            typer.echo(f"Meta dashboard:      {html_path}")
 
 
 
