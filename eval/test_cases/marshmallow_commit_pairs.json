@@ -1,0 +1,285 @@
+{
+  "repo": "https://github.com/marshmallow-code/marshmallow",
+  "description": "Before/after commit SHA pairs for the Compose Agent eval, organized by difficulty tier. 'before' is the parent commit (the repo state before the change), 'after' is the commit that produces the change. The squashed diff from before..after is the agent's input.",
+  "install_commands": [
+    "pip install -e '.[tests]'"
+  ],
+  "test_command": "python -m pytest tests/ -x -q --tb=short --no-header -p no:warnings",
+  "tiers": {
+    "tier1": {
+      "description": "2-5 hunks, 1-3 files — small bug fixes and single-concern changes",
+      "cases": [
+        {
+          "id": "python_marshmallow_tier1_constant_none_fix",
+          "before": "213ee3a020e24fb26ead3a2285ba0402c90080ce",
+          "after": "19ca8dce2d5bde94509a4a89e495f35c695442d5",
+          "message": "Fix Constant field rejecting None values during load (#2894)",
+          "hunks": 5,
+          "files": 4,
+          "lines_added": 20,
+          "lines_removed": 2,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "src/marshmallow/fields.py",
+            "tests/test_deserialization.py"
+          ],
+          "rationale": "Bug fix for Constant field. Touches source, tests, changelog, and authors — good basic cross-file change."
+        },
+        {
+          "id": "python_marshmallow_tier1_constant_len_validation",
+          "before": "fc8726244820b9f08fb7d02e007ed8d378a46c7b",
+          "after": "2b84b56e9a80d07b65d74811673e8e5cf46cd0f1",
+          "message": "Fix missing constant with len validation (#2861)",
+          "hunks": 5,
+          "files": 4,
+          "lines_added": 15,
+          "lines_removed": 0,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "src/marshmallow/constants.py",
+            "tests/test_deserialization.py"
+          ],
+          "rationale": "Bug fix adding missing constant for length validation. Touches constants module, tests, changelog, and authors."
+        },
+        {
+          "id": "python_marshmallow_tier1_pprint_export_fix",
+          "before": "ad24f89100c95d3bf99ba17714d457c7c93e0b53",
+          "after": "5429f0d4c6e346dc751599073cab67d66eefbcb2",
+          "message": "Fix incorrect export by removing 'pprint' from __all__ (#2823)",
+          "hunks": 4,
+          "files": 3,
+          "lines_added": 11,
+          "lines_removed": 2,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "src/marshmallow/__init__.py"
+          ],
+          "rationale": "Fix for incorrect public API export. Simple but affects package-level __init__.py."
+        }
+      ]
+    },
+    "tier2": {
+      "description": "6-15 hunks, 2-5 files — multi-hunk bug fixes, small features",
+      "cases": [
+        {
+          "id": "python_marshmallow_tier2_many_arg_consistency",
+          "before": "c860f56d7b7232037c1e1636e499b0d15cb671cc",
+          "after": "2bf3ae6ac656c977ec10808b5eb0e7480ced0311",
+          "message": "Improve consistency of many arg with nested schema (#2854)",
+          "hunks": 10,
+          "files": 4,
+          "lines_added": 66,
+          "lines_removed": 5,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "src/marshmallow/fields.py",
+            "tests/test_schema.py"
+          ],
+          "rationale": "Feature improvement for nested schema 'many' argument consistency. Touches fields source and schema tests."
+        },
+        {
+          "id": "python_marshmallow_tier2_url_file_handling",
+          "before": "ea26aeb08c37c4e4c5bd323689c873d14f13d58d",
+          "after": "76bc28ae74e723760d54f097290ba85e717d5fe4",
+          "message": "Add file handling to URL fields (#2800)",
+          "hunks": 6,
+          "files": 4,
+          "lines_added": 48,
+          "lines_removed": 3,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "src/marshmallow/validate.py",
+            "tests/test_validate.py"
+          ],
+          "rationale": "Feature addition for file URL scheme handling. Touches validation source and tests."
+        },
+        {
+          "id": "python_marshmallow_tier2_data_key_validation_errors",
+          "before": "a578ed23092bd558acfbd9cd09a164108689326d",
+          "after": "9f751e1cef943e2ca1a77f93d3483b4a171d4303",
+          "message": "Fix handling data_key in ValidationErrors raised in schema validators (#2792)",
+          "hunks": 9,
+          "files": 5,
+          "lines_added": 76,
+          "lines_removed": 10,
+          "file_list": [
+            "CHANGELOG.rst",
+            "src/marshmallow/decorators.py",
+            "src/marshmallow/schema.py",
+            "src/marshmallow/types.py",
+            "tests/test_decorators.py"
+          ],
+          "rationale": "Bug fix touching decorators, schema, types, and tests. Good cross-module dependency chain."
+        }
+      ]
+    },
+    "tier3": {
+      "description": "15-40 hunks, 5-15 files — multi-file refactors, cross-cutting changes",
+      "cases": [
+        {
+          "id": "python_marshmallow_tier3_validates_multiple_fields",
+          "before": "b7026f3b2622cffc981588b647526fa9525f063d",
+          "after": "2fc8207da9cf0cf1d9b9b4ab76d4d0478b588325",
+          "message": "@validates accepts multiple field names (#1965)",
+          "hunks": 28,
+          "files": 9,
+          "lines_added": 131,
+          "lines_removed": 47,
+          "file_list": [
+            "AUTHORS.rst",
+            "CHANGELOG.rst",
+            "docs/quickstart.rst",
+            "docs/upgrading.rst",
+            "src/marshmallow/decorators.py",
+            "src/marshmallow/schema.py",
+            "tests/test_context.py",
+            "tests/test_decorators.py",
+            "tests/test_schema.py"
+          ],
+          "rationale": "Major feature addition allowing @validates to accept multiple field names. Touches decorators, schema, docs, and multiple test files."
+        },
+        {
+          "id": "python_marshmallow_tier3_load_sequence",
+          "before": "bc5cde04330ae53f7a23e6990f9a0ce9d9891a4a",
+          "after": "9cddff67b733987fedc0ae37c1a4ed2eb61e89cb",
+          "message": "load accepts Sequence rather than Iterable (rejects generators) (#2795)",
+          "hunks": 23,
+          "files": 5,
+          "lines_added": 40,
+          "lines_removed": 34,
+          "file_list": [
+            "CHANGELOG.rst",
+            "src/marshmallow/fields.py",
+            "src/marshmallow/schema.py",
+            "src/marshmallow/utils.py",
+            "tests/test_schema.py"
+          ],
+          "rationale": "API change making load accept Sequence instead of Iterable. Touches fields, schema, utils, and tests — interdependent changes."
+        }
+      ]
+    },
+    "tier4": {
+      "description": "40-100 hunks, 5-15 files — large refactors, API redesigns",
+      "cases": [
+        {
+          "id": "python_marshmallow_tier4_deprecation_warnings",
+          "before": "71ab95a9c33ecac7f86cb9bdc9351461cbf95f6a",
+          "after": "8ca596d91194a6c2d0d992a7b66490a0e909d719",
+          "message": "Deprecation warnings for marshmallow 4 changes (#2732)",
+          "hunks": 98,
+          "files": 11,
+          "lines_added": 221,
+          "lines_removed": 151,
+          "file_list": [
+            "CHANGELOG.rst",
+            "pyproject.toml",
+            "src/marshmallow/fields.py",
+            "src/marshmallow/validate.py",
+            "src/marshmallow/warnings.py",
+            "tests/base.py",
+            "tests/test_decorators.py",
+            "tests/test_deserialization.py",
+            "tests/test_fields.py",
+            "tests/test_schema.py",
+            "tests/test_serialization.py"
+          ],
+          "rationale": "Large-scale deprecation warning additions across fields, validation, and all major test files. Tests proper ordering of new warning module + field changes + test updates."
+        },
+        {
+          "id": "python_marshmallow_tier4_rename_pass_collection",
+          "before": "a33a5f7a6c7ac961d216dbd27aa78f30e171ba54",
+          "after": "cf9c3a86f07de69d921214fab3dc4e29bff459e8",
+          "message": "Rename pass_many to pass_collection (#2715)",
+          "hunks": 62,
+          "files": 6,
+          "lines_added": 76,
+          "lines_removed": 71,
+          "file_list": [
+            "CHANGELOG.rst",
+            "docs/extending.rst",
+            "examples/peewee_example.py",
+            "src/marshmallow/decorators.py",
+            "src/marshmallow/schema.py",
+            "tests/test_decorators.py"
+          ],
+          "rationale": "API rename across decorators, schema, docs, examples, and tests. Cross-cutting rename requiring consistent changes."
+        }
+      ]
+    },
+    "tier5": {
+      "description": "100+ hunks — large-scale refactors",
+      "cases": [
+        {
+          "id": "python_marshmallow_tier5_field_generic_refactor",
+          "before": "d2d26a13acd6d69a144ccbefad2bc8231382e280",
+          "after": "68c68e3a562591a5b705907d948faac843e216c7",
+          "message": "Make Field a generic type; refactor inheritance hierarchies (#2725)",
+          "hunks": 152,
+          "files": 13,
+          "lines_added": 397,
+          "lines_removed": 310,
+          "file_list": [
+            "CHANGELOG.rst",
+            "docs/custom_fields.rst",
+            "docs/extending.rst",
+            "docs/upgrading.rst",
+            "examples/package_json_example.py",
+            "src/marshmallow/exceptions.py",
+            "src/marshmallow/fields.py",
+            "tests/base.py",
+            "tests/test_decorators.py",
+            "tests/test_deserialization.py",
+            "tests/test_fields.py",
+            "tests/test_schema.py",
+            "tests/test_serialization.py"
+          ],
+          "rationale": "Major refactor making Field a generic type and restructuring inheritance hierarchies. Touches all core modules, docs, examples, and most test files."
+        },
+        {
+          "id": "python_marshmallow_tier5_ruff_rules_enable",
+          "before": "56178cf29e6ddced9b71b447ac90b5e9ac80283e",
+          "after": "2ec6555854db299109fddfdaa2736edba7fa9c4f",
+          "message": "Enable all ruff rules except those explicitly ignored (#2788)",
+          "hunks": 230,
+          "files": 25,
+          "lines_added": 398,
+          "lines_removed": 318,
+          "file_list": [
+            ".pre-commit-config.yaml",
+            "docs/conf.py",
+            "examples/flask_example.py",
+            "performance/benchmark.py",
+            "pyproject.toml",
+            "src/marshmallow/__init__.py",
+            "src/marshmallow/class_registry.py",
+            "src/marshmallow/decorators.py",
+            "src/marshmallow/error_store.py",
+            "src/marshmallow/fields.py",
+            "src/marshmallow/orderedset.py",
+            "src/marshmallow/schema.py",
+            "src/marshmallow/utils.py",
+            "src/marshmallow/validate.py",
+            "tests/base.py",
+            "tests/test_decorators.py",
+            "tests/test_deserialization.py",
+            "tests/test_error_store.py",
+            "tests/test_fields.py",
+            "tests/test_options.py",
+            "tests/test_registry.py",
+            "tests/test_schema.py",
+            "tests/test_serialization.py",
+            "tests/test_utils.py",
+            "tests/test_validate.py"
+          ],
+          "rationale": "Massive cross-cutting linting refactor touching 25 files across source, tests, examples, and config. Tests comprehensive code-style changes."
+        }
+      ]
+    }
+  }
+}
+
