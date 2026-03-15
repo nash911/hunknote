@@ -531,6 +531,50 @@ def analyze_cmd(
             typer.echo(f"Meta dashboard:      {html_path}")
 
 
+@eval_app.command("compare-groups")
+def compare_groups_cmd(
+    meta_files: list[str] = typer.Argument(..., help="Paths to meta_analysis.json files (2+)"),
+    web: bool = typer.Option(False, "--web", help="Generate interactive HTML dashboard"),
+    output_dir: Optional[str] = typer.Option(
+        None, help="Output directory (default: same dir as most recent input)"
+    ),
+    labels: Optional[list[str]] = typer.Option(
+        None, "--label", help="Custom label for each group (repeat for each file)"
+    ),
+) -> None:
+    """Compare evaluation runs across different configurations (models, providers).
+
+    Accepts two or more meta_analysis.json files — each representing a group
+    of runs (e.g., all Gemini runs vs all Claude runs).  Produces a comparison
+    report showing which group performs better on each metric and per-case.
+    """
+    from eval.meta_analysis import run_comparison
+
+    _setup_logging()
+
+    paths = [Path(f) for f in meta_files]
+    for p in paths:
+        if not p.exists():
+            typer.echo(f"File not found: {p}", err=True)
+            raise typer.Exit(1)
+
+    if len(paths) < 2:
+        typer.echo("Error: At least 2 meta_analysis.json files are required.", err=True)
+        raise typer.Exit(1)
+
+    if labels and len(labels) != len(paths):
+        typer.echo(f"Error: --label must be repeated {len(paths)} times, got {len(labels)}.", err=True)
+        raise typer.Exit(1)
+
+    out = Path(output_dir) if output_dir else None
+    md_path, terminal_report = run_comparison(paths, web=web, output_dir=out, labels=labels)
+
+    typer.echo(terminal_report)
+    typer.echo(f"Comparison report: {md_path}")
+    if web:
+        html_path = md_path.parent / "group_comparison.html"
+        typer.echo(f"Comparison dashboard: {html_path}")
+
 
 @eval_app.command("cleanup")
 def cleanup_cmd() -> None:
