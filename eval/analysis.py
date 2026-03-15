@@ -431,6 +431,187 @@ def _classify_failure(
     }
 
 
+def generate_meta_analysis_json(results: list[EvalRunResult]) -> dict:
+    """Generate a complete JSON-serialisable meta-analysis dictionary.
+
+    Contains all the data needed to reconstruct the Markdown/HTML reports
+    and to compare this group of runs against another group.
+    """
+    per_case = _collect_meta_data(results)
+    n_runs = len(results)
+
+    # Classify every case
+    classifications: list[dict] = []
+    for cid in sorted(per_case.keys()):
+        runs = per_case[cid]
+        classifications.append(_classify_failure(cid, runs, n_runs))
+
+    # Per-tier aggregates
+    tiers_map: dict[int, list[dict]] = {}
+    for c in classifications:
+        tiers_map.setdefault(c["tier"], []).append(c)
+
+    tiers_summary = []
+    for t in sorted(tiers_map.keys()):
+        tc = tiers_map[t]
+        ap = sum(1 for c in tc if c["category"] == "always_pass")
+        cf = sum(1 for c in tc if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive"))
+        inter = sum(1 for c in tc if c["stability"] == "intermittent")
+        fp = sum(1 for c in tc if c["category"] == "false_positive")
+        avg_s = sum(c["avg_score"] for c in tc) / len(tc)
+        avg_t = sum(c["avg_tpr"] for c in tc) / len(tc)
+        tiers_summary.append({
+            "tier": t,
+            "total": len(tc),
+            "always_pass": ap,
+            "consistent_fail": cf,
+            "intermittent": inter,
+            "false_positive": fp,
+            "avg_score": round(avg_s, 4),
+            "avg_tpr": round(avg_t, 4),
+        })
+
+    # Per-repo aggregates
+    repos_map: dict[str, list[dict]] = {}
+    for c in classifications:
+        cid = c["case_id"]
+        if "httpx" in cid:
+            repo = "httpx"
+        elif "rich" in cid:
+            repo = "rich"
+        elif "marshmallow" in cid:
+            repo = "marshmallow"
+        else:
+            repo = "other"
+        repos_map.setdefault(repo, []).append(c)
+
+    repos_summary = []
+    for repo in sorted(repos_map.keys()):
+        rc = repos_map[repo]
+        ap = sum(1 for c in rc if c["category"] == "always_pass")
+        cf = sum(1 for c in rc if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive"))
+        inter = sum(1 for c in rc if c["stability"] == "intermittent")
+        avg_s = sum(c["avg_score"] for c in rc) / len(rc)
+        repos_summary.append({
+            "repo": repo,
+            "total": len(rc),
+            "always_pass": ap,
+            "consistent_fail": cf,
+            "intermittent": inter,
+            "avg_score": round(avg_s, 4),
+        })
+
+    # Failure root cause breakdown
+    genuine_fail = [c for c in classifications if c["category"] not in ("always_pass", "false_positive")]
+    root_causes: dict[str, dict] = {}
+    for c in genuine_fail:
+        cat = c["category"]
+        if cat not in root_causes:
+            root_causes[cat] = {"category": cat, "total": 0, "consistent": 0, "intermittent": 0, "cases": []}
+        root_causes[cat]["total"] += 1
+        if c["stability"] == "consistent":
+            root_causes[cat]["consistent"] += 1
+        else:
+            root_causes[cat]["intermittent"] += 1
+        root_causes[cat]["cases"].append(c["case_id"])
+
+    # Over-splitting
+    over_split_cases = []
+    for c in classifications:
+        if c["ref_commits"] == 1 and all(a >= 3 for a in c["agent_counts"]):
+            over_split_cases.append({
+                "case_id": c["case_id"],
+                "tier": c["tier"],
+                "agent_counts": c["agent_counts"],
+                "category": c["category"],
+                "avg_tpr": round(c["avg_tpr"], 4),
+            })
+
+    # Score stability
+    score_stability = []
+    for c in sorted(classifications, key=lambda x: (x["tier"], x["case_id"])):
+        scores = c["scores"]
+        mean = sum(scores) / len(scores)
+        std = (sum((s - mean) ** 2 for s in scores) / len(scores)) ** 0.5
+        score_stability.append({
+            "case_id": c["case_id"],
+            "tier": c["tier"],
+            "scores": [round(s, 4) for s in scores],
+            "mean": round(mean, 4),
+            "range": round(max(scores) - min(scores), 4),
+            "std_dev": round(std, 4),
+        })
+
+    # Per-case full details (the core data)
+    cases_detail = []
+    for c in sorted(classifications, key=lambda x: (x["tier"], x["case_id"])):
+        cases_detail.append({
+            "case_id": c["case_id"],
+            "tier": c["tier"],
+            "ref_commits": c["ref_commits"],
+            "agent_counts": c["agent_counts"],
+            "fail_count": c["fail_count"],
+            "pass_count": c["pass_count"],
+            "category": c["category"],
+            "stability": c["stability"],
+            "avg_score": round(c["avg_score"], 4),
+            "avg_tpr": round(c["avg_tpr"], 4),
+            "has_import_fail": c["has_import_fail"],
+            "has_test_fail": c["has_test_fail"],
+            "has_hunk_miss": c["has_hunk_miss"],
+            "has_fs_fail": c["has_fs_fail"],
+            "last_commit_test_fails": c["last_commit_test_fails"],
+            "mech_pass_per_run": c["mech_pass_per_run"],
+            "hunk_coverages": [round(h, 4) for h in c["hunk_coverages"]],
+            "scores": [round(s, 4) for s in c["scores"]],
+        })
+
+    # Runs metadata
+    runs_meta = []
+    for i, r in enumerate(results):
+        summary = r.get_summary()
+        runs_meta.append({
+            "index": i + 1,
+            "run_id": r.run_id,
+            "timestamp": r.timestamp,
+            "provider": r.agent_config.get("provider", "?"),
+            "model": r.agent_config.get("model", "?"),
+            "suite": r.suite,
+            "use_agent": r.agent_config.get("use_agent", False),
+            "total_cases": summary["total"],
+            "avg_score": round(summary["avg_score"], 4),
+            "mechanical_pass_rate": round(summary.get("mechanical_pass_rate", 0), 4),
+            "total_duration_s": round(sum(c.duration_s for c in r.cases), 1),
+            "total_tokens": sum(c.total_tokens for c in r.cases),
+        })
+
+    total = len(classifications)
+    return {
+        "meta_analysis_version": 1,
+        "n_runs": n_runs,
+        "runs": runs_meta,
+        "summary": {
+            "total_cases": total,
+            "always_pass": sum(1 for c in classifications if c["category"] == "always_pass"),
+            "always_pass_rate": round(sum(1 for c in classifications if c["category"] == "always_pass") / total, 4) if total else 0,
+            "false_positive": sum(1 for c in classifications if c["category"] == "false_positive"),
+            "consistent_fail": sum(1 for c in classifications if c["stability"] == "consistent" and c["category"] not in ("always_pass", "false_positive")),
+            "intermittent": sum(1 for c in classifications if c["stability"] == "intermittent"),
+            "avg_score": round(sum(c["avg_score"] for c in classifications) / total, 4) if total else 0,
+            "avg_tpr": round(sum(c["avg_tpr"] for c in classifications) / total, 4) if total else 0,
+            "avg_mechanical_pass_rate": round(
+                sum(sum(c["mech_pass_per_run"]) / n_runs for c in classifications) / total, 4
+            ) if total else 0,
+        },
+        "by_tier": tiers_summary,
+        "by_repo": repos_summary,
+        "root_causes": list(root_causes.values()),
+        "over_splitting": over_split_cases,
+        "score_stability": score_stability,
+        "cases": cases_detail,
+    }
+
+
 def generate_meta_analysis_report(results: list[EvalRunResult]) -> str:
     """Generate a Markdown meta-analysis report comparing multiple runs."""
     per_case = _collect_meta_data(results)
@@ -860,8 +1041,8 @@ def run_meta_analysis(
 ) -> tuple[Path, str]:
     """Run meta-analysis across multiple eval runs.
 
-    Writes Markdown report (and optionally HTML dashboard) to the
-    output directory, which defaults to the directory of the most
+    Writes JSON data, Markdown report (and optionally HTML dashboard) to
+    the output directory, which defaults to the directory of the most
     recent (last) result file.
 
     Returns:
@@ -877,6 +1058,13 @@ def run_meta_analysis(
     else:
         out_dir = output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # JSON (structured data — used by meta_analysis.py for cross-group comparison)
+    meta_json = generate_meta_analysis_json(results)
+    json_path = out_dir / "meta_analysis.json"
+    with open(json_path, "w") as f:
+        json.dump(meta_json, f, indent=2)
+    logger.info("Meta-analysis JSON saved to %s", json_path)
 
     # Markdown
     md_report = generate_meta_analysis_report(results)
