@@ -138,6 +138,18 @@ def generate_analysis_report(result: EvalRunResult) -> str:
         lines.append(f"| Test pass rate | {test_str} |")
         fs = "✅" if mech.final_state_matches is True else ("❌" if mech.final_state_matches is False else "n/a")
         lines.append(f"| Final state matches | {fs} |")
+        hc = f"{mech.hunk_coverage:.1%}" if mech.hunk_coverage is not None else "n/a"
+        lines.append(f"| Hunk coverage | {hc} |")
+        if mech.missing_hunk_ids:
+            ids_str = ", ".join(mech.missing_hunk_ids[:5])
+            if len(mech.missing_hunk_ids) > 5:
+                ids_str += f" (+{len(mech.missing_hunk_ids) - 5} more)"
+            lines.append(f"| Missing hunks | {ids_str} |")
+        if mech.hallucinated_hunk_ids:
+            ids_str = ", ".join(mech.hallucinated_hunk_ids[:5])
+            if len(mech.hallucinated_hunk_ids) > 5:
+                ids_str += f" (+{len(mech.hallucinated_hunk_ids) - 5} more)"
+            lines.append(f"| Hallucinated hunks | {ids_str} |")
         lines.append("")
 
         # Per-commit table
@@ -261,6 +273,9 @@ def generate_web_report(result: EvalRunResult) -> str:
             "test_rate": round(m.test_pass_rate, 3) if m.test_pass_rate is not None else None,
             "final_state": m.final_state_matches,
             "final_state_diff": m.final_state_diff,
+            "hunk_coverage": round(m.hunk_coverage, 3) if m.hunk_coverage is not None else None,
+            "missing_hunks": m.missing_hunk_ids,
+            "hallucinated_hunks": m.hallucinated_hunk_ids,
             "ref_sim": round(s.reference_similarity, 3),
             "granularity": round(s.granularity, 3),
             "dep_recall": round(s.dependency_recall, 3),
@@ -463,7 +478,10 @@ def generate_terminal_report(result: EvalRunResult) -> str:
                 else:
                     dots.append(f"{RED}●{RST}")
             fs = ok(m.final_state_matches)
-            lines.append(f"       {DIM}commits:{RST} {' '.join(dots)}  {DIM}final-state:{RST} {fs}")
+            hc_str = ""
+            if m.hunk_coverage is not None and m.hunk_coverage < 1.0:
+                hc_str = f"  {DIM}hunks:{RST} {YELLOW}{m.hunk_coverage:.0%}{RST}"
+            lines.append(f"       {DIM}commits:{RST} {' '.join(dots)}  {DIM}final-state:{RST} {fs}{hc_str}")
 
     lines.append(f"  {DIM}{'─' * 75}{RST}")
     lines.append("")
@@ -481,6 +499,15 @@ def generate_terminal_report(result: EvalRunResult) -> str:
                 reasons = []
                 if m.final_state_matches is False:
                     reasons.append("final state mismatch")
+                if m.hunk_coverage is not None and m.hunk_coverage < 1.0:
+                    n_missing = len(m.missing_hunk_ids) if m.missing_hunk_ids else 0
+                    n_halluc = len(m.hallucinated_hunk_ids) if m.hallucinated_hunk_ids else 0
+                    parts = [f"hunk coverage {m.hunk_coverage:.0%}"]
+                    if n_missing:
+                        parts.append(f"{n_missing} missing")
+                    if n_halluc:
+                        parts.append(f"{n_halluc} hallucinated")
+                    reasons.append(", ".join(parts))
                 for cv in m.per_commit:
                     if not cv.patch_applies:
                         reasons.append(f"{cv.commit_id}: patch failed")
