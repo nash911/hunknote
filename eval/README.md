@@ -325,6 +325,11 @@ the final state matches the destination.
 - **import_integrity_rate**: Fraction passing import checks.
 - **test_pass_rate**: Fraction passing pytest.
 - **final_state_matches**: Whether the final repo state matches the target.
+- **hunk_coverage**: Fraction of inventory hunks present in the plan (1.0 = all
+  hunks assigned). Detects LLM omissions (missing hunks) and hallucinations
+  (hunk IDs not in the inventory).
+- **missing_hunk_ids**: Inventory hunks absent from the plan.
+- **hallucinated_hunk_ids**: Plan hunk IDs not in the inventory.
 
 ### Semantic (40% weight)
 
