@@ -9,7 +9,11 @@ from eval.analysis import (
     generate_analysis_report,
     generate_terminal_report,
     generate_web_report,
+    generate_meta_analysis_report,
+    generate_meta_terminal_report,
+    generate_meta_web_report,
     run_analysis,
+    run_meta_analysis,
 )
 from eval.models import (
     CommitValidation,
@@ -331,4 +335,251 @@ class TestRunAnalysis:
         md_path, _ = run_analysis(result_path)
         content = md_path.read_text()
         assert multi_case_result.run_id in content
+
+
+# ── Meta-analysis fixtures ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def false_positive_case():
+    """A case where tests fail even at the final commit (false positive)."""
+    return EvalCaseResult(
+        case_id="python_test_tier2_false_positive",
+        tier=DifficultyTier.TIER2,
+        language=Language.PYTHON,
+        mechanical=MechanicalResult(
+            full_sequence_valid=False,
+            build_pass_rate=1.0,
+            patch_apply_rate=1.0,
+            import_integrity_rate=1.0,
+            test_pass_rate=0.0,
+            final_state_matches=True,
+            per_commit=[
+                CommitValidation(
+                    commit_index=0, commit_id="C1",
+                    patch_applies=True, syntax_valid=True,
+                    compile_passes=True, import_resolves=True,
+                    tests_pass=False,
+                    errors=["Tests failed: env-specific"],
+                ),
+                CommitValidation(
+                    commit_index=1, commit_id="C2",
+                    patch_applies=True, syntax_valid=True,
+                    compile_passes=True, import_resolves=True,
+                    tests_pass=False,
+                    errors=["Tests failed: env-specific"],
+                ),
+            ],
+        ),
+        semantic=SemanticScores(
+            reference_similarity=0.5,
+            granularity=0.8,
+            dependency_recall=1.0,
+        ),
+        overall_score=0.70,
+        agent_commit_count=2,
+        reference_commit_count=1,
+        duration_s=30.0,
+    )
+
+
+@pytest.fixture
+def multi_run_results(passing_case, failing_case, false_positive_case):
+    """Three runs with different case outcomes for meta-analysis."""
+    run1 = EvalRunResult(
+        run_id="eval_run1",
+        timestamp="2026-03-15_10-00-00",
+        agent_config={"provider": "google", "model": "gemini-2.5-flash", "use_agent": False},
+        suite="full",
+        cases=[passing_case, failing_case, false_positive_case],
+    )
+    run2 = EvalRunResult(
+        run_id="eval_run2",
+        timestamp="2026-03-15_11-00-00",
+        agent_config={"provider": "google", "model": "gemini-2.5-flash", "use_agent": False},
+        suite="full",
+        cases=[passing_case, failing_case, false_positive_case],
+    )
+    run3 = EvalRunResult(
+        run_id="eval_run3",
+        timestamp="2026-03-15_12-00-00",
+        agent_config={"provider": "google", "model": "gemini-2.5-flash", "use_agent": False},
+        suite="full",
+        cases=[passing_case, failing_case, false_positive_case],
+    )
+    return [run1, run2, run3]
+
+
+# ── Meta-analysis Markdown report ──────────────────────────────────────────
+
+
+class TestGenerateMetaAnalysisReport:
+    def test_returns_string(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert isinstance(report, str)
+
+    def test_contains_header(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Meta-Analysis Report" in report
+
+    def test_contains_run_ids(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        for r in multi_run_results:
+            assert r.run_id in report
+
+    def test_contains_consistency_summary(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Overall Consistency" in report
+        assert "Always pass" in report
+
+    def test_contains_per_tier_consistency(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Per-Tier Consistency" in report
+
+    def test_contains_case_matrix(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Case-by-Run Matrix" in report
+        assert "PASS" in report or "FAIL" in report
+
+    def test_detects_false_positive(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "False Positive" in report
+        assert "python_test_tier2_false_positive" in report
+
+    def test_contains_score_stability(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Score Stability" in report
+
+    def test_contains_failure_root_cause(self, multi_run_results):
+        report = generate_meta_analysis_report(multi_run_results)
+        assert "Failure Root Cause" in report
+
+
+# ── Meta-analysis terminal report ──────────────────────────────────────────
+
+
+class TestGenerateMetaTerminalReport:
+    def test_returns_string(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert isinstance(report, str)
+
+    def test_contains_header(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "Meta-Analysis Report" in report
+
+    def test_contains_run_count(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "3 Runs" in report
+
+    def test_contains_consistency_summary(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "Consistency Summary" in report
+
+    def test_contains_case_matrix(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "Case-by-Run Matrix" in report
+
+    def test_contains_ansi_codes(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "\033[" in report
+
+    def test_shows_false_positive(self, multi_run_results):
+        report = generate_meta_terminal_report(multi_run_results)
+        assert "False Positive" in report
+
+
+# ── Meta-analysis web report ──────────────────────────────────────────────
+
+
+class TestGenerateMetaWebReport:
+    def test_returns_string(self, multi_run_results):
+        report = generate_meta_web_report(multi_run_results)
+        assert isinstance(report, str)
+
+    def test_is_valid_html(self, multi_run_results):
+        report = generate_meta_web_report(multi_run_results)
+        assert "<!DOCTYPE html>" in report
+        assert "</html>" in report
+
+    def test_contains_data_json(self, multi_run_results):
+        report = generate_meta_web_report(multi_run_results)
+        assert "const DATA" in report
+
+    def test_contains_case_ids(self, multi_run_results):
+        report = generate_meta_web_report(multi_run_results)
+        for r in multi_run_results:
+            for c in r.cases:
+                assert c.case_id in report
+
+    def test_contains_meta_dashboard_title(self, multi_run_results):
+        report = generate_meta_web_report(multi_run_results)
+        assert "Meta-Analysis Dashboard" in report
+
+
+# ── run_meta_analysis ──────────────────────────────────────────────────────
+
+
+class TestRunMetaAnalysis:
+    def test_creates_markdown_report(self, tmp_path, multi_run_results):
+        # Save each run to a separate subdirectory
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        md_path, terminal_report = run_meta_analysis(paths)
+        assert md_path.exists()
+        assert md_path.name == "meta_analysis.md"
+
+    def test_returns_terminal_report(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        _, terminal_report = run_meta_analysis(paths)
+        assert isinstance(terminal_report, str)
+        assert "Meta-Analysis Report" in terminal_report
+
+    def test_web_flag_creates_html(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        md_path, _ = run_meta_analysis(paths, web=True)
+        html_path = md_path.parent / "meta_dashboard.html"
+        assert html_path.exists()
+
+    def test_no_web_flag_no_html(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        md_path, _ = run_meta_analysis(paths, web=False)
+        html_path = md_path.parent / "meta_dashboard.html"
+        assert not html_path.exists()
+
+    def test_custom_output_dir(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        out_dir = tmp_path / "custom_meta"
+        md_path, _ = run_meta_analysis(paths, output_dir=out_dir)
+        assert md_path.parent == out_dir
+        assert md_path.exists()
+
+    def test_output_defaults_to_most_recent_run(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        md_path, _ = run_meta_analysis(paths)
+        # Should be in the directory with the lexicographically largest name
+        assert md_path.parent == max((p.parent for p in paths), key=lambda d: d.name)
+
 
