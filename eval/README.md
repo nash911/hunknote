@@ -46,6 +46,7 @@ python eval/cli.py run --suite full
 # Run only cases from a specific repo
 python eval/cli.py run --suite full --repo rich
 python eval/cli.py run --suite smoke --repo httpx
+python eval/cli.py run --repo marshmallow --tier 3
 
 # Run a single test case
 python eval/cli.py run --case python_httpx_tier2_move_utils_to_models
@@ -83,6 +84,7 @@ eval/
 └── test_cases/
     ├── httpx_commit_pairs.json    # SHA pair definitions (httpx)
     ├── rich_commit_pairs.json     # SHA pair definitions (rich)
+    ├── marshmallow_commit_pairs.json  # SHA pair definitions (marshmallow)
     └── cases/
         └── python/
             ├── python_httpx_tier1_*/
@@ -94,6 +96,11 @@ eval/
             ├── python_rich_tier2_*/
             ├── python_rich_tier3_*/
             └── python_rich_tier4_*/
+            ├── python_marshmallow_tier1_*/
+            ├── python_marshmallow_tier2_*/
+            ├── python_marshmallow_tier3_*/
+            ├── python_marshmallow_tier4_*/
+            └── python_marshmallow_tier5_*/
 ```
 
 ### Module Responsibilities
@@ -424,6 +431,23 @@ Reports:
 | 3 | `tier3_cell_tests_refactor` | 14 | 6 | Refactor cell-related tests |
 | 4 | `tier4_move_to_cells` | 32 | 25 | Move cell-width logic to cells.py |
 
+### marshmallow (`marshmallow-code/marshmallow`)
+
+| Tier | Case ID | Hunks | Files | Description |
+|------|---------|-------|-------|-------------|
+| 1 | `tier1_constant_none_fix` | 4 | 4 | Fix Constant field rejecting None values |
+| 1 | `tier1_constant_len_validation` | 5 | 4 | Fix missing constant with len validation |
+| 1 | `tier1_pprint_export_fix` | 4 | 3 | Fix incorrect export of 'pprint' from __all__ |
+| 2 | `tier2_many_arg_consistency` | 10 | 4 | Improve consistency of many arg with nested schema |
+| 2 | `tier2_url_file_handling` | 6 | 4 | Add file handling to URL fields |
+| 2 | `tier2_data_key_validation_errors` | 8 | 5 | Fix data_key handling in ValidationErrors |
+| 3 | `tier3_validates_multiple_fields` | 18 | 9 | @validates accepts multiple field names |
+| 3 | `tier3_load_sequence` | 18 | 5 | load accepts Sequence rather than Iterable |
+| 4 | `tier4_deprecation_warnings` | 77 | 11 | Deprecation warnings for marshmallow 4 |
+| 4 | `tier4_rename_pass_collection` | 34 | 6 | Rename pass_many to pass_collection |
+| 5 | `tier5_field_generic_refactor` | 118 | 13 | Make Field a generic type; refactor inheritance |
+| 5 | `tier5_ruff_rules_enable` | 149 | 25 | Enable all ruff rules except explicitly ignored |
+
 ---
 
 ## Adding a New Repository
@@ -462,7 +486,8 @@ Reports:
 - [ ] pytest version compatible with Python 3.12+
 - [ ] All required dependencies available via `pip install`
 - [ ] All optional deps that tests import are listed in `install_commands`
-- [ ] Tests pass at the destination SHA with the chosen `install_commands`
+- [ ] Tests pass at **both** the before and after SHAs with the chosen `install_commands`
+- [ ] `src/`-layout projects (e.g. marshmallow) are supported — the framework automatically adds the `src/` directory to `PYTHONPATH` during validation
 
 ---
 
