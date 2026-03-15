@@ -419,8 +419,10 @@ Reports:
 | 3 | `tier3_zstd_decoding` | 35 | 15 | Add zstd decoding support |
 | 4 | `tier4_proxy_parameter` | 52 | 11 | Proxy parameter API overhaul |
 | 4 | `tier4_url_signature_cleanup` | 41 | 5 | URL class signature cleanup |
+| 4 | `tier4_drop_rfc3986_and_encoding` | 29 | 9 | Drop rfc3986, URL encoding, test cleanup (multi-commit) |
 | 5 | `tier5_future_annotations` | 225 | 25 | Add `from __future__ import annotations` |
 | 5 | `tier5_sslcontext_release` | 168 | 44 | SSL context release + major refactor |
+| 5 | `tier5_test_framework_migration` | 119 | 16 | Replace pytest-asyncio/trio with anyio (multi-commit) |
 
 ### rich (`Textualize/rich`)
 
@@ -429,12 +431,14 @@ Reports:
 | 1 | `tier1_split_graphemes_loop` | 3 | 3 | Fix infinite loop in split_graphemes |
 | 1 | `tier1_prompt_markup_fix` | 2 | 2 | Fix raw markup on prompt errors |
 | 1 | `tier1_softwrap_background` | 3 | 2 | Fix background style with soft wrap |
-| 2 | `tier2_zwj_edge_cases` | 5 | 4 | Fix ZWJ and edge cases in cell width |
 | 2 | `tier2_tty_interactive` | 7 | 5 | Add TTY_INTERACTIVE env var support |
 | 2 | `tier2_split_lines_terminator` | 3 | 3 | Fix split lines terminator handling |
 | 3 | `tier3_traceback_locals_options` | 21 | 4 | Expose more locals rendering options in Traceback |
 | 3 | `tier3_cell_tests_refactor` | 14 | 6 | Refactor cell-related tests |
 | 4 | `tier4_move_to_cells` | 32 | 25 | Move cell-width logic to cells.py |
+| 4 | `tier4_fixes_and_version_bump` | 21 | 10 | Whitespace fix, double-width char fix, version bump (multi-commit) |
+| 5 | `tier5_formatting_and_fixes` | 73 | 39 | Black formatting + prompt/whitespace/char fixes (multi-commit) |
+| 5 | `tier5_traceback_notes` | 71 | 8 | Traceback notes rendering + console + test fixes (multi-commit) |
 
 ### marshmallow (`marshmallow-code/marshmallow`)
 
@@ -450,8 +454,10 @@ Reports:
 | 3 | `tier3_load_sequence` | 18 | 5 | load accepts Sequence rather than Iterable |
 | 4 | `tier4_deprecation_warnings` | 77 | 11 | Deprecation warnings for marshmallow 4 |
 | 4 | `tier4_rename_pass_collection` | 34 | 6 | Rename pass_many to pass_collection |
+| 4 | `tier4_remove_deprecations` | 35 | 11 | Remove deprecated APIs (multi-commit) |
 | 5 | `tier5_field_generic_refactor` | 118 | 13 | Make Field a generic type; refactor inheritance |
 | 5 | `tier5_ruff_rules_enable` | 149 | 25 | Enable all ruff rules except explicitly ignored |
+| 5 | `tier5_dev_chores_migration` | 57 | 36 | Alabaster bump + build tooling migration (multi-commit) |
 
 ---
 
