@@ -87,7 +87,8 @@ eval/
 ├── judge.py             # LLM-as-judge (optional)
 ├── harness.py           # Eval orchestrator (run loop)
 ├── reporting.py         # Result serialization, comparison
-├── analysis.py          # Terminal reports, markdown reports, HTML dashboards
+├── analysis.py          # Terminal reports, markdown reports, HTML dashboards, meta-analysis
+├── meta_analysis.py     # Cross-group comparison (compare meta_analysis.json files)
 └── test_cases/
     ├── httpx_commit_pairs.json    # SHA pair definitions (httpx)
     ├── rich_commit_pairs.json     # SHA pair definitions (rich)
@@ -123,7 +124,8 @@ eval/
 | **judge.py** | Optional LLM-as-judge for subjective quality dimensions: cohesion, separation, ordering. |
 | **harness.py** | Orchestrates the full eval loop: extract repo → create venv → install deps → parse patch → run agent → validate → score → save results. |
 | **reporting.py** | Serializes `EvalRunResult` to JSON, loads results, compares two runs for regressions. |
-| **analysis.py** | Generates: (1) Markdown analysis report, (2) ANSI terminal report with color-coded commit dots, (3) single-page HTML dashboard with interactive drill-down, (4) multi-run meta-analysis reports (Markdown, terminal, HTML) comparing consistency and failure root causes across runs. |
+| **analysis.py** | Generates: (1) Markdown analysis report, (2) ANSI terminal report with color-coded commit dots, (3) single-page HTML dashboard with interactive drill-down, (4) multi-run meta-analysis reports (Markdown, terminal, HTML, JSON) comparing consistency and failure root causes across runs. |
+| **meta_analysis.py** | Cross-group comparison: takes two or more `meta_analysis.json` files and produces Markdown, terminal, HTML, and JSON reports showing which group (model/provider/config) performs better on each metric and per-case. |
 | **config.py** | Constants: paths, suite definitions, default agent/judge config, scoring weights. |
 | **cli.py** | Typer CLI: `generate`, `generate-batch`, `run`, `list`, `report`, `analyze`, `compare`, `cleanup`. |
 
@@ -446,6 +448,7 @@ result file:
 ```
 eval_results/2026-03-15_17-37-30/
 ├── eval_results.json     # Original run results
+├── meta_analysis.json    # Structured meta-analysis data (for cross-group comparison)
 ├── meta_analysis.md      # Detailed Markdown meta-analysis
 └── meta_dashboard.html   # Interactive HTML dashboard (with --web)
 ```
@@ -475,6 +478,62 @@ eval_results/2026-03-15_17-37-30/
 - Case-by-run matrix (pass/fail per run)
 - Score stability analysis (range, standard deviation across runs)
 - Over-splitting analysis (single-commit refs split into 3+ commits)
+
+---
+
+## Cross-Group Comparison
+
+Compare evaluation runs across different configurations (models, providers,
+agent modes) to determine which performs better. Each group is represented
+by a `meta_analysis.json` file produced by the `analyze` command.
+
+### Usage
+
+```bash
+# Compare two model groups
+python eval/cli.py compare-groups \
+    eval_results/gemini_runs/meta_analysis.json \
+    eval_results/claude_runs/meta_analysis.json
+
+# With custom labels and web dashboard
+python eval/cli.py compare-groups \
+    eval_results/gemini_runs/meta_analysis.json \
+    eval_results/claude_runs/meta_analysis.json \
+    --label "Gemini 2.5 Flash" --label "Claude Sonnet 4" \
+    --web
+
+# Compare three or more groups
+python eval/cli.py compare-groups \
+    eval_results/group_a/meta_analysis.json \
+    eval_results/group_b/meta_analysis.json \
+    eval_results/group_c/meta_analysis.json \
+    --output-dir eval_results/comparison/
+
+# Also runnable directly
+python eval/meta_analysis.py \
+    eval_results/group_a/meta_analysis.json \
+    eval_results/group_b/meta_analysis.json \
+    --labels "Model A" "Model B" --web
+```
+
+### Output
+
+```
+eval_results/comparison/
+├── group_comparison.json     # Structured comparison data
+├── group_comparison.md       # Detailed Markdown report
+└── group_comparison.html     # Interactive HTML dashboard (with --web)
+```
+
+### What the Comparison Reports
+
+- **Group Summary** — side-by-side metrics for each group (avg score, mechanical pass rate, always-pass rate, token usage, duration)
+- **Rankings** — which group wins on each metric (avg_score, avg_tpr, always_pass_rate, etc.)
+- **Per-Tier Comparison** — per-tier side-by-side breakdown
+- **Per-Repo Comparison** — per-repo side-by-side breakdown
+- **Head-to-Head Per-Case** — per-case scores and categories across all groups with winner identification
+- **Category Changes** — cases that changed failure category between groups (e.g., `ordering` → `always_pass`), indicating which model handles specific patterns better
+- **Overall Winner** — aggregate winner across all ranked metrics
 
 ---
 
@@ -585,7 +644,8 @@ Unit tests live in `tests/eval/`:
 ```
 tests/eval/
 ├── conftest.py          # Shared fixtures
-├── test_analysis.py     # Analysis reports (markdown, terminal, HTML, run_analysis)
+├── test_analysis.py     # Analysis reports (markdown, terminal, HTML, run_analysis, meta-analysis JSON)
+├── test_meta_analysis.py # Cross-group comparison (compare_groups, reports, run_comparison)
 ├── test_config.py       # Config constants and defaults
 ├── test_environment.py  # TargetEnv, TargetEnvManager
 ├── test_generator.py    # Generator utilities (content similarity, hunk mapping, JSON writes)

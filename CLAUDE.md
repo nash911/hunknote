@@ -61,10 +61,50 @@ Top-level files `cache.py`, `compose.py`, `git_ctx.py`, `styles.py` are shims th
 2. Per-repo `.hunknote/config.yaml`
 3. Global `~/.hunknote/config.yaml`
 
+### Eval Module (`eval/`)
+
+Independent evaluation framework at the project root (NOT inside `hunknote/`). Measures the Compose command's ability to decompose squashed diffs into clean, buildable commit sequences. See `eval/README.md` for full documentation.
+
+**Key commands:**
+```bash
+# Run eval tests
+python -m pytest tests/eval/ -q
+
+# List test cases
+python eval/cli.py list
+
+# Run evaluation (requires LLM API key)
+python eval/cli.py run --suite smoke --no-agent
+python eval/cli.py run --suite full --no-agent
+
+# Filter by repo or tier
+python eval/cli.py run --repo httpx --tier 3 --no-agent
+
+# Analyze results
+python eval/cli.py analyze eval_results/<timestamp>/eval_results.json
+
+# Meta-analysis across multiple runs
+python eval/cli.py analyze eval_results/run1/eval_results.json eval_results/run2/eval_results.json --web
+
+# Generate test cases from commit pair definitions
+python eval/cli.py generate-batch --input-file eval/test_cases/httpx_commit_pairs.json
+```
+
+**Architecture:** `models.py` (dataclasses) → `registry.py` (case discovery) → `environment.py` (isolated target venvs) → `validation.py` (mechanical checks: patch apply → py_compile → import → pytest → final state) → `scoring.py` (ARI, granularity, dependency recall) → `judge.py` (optional LLM-as-judge) → `harness.py` (orchestrator) → `reporting.py` (JSON save/load) → `analysis.py` (Markdown/terminal/HTML reports, multi-run meta-analysis) → `cli.py` (Typer CLI).
+
+**Test cases:** 41 cases across 3 Python repos (httpx, rich, marshmallow), spanning Tiers 1-5. Stored in `eval/test_cases/cases/python/`. Each case has `case.json`, `staged.patch`, `reference.json`, and `repo.tar.gz`.
+
+**Scoring:** 60% mechanical (patch apply, syntax, imports, tests, final state match, hunk coverage) + 40% semantic (ARI reference similarity, granularity, dependency recall).
+
+**Current baseline (single-shot Gemini 2.5 Flash, 3 runs):**
+- 51% always pass, 27% consistent fail, 20% intermittent, 2% false positive
+- Primary failure modes: incorrect hunk ordering (27%), cross-file import deps (10%), hunk coverage at T5 scale (10%)
+- The Compose Agent (multi-step agentic planner) is not yet implemented; `--no-agent` uses the single-shot LLM compose planner
+
 ### Testing
 
 - Framework: pytest + pytest-mock
-- Tests in `tests/` directory, integration tests in `integration_tests/`
+- Tests in `tests/` directory, integration tests in `integration_tests/`, eval tests in `tests/eval/`
 - Heavy use of mocking for git commands and LLM responses
 - Key fixtures: `temp_dir`, `mock_repo_root`, `sample_context_bundle`, `sample_commit_json_dict`
 
