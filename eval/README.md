@@ -619,6 +619,700 @@ Set the API key for whichever provider you want to use.
 
 ---
 
+## Per-Language Checklist for Adding Evaluation Cases
+
+This section provides detailed, actionable checklists for adding evaluation
+test cases for each planned language. These checklists encode lessons learned
+from the Python evaluation case development — including common pitfalls,
+false-positive sources, and environment compatibility issues.
+
+### Universal Checklist (All Languages)
+
+Before selecting any commit pair, verify **all** of the following:
+
+#### Candidate Selection
+
+- [ ] **No binary files** in the diff (`git diff --numstat | grep "^-"` should
+      return nothing). Binary hunks break the patch parser.
+- [ ] **No merge commits** in the range (`git log --merges <from>..<to>` should
+      return nothing). Merge commits produce confusing diffs.
+- [ ] **Commits after January 2023** to avoid stale dependency versions that
+      don't work on modern Python/Node/Go/Rust/etc.
+- [ ] **Count source-code hunks separately** from lock files, changelogs, and
+      config files. A range with 90 hunks where 84 are in `poetry.lock` is not
+      a meaningful T4 case. Use `git diff -U0 -- ':!*.lock' ':!CHANGELOG*'`.
+- [ ] **Multi-commit T4/T5 ranges**: For higher tiers, prefer ranges spanning
+      3–20 consecutive non-merge commits from the real history (not just single
+      giant commits). This better tests the Compose Agent's ability to recover
+      original commit boundaries from a squashed diff.
+
+#### Endpoint Validation
+
+- [ ] **Tests pass at the parent commit** (parent of `from_sha`). If tests
+      already fail before any changes, the case will produce false negatives.
+- [ ] **Tests pass at the destination commit** (`to_sha`). If tests fail at
+      the target state, pytest mechanical checks will fail even with a perfect
+      commit plan — a false positive.
+- [ ] **Install commands produce a working environment** at both endpoints.
+      Test this in an isolated venv, not your development environment.
+- [ ] **The test command can be run headless** (no interactive prompts, no
+      GUI dependencies, no network calls that can flake).
+
+#### Environment-Sensitive Test Exclusions
+
+- [ ] **Identify rendering/output-sensitive tests** that produce different
+      output depending on terminal width, locale, installed fonts, or library
+      versions (e.g., Pygments rendering tests in rich). Exclude these via
+      `-k "not (...)"` or `--deselect` in the test command.
+- [ ] **Verify `--deselect` actually works** with the project's pytest version.
+      Older pytest versions may silently ignore `--deselect`. Prefer `-k` for
+      maximum compatibility.
+- [ ] **Pin flaky transitive dependencies** where necessary (e.g.,
+      `setuptools<70` for projects that import `pkg_resources`).
+
+#### After Generation
+
+- [ ] Run `python eval/cli.py run --repo <name> --suite smoke` to verify the
+      generated cases are loadable and evaluate without errors.
+- [ ] Check that `hunk_coverage` is 1.0 — the LLM should be able to assign
+      all hunks. If not, the patch may be too complex or have unmappable hunks.
+- [ ] Check that `final_state_matches` is `True` for at least the easy tiers.
+      If the final state doesn't match even with a perfect plan, the SHA pair
+      may be invalid.
+
+---
+
+### Python
+
+**Status**: ✅ Implemented — 3 repos, 41 cases (httpx, rich, marshmallow)
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Watch out for |
+|-----------|---------|---------------|---------------|
+| `encode/httpx` | BSD-3 | Clean commit history, good test suite, fast tests (~20s) | `requirements.txt` based install (not `pyproject.toml` extras) |
+| `Textualize/rich` | MIT | Rich (pun intended) codebase, good tier distribution | Rendering-sensitive tests fail with different Pygments/terminal versions; needs `setuptools<70` for `pkg_resources` |
+| `marshmallow-code/marshmallow` | MIT | Clean `src/` layout, atomic commits, fast tests (~2s) | `src/` layout needs PYTHONPATH adjustment; uses `.[tests]` extra |
+
+#### Install Commands Patterns
+
+```json
+// Standard pyproject.toml with extras
+"install_commands": ["pip install -e '.[test]'"]
+
+// requirements.txt based
+"install_commands": ["pip install -r requirements.txt"]
+
+// Separate install + test deps
+"install_commands": ["pip install -e .", "pip install pytest attrs 'setuptools<70'"]
+
+// src-layout projects
+"install_commands": ["pip install -e '.[tests]'"]
+```
+
+#### Test Command Patterns
+
+```json
+// Basic
+"test_command": "python -m pytest -x -q --tb=short --no-header -p no:warnings"
+
+// With flaky test exclusions
+"test_command": "python -m pytest -x -q --tb=short --no-header -p no:warnings -k 'not (test_title_text or test_blank_lines)'"
+```
+
+#### Python-Specific Pitfalls
+
+1. **`pkg_resources` removal**: `setuptools>=70` removed `pkg_resources` as a
+   standalone import. Projects that use `import pkg_resources` in tests need
+   `pip install 'setuptools<70'` in install commands.
+2. **`src/` layout**: Projects like marshmallow use `src/marshmallow/` instead
+   of `marshmallow/`. The eval framework handles this by adding `src/` to
+   `PYTHONPATH` during import checks, but verify this works for new repos.
+3. **Optional dependencies**: If tests import optional packages (e.g., `zstd`,
+   `brotli`, `trio`), those must be in `install_commands`. Otherwise, import
+   checks fail — a false positive. Run the full test suite at both endpoints
+   in a clean venv to catch missing optional deps.
+4. **pytest version compatibility**: Some older commits may require `pytest==5.*`
+   which doesn't work with Python 3.12+. Only select commits where the test
+   suite is compatible with your Python version.
+5. **Rendering-sensitive tests**: Tests that assert on exact terminal output
+   (ANSI escape codes, box-drawing characters) can fail due to different
+   Pygments versions, terminal widths, or locale settings. Exclude these.
+6. **`__init__.py` re-exports**: Python's re-export pattern through
+   `__init__.py` means import checks must trace the full chain. The eval
+   framework already handles this, but be aware that adding/removing re-exports
+   can break intermediate commits.
+
+#### Validation Script Template (Python)
+
+```bash
+#!/bin/bash
+# Validate a Python eval candidate at both endpoints
+REPO_PATH=~/.hunknote/eval_cache/repos/<name>.git
+WORK=/tmp/<name>_validate
+
+git clone $REPO_PATH $WORK && cd $WORK
+python -m venv .venv && source .venv/bin/activate
+
+# Test at parent
+git checkout <parent_sha>
+pip install -e ".[test]" -q  # or: pip install -r requirements.txt
+python -m pytest tests/ -x -q --tb=line --no-header -p no:warnings
+
+# Test at dest
+git checkout <dest_sha>
+pip install -e ".[test]" -q
+python -m pytest tests/ -x -q --tb=line --no-header -p no:warnings
+
+deactivate && rm -rf $WORK
+```
+
+---
+
+### TypeScript / JavaScript
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `microsoft/TypeScript` | Apache-2.0 | Canonical TS, huge codebase | Very large test suite; may need subset |
+| `vercel/next.js` | MIT | Full-stack framework, monorepo | Monorepo (turbo/lerna); complex build |
+| `colinhacks/zod` | MIT | Small focused library, clean commits | Good for T1-T3 |
+| `trpc/trpc` | MIT | Monorepo, multiple packages | pnpm workspace; inter-package deps |
+| `Effect-TS/effect` | MIT | Functional TS, deep type system | Complex types; workspace packages |
+| `remix-run/react-router` | MIT | Mature, well-maintained | Monorepo (multiple packages) |
+
+#### Install & Build Patterns
+
+```json
+// npm-based
+"install_commands": ["npm ci"]
+"check_command": "npx tsc --noEmit"
+
+// pnpm workspace (monorepo)
+"install_commands": ["pnpm install --frozen-lockfile"]
+"check_command": "npx tsc --noEmit"
+
+// yarn
+"install_commands": ["yarn install --frozen-lockfile"]
+
+// Monorepo with turborepo
+"install_commands": ["pnpm install --frozen-lockfile", "pnpm turbo build --filter=<pkg>..."]
+```
+
+#### Test Command Patterns
+
+```json
+// Jest
+"test_command": "npx jest --bail --no-coverage --silent"
+
+// Vitest
+"test_command": "npx vitest run --reporter=verbose"
+
+// Node built-in test runner
+"test_command": "node --test"
+```
+
+#### TypeScript-Specific Pitfalls
+
+1. **Lock file churn**: `package-lock.json`, `pnpm-lock.yaml`, and `yarn.lock`
+   can produce hundreds of hunks from a single `npm install`. Always count
+   source hunks excluding lock files.
+2. **Barrel exports** (`index.ts` files re-exporting from sub-modules): These
+   are the TS equivalent of Python's `__init__.py`. A hunk that adds a new
+   export to `index.ts` must co-commit with the module that defines it.
+3. **Type-only imports** (`import type { Foo }`): These don't create runtime
+   dependencies. The agent may incorrectly co-commit type-only imports with
+   the value they reference — both orderings are valid.
+4. **`node_modules` size**: Node projects can have 500MB+ `node_modules`. Use
+   `npm ci` (not `npm install`) for deterministic installs, and ensure the
+   repo tarball does NOT include `node_modules/`.
+5. **ESM vs CommonJS**: Projects may use `"type": "module"` in `package.json`.
+   Syntax checks must respect this (use `node --check` for CJS, `node
+   --input-type=module` for ESM).
+6. **Monorepo workspace dependencies**: In a monorepo, package A may depend on
+   package B via `"workspace:*"`. Changes to B's exports must be applied before
+   A can compile. The agent must detect these cross-package dependencies.
+7. **Build artifacts**: Some TS projects compile to `dist/` and tests import
+   from `dist/`. A `build` step may be required after applying patches.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source-code hunks (exclude lock files, generated, config)
+git diff -U0 <from>..<to> -- \
+  ':!package-lock.json' ':!pnpm-lock.yaml' ':!yarn.lock' \
+  ':!*.md' ':!CHANGELOG*' ':!*.json' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### Go
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `gohugoio/hugo` | Apache-2.0 | Large well-maintained Go project | CGO deps on some platforms |
+| `cli/cli` | MIT | GitHub CLI, good commit hygiene | Tests may call external services |
+| `charmbracelet/bubbletea` | MIT | Clean, focused library | Good for T1-T3 |
+| `charmbracelet/lipgloss` | MIT | Terminal styling lib, small | Good for T1-T2 |
+| `hashicorp/terraform` | BSL-1.1 | Massive Go project | License; very large |
+| `go-chi/chi` | MIT | Lightweight router, fast tests | Good for T1-T3 |
+
+#### Install & Build Patterns
+
+```json
+// Standard Go module
+"install_commands": ["go mod download"]
+"check_command": "go build ./..."
+
+// With test dependencies
+"install_commands": ["go mod download"]
+```
+
+#### Test Command Patterns
+
+```json
+// Standard
+"test_command": "go test ./... -count=1 -short"
+
+// With race detector (slower, but catches more)
+"test_command": "go test -race ./... -count=1 -short"
+
+// Specific package
+"test_command": "go test ./pkg/... -count=1"
+```
+
+#### Go-Specific Pitfalls
+
+1. **Package-level compilation**: Go compiles entire packages at once. A single
+   syntax error in any file in a package blocks the entire package. This means
+   intermediate commits that add a function in one file and use it in another
+   file of the same package are fine — both files are compiled together.
+2. **Implicit interfaces**: Go interfaces are satisfied implicitly (no
+   `implements` keyword). Adding a method to an interface requires all
+   implementors to be updated in the same commit (or before).
+3. **`go.sum` churn**: Like lock files in other languages, `go.sum` can produce
+   many hunks. Exclude from source hunk counts.
+4. **`internal/` packages**: Go's `internal/` convention restricts import
+   visibility. Moving code into/out of `internal/` requires updating all
+   importers.
+5. **Build tags**: Files with `//go:build` tags are only compiled under specific
+   conditions. The syntax check command must match the evaluation environment
+   (e.g., `GOOS=linux`).
+6. **`init()` functions**: Go's `init()` functions run at package load time in
+   dependency order. Moving `init()` between packages can change behavior.
+7. **Vendor directory**: Some Go projects vendor dependencies. If the vendor
+   directory is included in the diff, exclude it from hunk counting.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source hunks (exclude go.sum, vendor, generated)
+git diff -U0 <from>..<to> -- \
+  ':!go.sum' ':!vendor/' ':!*_generated.go' ':!*.pb.go' \
+  ':!*.md' ':!CHANGELOG*' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### Rust
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `BurntSushi/ripgrep` | Unlicense/MIT | Clean code, good commits | Cross-crate deps |
+| `sharkdp/bat` | Apache-2.0/MIT | Well-structured, focused | Good for T1-T3 |
+| `sharkdp/fd` | Apache-2.0/MIT | Small, clean | Good for T1-T2 |
+| `tokio-rs/tokio` | MIT | Async runtime, workspace | Complex workspace; many crates |
+| `serde-rs/serde` | Apache-2.0/MIT | Core serialization lib | Macro-heavy; proc-macro crate |
+| `clap-rs/clap` | Apache-2.0/MIT | CLI argument parser | Good for T2-T4 |
+
+#### Install & Build Patterns
+
+```json
+// Standard Cargo project
+"install_commands": []  // Cargo fetches deps on build
+"check_command": "cargo check --all-targets"
+
+// Workspace
+"install_commands": []
+"check_command": "cargo check --workspace --all-targets"
+```
+
+#### Test Command Patterns
+
+```json
+// Standard
+"test_command": "cargo test --all-targets"
+
+// Workspace
+"test_command": "cargo test --workspace"
+
+// Skip doc tests (often slow)
+"test_command": "cargo test --lib --tests"
+```
+
+#### Rust-Specific Pitfalls
+
+1. **Borrow checker cascades**: A lifetime annotation change in a struct can
+   cascade to all functions that use it. All such changes must co-commit.
+2. **Trait implementations**: Adding a method to a trait requires all `impl`
+   blocks to be updated. The agent must group these together.
+3. **Cargo.lock churn**: Like other lock files, `Cargo.lock` can produce many
+   hunks. Exclude from source hunk counts. Some projects `.gitignore` it
+   (libraries) while others commit it (binaries).
+4. **Procedural macros**: `proc-macro` crates must compile before their
+   consumers. In a workspace, changes to a proc-macro crate must come before
+   changes to crates that use it.
+5. **Feature flags**: Cargo features can enable/disable code. Tests may require
+   specific features: `cargo test --features full`.
+6. **Build scripts** (`build.rs`): Changes to `build.rs` can affect compilation
+   of the entire crate. Group with related source changes.
+7. **Workspace dependency sharing**: Workspace members may share dependencies
+   via `[workspace.dependencies]`. Changes to shared deps affect all members.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source hunks (exclude Cargo.lock, target/)
+git diff -U0 <from>..<to> -- \
+  ':!Cargo.lock' ':!target/' ':!*.md' ':!CHANGELOG*' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### Java
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `google/guava` | Apache-2.0 | Clean code, excellent tests | Large; Maven build |
+| `square/okhttp` | Apache-2.0 | Well-maintained HTTP client | Gradle build; Kotlin mixed in |
+| `google/gson` | Apache-2.0 | Small, focused library | Good for T1-T3 |
+| `apache/commons-lang` | Apache-2.0 | Utility library, clean history | Maven; straightforward |
+| `spring-projects/spring-boot` | Apache-2.0 | Huge framework | Very large; complex build |
+| `junit-team/junit5` | EPL-2.0 | Test framework itself | Gradle; multi-module |
+
+#### Install & Build Patterns
+
+```json
+// Maven
+"install_commands": ["mvn dependency:resolve -q"]
+"check_command": "mvn compile -q -pl {module}"
+
+// Gradle
+"install_commands": ["./gradlew dependencies --quiet"]
+"check_command": "./gradlew compileJava --quiet"
+
+// Gradle wrapper
+"install_commands": ["./gradlew build -x test --quiet"]
+```
+
+#### Test Command Patterns
+
+```json
+// Maven
+"test_command": "mvn test -q -pl {module}"
+
+// Gradle
+"test_command": "./gradlew test --quiet"
+```
+
+#### Java-Specific Pitfalls
+
+1. **Package imports are explicit**: Java's `import` statements explicitly name
+   every class used. Adding a class in one file and importing it in another
+   creates a clear dependency the agent can trace.
+2. **Interface/implementation coupling**: Adding a method to a Java interface
+   requires all implementing classes to add that method. The agent must detect
+   this from the type hierarchy.
+3. **Annotation processors**: Projects using Lombok, Dagger, or MapStruct
+   generate code at compile time. The generated code isn't in the diff but
+   affects compilation.
+4. **Multi-module Maven/Gradle**: Large Java projects are often multi-module.
+   A change in a parent module may require rebuilding child modules. The
+   `check_command` must handle this (e.g., `mvn compile -pl module -am` for
+   Maven's "also make" flag).
+5. **JDK version**: Ensure the evaluation machine has a compatible JDK.
+   Projects may require JDK 17+, 21+, etc.
+6. **Resource files**: Java projects often have resources in `src/main/resources/`
+   that are loaded at runtime. Changes to resources + code that reads them
+   should co-commit.
+7. **Test resources**: Similarly, `src/test/resources/` may contain test
+   fixtures. Changes to fixtures + test code should co-commit.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source hunks (exclude build output, IDE files, generated)
+git diff -U0 <from>..<to> -- \
+  ':!*.class' ':!target/' ':!build/' ':!.gradle/' \
+  ':!*.md' ':!CHANGELOG*' ':!*.xml' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### C / C++
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `jqlang/jq` | MIT | Small C project, clean | Autotools build |
+| `redis/redis` | BSD-3 | Well-structured C project | Custom Makefile; no cmake |
+| `curl/curl` | MIT-like | Widely used, active history | Autotools; many #ifdefs |
+| `nlohmann/json` | MIT | Header-only C++ library | Good for T1-T3 |
+| `gabime/spdlog` | MIT | C++ logging, clean code | cmake build |
+| `fmtlib/fmt` | MIT | C++ formatting library | cmake; good tests |
+
+#### Install & Build Patterns
+
+```json
+// CMake
+"install_commands": ["cmake -B build -DCMAKE_BUILD_TYPE=Debug", "cmake --build build -j$(nproc)"]
+"check_command": "gcc -fsyntax-only -I include {file}"
+
+// Autotools
+"install_commands": ["./autogen.sh && ./configure && make -j$(nproc)"]
+
+// Header-only (no build required for syntax check)
+"install_commands": []
+"check_command": "g++ -std=c++17 -fsyntax-only -I include {file}"
+```
+
+#### Test Command Patterns
+
+```json
+// CTest (cmake)
+"test_command": "cd build && ctest --output-on-failure -j$(nproc)"
+
+// Make
+"test_command": "make test"
+
+// Custom
+"test_command": "./run_tests.sh"
+```
+
+#### C/C++-Specific Pitfalls
+
+1. **Header/source pairing**: Changes to a `.h` file must co-commit with
+   changes to the corresponding `.c`/`.cpp` file and all files that `#include`
+   the changed header (if the header's API changed).
+2. **Forward declarations**: C/C++ allows forward declarations, which means
+   a function can be used before its full definition appears. This complicates
+   dependency detection — the agent must understand `#include` chains.
+3. **`#ifdef` conditionals**: Platform-specific code blocks mean some hunks
+   are only compiled on certain platforms. The syntax check command must match
+   the evaluation platform.
+4. **Build system complexity**: C/C++ projects use diverse build systems
+   (cmake, autotools, meson, make, bazel). Each has different incremental
+   build behavior.
+5. **Compilation units**: Each `.c`/`.cpp` file is compiled independently.
+   A change to a `.c` file only requires recompiling that file (and relinking),
+   not the entire project. But header changes cascade.
+6. **Static/dynamic linking**: Library changes may require relinking. The
+   eval framework should run `make` or `cmake --build` rather than just
+   `gcc -fsyntax-only` for full validation.
+7. **Generated files**: Some C/C++ projects generate headers (e.g., from
+   `.proto` files, `.y`/`.l` parser files). These should be excluded from
+   the diff or regenerated as part of the build.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source hunks (exclude build artifacts, generated)
+git diff -U0 <from>..<to> -- \
+  '*.c' '*.cpp' '*.h' '*.hpp' \
+  ':!build/' ':!*.o' ':!*.a' ':!*.so' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### Ruby
+
+**Status**: 🔲 Not yet implemented
+
+#### Recommended Source Repositories
+
+| Repository | License | Why it's good | Expected challenges |
+|-----------|---------|---------------|---------------------|
+| `rails/rails` | MIT | The Ruby framework; massive | Monorepo; very large |
+| `jekyll/jekyll` | MIT | Static site generator | Good size, active |
+| `rubocop/rubocop` | MIT | Linter, well-structured | Good for T2-T4 |
+| `rspec/rspec-core` | MIT | Testing framework itself | Multiple gems |
+| `faker-ruby/faker` | MIT | Data generation, simple | Good for T1-T3 |
+| `sidekiq/sidekiq` | LGPL-3.0 | Background jobs | Redis dependency |
+
+#### Install & Build Patterns
+
+```json
+// Bundler
+"install_commands": ["bundle install --quiet"]
+"check_command": "ruby -c {file}"
+
+// With specific Ruby version
+"install_commands": ["bundle install --quiet"]
+```
+
+#### Test Command Patterns
+
+```json
+// RSpec
+"test_command": "bundle exec rspec --fail-fast --format progress"
+
+// Minitest
+"test_command": "bundle exec rake test"
+
+// Rails
+"test_command": "bundle exec rails test"
+```
+
+#### Ruby-Specific Pitfalls
+
+1. **Dynamic loading** (`require` is runtime): Ruby's `require` executes at
+   runtime, not compile time. A missing `require` may not cause an error until
+   the code path is exercised. Syntax checks (`ruby -c`) only validate syntax,
+   not that all required files exist.
+2. **Monkey patching / open classes**: Ruby allows reopening classes across
+   files. A hunk in `core_ext/string.rb` that adds methods to `String` can
+   affect any file that uses strings. The agent may not detect this coupling.
+3. **Gemfile.lock churn**: Like other lock files, `Gemfile.lock` can produce
+   many hunks. Exclude from source hunk counts.
+4. **Rails autoloading**: Rails projects use autoloading (Zeitwerk) which
+   resolves dependencies lazily. The syntax check (`ruby -c`) won't catch
+   missing constants — only the test suite will.
+5. **RSpec shared contexts**: RSpec shared contexts/examples can create
+   non-obvious dependencies between test files. Changes to shared contexts
+   must co-commit with tests that use them.
+6. **Bundler platform issues**: `Gemfile.lock` may have platform-specific
+   entries. Running `bundle install` on a different platform may fail.
+   Use `bundle lock --add-platform x86_64-linux` if needed.
+7. **Ruby version sensitivity**: Ruby projects may require specific Ruby
+   versions. Check `.ruby-version` or `Gemfile` for version constraints.
+
+#### Candidate Scanning Tips
+
+```bash
+# Count source hunks (exclude lock files, vendor)
+git diff -U0 <from>..<to> -- \
+  ':!Gemfile.lock' ':!vendor/' ':!*.md' ':!CHANGELOG*' \
+  | grep "^@@" | wc -l
+```
+
+---
+
+### Monorepo Considerations
+
+Monorepos present unique challenges not covered by single-package checklists.
+Many popular open-source projects use monorepo structures (e.g., Next.js, trpc,
+Rails, Tokio, Terraform).
+
+#### Monorepo Types
+
+| Type | Examples | Package Manager | Key Challenge |
+|------|----------|-----------------|---------------|
+| **JS/TS workspace** | next.js, trpc, effect | pnpm/yarn/npm workspaces | Inter-package dependency resolution |
+| **Cargo workspace** | tokio, serde | Cargo | Workspace-level `Cargo.toml` dependencies |
+| **Go modules** | terraform | Go modules | Multiple `go.mod` files |
+| **Rails engines** | rails/rails | Bundler | Each engine is a separate gem |
+| **Bazel** | Various Google-style | Bazel | Build graph; BUILD files |
+| **Python namespace pkgs** | Various | pip/poetry | Namespace packages; shared deps |
+
+#### Monorepo-Specific Checklist
+
+- [ ] **Identify the package manager and workspace tool** (pnpm, yarn,
+      turbo, lerna, cargo, etc.) and use the correct install command.
+- [ ] **Test command must target the right packages**: In a monorepo, running
+      tests for the entire workspace may be too slow. Use filters:
+      - pnpm: `pnpm --filter <pkg> test`
+      - turbo: `turbo test --filter=<pkg>`
+      - cargo: `cargo test -p <crate>`
+      - go: `go test ./<module>/...`
+- [ ] **Cross-package dependencies**: If a commit range touches multiple
+      packages, the build order matters. Package A may depend on package B —
+      changes to B's API must be applied before A can compile.
+- [ ] **Shared configuration**: Monorepos often have root-level config files
+      (`tsconfig.base.json`, `[workspace.dependencies]` in Cargo.toml,
+      `.eslintrc`). Changes to these affect all packages but are logically
+      distinct from package-specific changes.
+- [ ] **Independent packages**: If a commit range touches packages that have
+      no dependency relationship, changes to each package can be in separate
+      commits in any order. The agent should detect this independence.
+- [ ] **Lock file impact**: In a monorepo, lock file changes can be massive
+      (thousands of lines). Always exclude lock files from hunk counting.
+- [ ] **Selective testing**: Only test packages that are touched by the diff,
+      not the entire workspace. This keeps test times manageable and avoids
+      flaky tests from unrelated packages.
+- [ ] **Build dependency graph**: Before selecting candidates, understand the
+      workspace's dependency graph. Use `pnpm ls --json`, `cargo tree`, or
+      equivalent to map inter-package dependencies.
+- [ ] **Root vs package changes**: Distinguish between changes to root-level
+      files (CI config, root package.json, workspace config) and package-level
+      changes. Root changes should typically be in their own commit.
+
+#### Monorepo Validation Script Template
+
+```bash
+#!/bin/bash
+# Validate a monorepo eval candidate
+
+# For a pnpm workspace:
+git checkout <parent_sha>
+pnpm install --frozen-lockfile
+pnpm --filter "<affected-pkg>..." test  # Test affected packages + dependents
+
+# For a Cargo workspace:
+git checkout <parent_sha>
+cargo test -p <affected-crate>
+
+# For a Go multi-module:
+git checkout <parent_sha>
+cd <module-dir>
+go test ./...
+```
+
+---
+
+### Language Maturity Roadmap
+
+The following table tracks which languages have evaluation cases and their
+recommended next steps:
+
+| Language | Status | Repos | Cases | Next Step |
+|----------|--------|-------|-------|-----------|
+| Python | ✅ Done | 3 | 41 | Maintain; add edge cases |
+| TypeScript | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+| Go | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+| Rust | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+| Java | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+| C/C++ | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+| Ruby | 🔲 Planned | 0 | 0 | Select repos; add T1-T3 first |
+
+**Recommended addition order**: TypeScript → Go → Rust → Java → C/C++ → Ruby.
+TypeScript is the highest priority because it exercises the barrel-export and
+ESM/CJS dependency detection paths that are fundamentally different from Python.
+
+---
+
 ## Design Notes
 
 - The eval module lives at the repo root (`eval/`), **not** inside `hunknote/`,
