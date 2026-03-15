@@ -9,6 +9,7 @@ validation using the target venv:
 """
 
 import logging
+import os
 import shlex
 import subprocess
 import tempfile
@@ -420,11 +421,17 @@ def _check_imports(
         if module_name is None:
             continue
 
+        # Build PYTHONPATH that includes both worktree root and src/ subdir
+        pp_parts = [str(worktree_dir)]
+        src_dir = worktree_dir / "src"
+        if src_dir.is_dir():
+            pp_parts.insert(0, str(src_dir))
+
         result = target_env.run(
             ["python", "-c", f"import {module_name}"],
             cwd=worktree_dir,
             timeout=30,
-            env_override={"PYTHONPATH": str(worktree_dir)},
+            env_override={"PYTHONPATH": ":".join(pp_parts)},
         )
 
         if result.returncode != 0:
@@ -443,11 +450,30 @@ def _run_tests(
     Called for every commit in the proposed plan when ``test_enabled``
     is True and the earlier mechanical checks (syntax, import) passed.
 
+    We set PYTHONPATH to prioritise the worktree source so that
+    ``src``-layout projects (e.g. marshmallow) pick up the patched
+    code in the worktree rather than the unchanged editable install
+    that points at ``repo_dir/src/``.
+
     Returns:
         Tuple of (passed, list of error messages).
     """
     parts = shlex.split(test_command)
-    result = target_env.run(parts, cwd=worktree_dir, timeout=300)
+
+    # Build a PYTHONPATH that puts the worktree (and its src/ subdir,
+    # if it exists) ahead of everything else.
+    pythonpath_parts: list[str] = [str(worktree_dir)]
+    src_dir = worktree_dir / "src"
+    if src_dir.is_dir():
+        pythonpath_parts.insert(0, str(src_dir))
+
+    existing_pp = os.environ.get("PYTHONPATH", "")
+    if existing_pp:
+        pythonpath_parts.append(existing_pp)
+
+    env_override = {"PYTHONPATH": ":".join(pythonpath_parts)}
+
+    result = target_env.run(parts, cwd=worktree_dir, timeout=300, env_override=env_override)
 
     if result.returncode != 0:
         # Truncate test output to avoid huge error messages
@@ -464,6 +490,7 @@ def _file_path_to_module(file_path: str, repo_dir: Path) -> Optional[str]:
     Examples:
         "httpx/_models.py"          -> "httpx._models"
         "httpx/__init__.py"         -> "httpx"
+        "src/marshmallow/fields.py" -> "marshmallow.fields"
         "tests/test_models.py"      -> "tests.test_models"
         "setup.py"                  -> None (top-level script)
         "docs/conf.py"              -> None (not importable)
@@ -477,13 +504,20 @@ def _file_path_to_module(file_path: str, repo_dir: Path) -> Optional[str]:
     path = Path(file_path)
     parts = list(path.parts)
 
+    # Handle src/ layout: strip the "src" prefix and resolve against
+    # repo_dir/src instead of repo_dir when checking __init__.py.
+    base_dir = repo_dir
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+        base_dir = repo_dir / "src"
+
     # Top-level .py files are not modules
     if len(parts) == 1:
         return None
 
     # Check __init__.py chain exists
     for i in range(len(parts) - 1):
-        init_path = repo_dir / Path(*parts[: i + 1]) / "__init__.py"
+        init_path = base_dir / Path(*parts[: i + 1]) / "__init__.py"
         if not init_path.exists():
             return None
 
