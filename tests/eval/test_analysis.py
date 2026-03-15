@@ -10,6 +10,7 @@ from eval.analysis import (
     generate_terminal_report,
     generate_web_report,
     generate_meta_analysis_report,
+    generate_meta_analysis_json,
     generate_meta_terminal_report,
     generate_meta_web_report,
     run_analysis,
@@ -408,6 +409,83 @@ def multi_run_results(passing_case, failing_case, false_positive_case):
         cases=[passing_case, failing_case, false_positive_case],
     )
     return [run1, run2, run3]
+
+
+# ── Meta-analysis JSON ─────────────────────────────────────────────────────
+
+
+class TestGenerateMetaAnalysisJson:
+    def test_returns_dict(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert isinstance(data, dict)
+
+    def test_has_version(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert data["meta_analysis_version"] == 1
+
+    def test_has_n_runs(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert data["n_runs"] == 3
+
+    def test_has_runs_metadata(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert len(data["runs"]) == 3
+        for r in data["runs"]:
+            assert "run_id" in r
+            assert "provider" in r
+            assert "model" in r
+
+    def test_has_summary(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        s = data["summary"]
+        assert "total_cases" in s
+        assert "always_pass" in s
+        assert "avg_score" in s
+        assert "avg_tpr" in s
+
+    def test_has_by_tier(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert len(data["by_tier"]) > 0
+        for td in data["by_tier"]:
+            assert "tier" in td
+            assert "always_pass" in td
+
+    def test_has_cases(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        assert len(data["cases"]) == 3
+        for c in data["cases"]:
+            assert "case_id" in c
+            assert "category" in c
+            assert "avg_score" in c
+            assert "mech_pass_per_run" in c
+
+    def test_json_serialisable(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        # Must not raise
+        json_str = json.dumps(data)
+        assert isinstance(json_str, str)
+        # Round-trip
+        loaded = json.loads(json_str)
+        assert loaded["n_runs"] == 3
+
+    def test_false_positive_detected(self, multi_run_results):
+        data = generate_meta_analysis_json(multi_run_results)
+        fp_case = next(c for c in data["cases"] if c["case_id"] == "python_test_tier2_false_positive")
+        assert fp_case["category"] == "false_positive"
+
+    def test_run_meta_analysis_creates_json(self, tmp_path, multi_run_results):
+        paths = []
+        for i, result in enumerate(multi_run_results):
+            sub = tmp_path / f"run_{i}"
+            sub.mkdir()
+            paths.append(save_result(result, sub))
+        md_path, _ = run_meta_analysis(paths)
+        json_path = md_path.parent / "meta_analysis.json"
+        assert json_path.exists()
+        with open(json_path) as f:
+            data = json.load(f)
+        assert data["meta_analysis_version"] == 1
+        assert data["n_runs"] == 3
 
 
 # ── Meta-analysis Markdown report ──────────────────────────────────────────
