@@ -114,11 +114,16 @@ def run_eval(
         run_result.cases.append(case_result)
 
         status = "OK" if case_result.error is None else f"ERROR: {case_result.error}"
+        # "PASS" in green if mechanical full_sequence_valid, "FAIL" in red otherwise
+        mechanical_str = (
+            "\033[92mPASS\033[0m" if case_result.mechanical.full_sequence_valid
+            else "\033[91mFAIL\033[0m"
+        )
         logger.info(
             "  Result: %s | Score: %.3f | Mechanical: %s",
             status,
             case_result.overall_score,
-            "PASS" if case_result.mechanical.full_sequence_valid else "FAIL",
+            mechanical_str,
         )
 
     # Save results
