@@ -47,6 +47,9 @@ def run_phase5a_validate(
       Layer 3: import check — can touched Python modules be imported?
       Layer 4: import_deps — do all imports within touched files (including
                lazy imports inside functions) reference modules that exist?
+      Layer 5: lint — pyflakes on touched Python files to catch undefined
+               names, unused imports, and other static errors that survive
+               syntax/import checks (e.g. half-applied variable renames).
 
     Bails on first failure.
 
@@ -158,6 +161,19 @@ def run_phase5a_validate(
                 )
                 if deps_failure:
                     return deps_failure, frozen_baseline
+
+            # Layer 5: Lint (pyflakes for Python)
+            # Catches undefined names, unused imports, and other static
+            # errors that survive syntax/import checks — e.g. a variable
+            # rename split across commits where one hunk renames the
+            # definition but another still references the old name.
+            if py_files:
+                trace.validation_check("phase5", group.group_id, "lint")
+                lint_failure = _check_lint(
+                    worktree_path, py_files, i, group, trace,
+                )
+                if lint_failure:
+                    return lint_failure, frozen_baseline
 
             # Commit in worktree to advance state
             subprocess.run(
@@ -419,6 +435,128 @@ def _check_internal_module_missing(
         mod_as_file = worktree_path / "/".join(parts[:-1]) / (parts[-1] + ".py")
 
     return not (mod_as_pkg.exists() or mod_as_file.exists())
+
+
+def _check_lint(
+    worktree_path: Path,
+    py_files: list[str],
+    commit_index: int,
+    group: CommitGroup,
+    trace: AgentTrace,
+) -> Optional[ValidationFailure]:
+    """Run pyflakes on touched Python files to catch undefined names.
+
+    This catches semantic breakage that survives syntax and import checks —
+    the canonical case being a variable rename split across commits: one hunk
+    renames ``fragment`` to ``frag`` at the definition site, but another hunk
+    still references ``fragment``.  The code is syntactically valid and the
+    module imports fine, but pyflakes reports ``undefined name 'fragment'``.
+
+    String annotations (e.g. ``Optional["SomeType"]``) are suppressed —
+    pyflakes flags the name inside the string as undefined, but Python never
+    evaluates string annotations at runtime so they cannot cause NameError.
+    """
+    for fp in py_files:
+        full_path = worktree_path / fp
+        if not full_path.exists():
+            continue
+
+        result = subprocess.run(
+            ["python", "-m", "pyflakes", str(full_path)],
+            capture_output=True, text=True,
+            cwd=worktree_path, timeout=15,
+        )
+
+        if result.returncode != 0:
+            raw_output = (result.stdout or "") + (result.stderr or "")
+            # Filter to only undefined-name errors (F821 equivalent).
+            # pyflakes output format: "path:line:col: undefined name 'X'"
+            # We only fail on "undefined name" — other warnings (unused
+            # imports, redefined variables) are noisy and don't indicate
+            # broken intermediate states.
+            undefined_lines = [
+                line for line in raw_output.strip().splitlines()
+                if "undefined name" in line
+            ]
+
+            if not undefined_lines:
+                continue
+
+            # Suppress false positives from string annotations.
+            # pyflakes flags names inside string annotations
+            # (e.g. Optional["TargetEnv"]) as undefined, but Python
+            # never evaluates them at runtime.  If the name appears
+            # in quotes on the reported source line, it's a string
+            # annotation — not a real runtime reference.
+            real_errors = _filter_string_annotation_errors(
+                full_path, undefined_lines,
+            )
+
+            if real_errors:
+                error = "\n".join(real_errors)
+                trace.validation_fail(
+                    "phase5", group.group_id, "lint", error,
+                )
+                return ValidationFailure(
+                    commit_index=commit_index,
+                    commit_group=group,
+                    layer=ValidationLayer.LINT,
+                    error_output=error,
+                    file_path=fp,
+                )
+
+    trace.validation_pass("phase5", group.group_id)
+    return None
+
+
+def _filter_string_annotation_errors(
+    file_path: Path, pyflakes_lines: list[str],
+) -> list[str]:
+    """Remove pyflakes 'undefined name' errors caused by string annotations.
+
+    A string annotation like ``x: Optional["Foo"]`` causes pyflakes to report
+    ``undefined name 'Foo'``, but Python never evaluates string annotations at
+    runtime (PEP 484 forward references), so there is no ``NameError``.
+
+    For each error, extract the name and line number, read the source line,
+    and check whether the name appears inside quotes.  If so, suppress it.
+    """
+    try:
+        source_lines = file_path.read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return pyflakes_lines  # Can't read source — keep all errors
+
+    real = []
+    for err_line in pyflakes_lines:
+        # Extract name: "... undefined name 'FOO'" or '... undefined name "FOO"'
+        name = _extract_undefined_name(err_line)
+        lineno = _extract_lineno(err_line)
+        if name and lineno and 1 <= lineno <= len(source_lines):
+            src = source_lines[lineno - 1]
+            # If the name appears as a string literal on this line,
+            # it's a string annotation — suppress.
+            if f'"{name}"' in src or f"'{name}'" in src:
+                continue
+        real.append(err_line)
+    return real
+
+
+def _extract_undefined_name(pyflakes_line: str) -> Optional[str]:
+    """Extract the name from a pyflakes 'undefined name' message."""
+    # Format: "path:line:col: undefined name 'FOO'"
+    import re
+    m = re.search(r"undefined name ['\"](\w+)['\"]", pyflakes_line)
+    return m.group(1) if m else None
+
+
+def _extract_lineno(pyflakes_line: str) -> Optional[int]:
+    """Extract the line number from a pyflakes error message."""
+    # Format: "path:LINE:col: message"
+    import re
+    m = re.match(r".*?:(\d+):\d+:", pyflakes_line)
+    if m:
+        return int(m.group(1))
+    return None
 
 
 def _build_frozen_commit(

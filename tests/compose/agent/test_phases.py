@@ -465,7 +465,11 @@ class TestRunPhase6Messages:
 from hunknote.compose.agent.phases.validate import (
     _check_import_deps,
     _check_internal_module_missing,
+    _check_lint,
+    _extract_lineno,
+    _extract_undefined_name,
     _file_path_to_module,
+    _filter_string_annotation_errors,
 )
 from hunknote.compose.agent.models import ValidationLayer
 
@@ -632,3 +636,222 @@ class TestCheckImportDeps:
         assert result is not None
         assert result.layer == ValidationLayer.IMPORT_DEPS
         assert "hunknote.compose.agent.models" in result.error_output
+
+
+class TestCheckLint:
+    """Tests for the pyflakes-based lint validation layer."""
+
+    @pytest.fixture
+    def trace(self):
+        return AgentTrace()
+
+    def test_catches_undefined_name(self, tmp_path, trace):
+        """Detects undefined name from a half-applied variable rename."""
+        py_file = tmp_path / "urlparse.py"
+        py_file.write_text(
+            "def urlparse(url, **kwargs):\n"
+            "    frag = kwargs.get('fragment')\n"
+            "    parsed_path = url.split('?')[0]\n"
+            "    if fragment is None:\n"
+            "        parsed_frag = ''\n"
+            "    return parsed_path, parsed_frag\n"
+        )
+        group = CommitGroup("C2", ["H4"], "rename", "refactor")
+        result = _check_lint(
+            tmp_path, ["urlparse.py"], 1, group, trace,
+        )
+        assert result is not None
+        assert result.layer == ValidationLayer.LINT
+        assert "undefined name" in result.error_output
+        assert "fragment" in result.error_output
+
+    def test_passes_clean_code(self, tmp_path, trace):
+        """No failure on code without undefined names."""
+        py_file = tmp_path / "clean.py"
+        py_file.write_text(
+            "import os\n"
+            "\n"
+            "def hello(name):\n"
+            "    path = os.path.join('/tmp', name)\n"
+            "    return path\n"
+        )
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(
+            tmp_path, ["clean.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_ignores_unused_import_warnings(self, tmp_path, trace):
+        """Unused imports are noisy — only undefined names should fail."""
+        py_file = tmp_path / "noisy.py"
+        py_file.write_text(
+            "import os\n"
+            "import json\n"
+            "\n"
+            "def hello():\n"
+            "    return 'hi'\n"
+        )
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(
+            tmp_path, ["noisy.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_skips_nonexistent_file(self, tmp_path, trace):
+        """Missing files are skipped gracefully."""
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(
+            tmp_path, ["missing.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_catches_undefined_in_nested_scope(self, tmp_path, trace):
+        """Catches undefined name inside a function body."""
+        py_file = tmp_path / "nested.py"
+        py_file.write_text(
+            "def outer():\n"
+            "    def inner():\n"
+            "        return undefined_var + 1\n"
+            "    return inner\n"
+        )
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(
+            tmp_path, ["nested.py"], 0, group, trace,
+        )
+        assert result is not None
+        assert "undefined name" in result.error_output
+        assert "undefined_var" in result.error_output
+
+
+# ── String annotation filtering helpers ──
+
+
+class TestExtractUndefinedName:
+    """Tests for _extract_undefined_name helper."""
+
+    def test_single_quoted(self):
+        assert _extract_undefined_name("foo.py:10:1: undefined name 'Foo'") == "Foo"
+
+    def test_double_quoted(self):
+        assert _extract_undefined_name('foo.py:10:1: undefined name "Foo"') == "Foo"
+
+    def test_no_match(self):
+        assert _extract_undefined_name("foo.py:10:1: 'os' imported but unused") is None
+
+    def test_underscore_name(self):
+        assert _extract_undefined_name("x.py:1:1: undefined name 'my_var'") == "my_var"
+
+
+class TestExtractLineno:
+    """Tests for _extract_lineno helper."""
+
+    def test_standard_format(self):
+        assert _extract_lineno("foo.py:10:1: undefined name 'X'") == 10
+
+    def test_no_match(self):
+        assert _extract_lineno("some random text") is None
+
+    def test_large_lineno(self):
+        assert _extract_lineno("bar.py:999:5: undefined name 'Z'") == 999
+
+
+class TestFilterStringAnnotationErrors:
+    """Tests for _filter_string_annotation_errors."""
+
+    def test_suppresses_string_annotation(self, tmp_path):
+        """Errors from string annotations like Optional['Foo'] are suppressed."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'from typing import Optional\n'
+            '\n'
+            'def func(x: Optional["TargetEnv"] = None):\n'
+            '    pass\n'
+        )
+        errors = [f"{py_file}:3:1: undefined name 'TargetEnv'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert result == []
+
+    def test_keeps_bare_undefined_name(self, tmp_path):
+        """Bare undefined names (not in quotes) are kept."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'def func():\n'
+            '    return undefined_var + 1\n'
+        )
+        errors = [f"{py_file}:2:1: undefined name 'undefined_var'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert len(result) == 1
+        assert "undefined_var" in result[0]
+
+    def test_mixed_real_and_string_annotation(self, tmp_path):
+        """Only string annotation errors are suppressed, real ones kept."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'from typing import Optional\n'
+            '\n'
+            'def func(x: Optional["MyType"] = None):\n'
+            '    return real_undef + 1\n'
+        )
+        errors = [
+            f"{py_file}:3:1: undefined name 'MyType'",
+            f"{py_file}:4:1: undefined name 'real_undef'",
+        ]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert len(result) == 1
+        assert "real_undef" in result[0]
+
+    def test_single_quoted_annotation(self, tmp_path):
+        """Single-quoted string annotations are also suppressed."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            "from typing import Optional\n"
+            "\n"
+            "def func(x: Optional['SomeClass'] = None):\n"
+            "    pass\n"
+        )
+        errors = [f"{py_file}:3:1: undefined name 'SomeClass'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert result == []
+
+    def test_handles_missing_file(self, tmp_path):
+        """Returns all errors unchanged if the file can't be read."""
+        missing = tmp_path / "gone.py"
+        errors = [f"{missing}:1:1: undefined name 'X'"]
+        result = _filter_string_annotation_errors(missing, errors)
+        assert result == errors
+
+
+class TestCheckLintStringAnnotations:
+    """Integration tests: _check_lint with string annotations."""
+
+    @pytest.fixture
+    def trace(self):
+        return AgentTrace()
+
+    def test_string_annotation_not_flagged(self, tmp_path, trace):
+        """String annotations should not cause lint failures."""
+        py_file = tmp_path / "typed.py"
+        py_file.write_text(
+            'from typing import Optional\n'
+            '\n'
+            'def process(env: Optional["TargetEnv"] = None):\n'
+            '    return env\n'
+        )
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(tmp_path, ["typed.py"], 0, group, trace)
+        assert result is None
+
+    def test_real_undefined_still_caught_alongside_annotation(self, tmp_path, trace):
+        """A real undefined name is caught even if string annotations exist."""
+        py_file = tmp_path / "mixed.py"
+        py_file.write_text(
+            'from typing import Optional\n'
+            '\n'
+            'def process(env: Optional["TargetEnv"] = None):\n'
+            '    return real_undef\n'
+        )
+        group = CommitGroup("C1", ["H1"], "feature", "feat")
+        result = _check_lint(tmp_path, ["mixed.py"], 0, group, trace)
+        assert result is not None
+        assert "real_undef" in result.error_output
+        assert "TargetEnv" not in result.error_output

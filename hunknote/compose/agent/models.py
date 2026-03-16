@@ -124,6 +124,7 @@ class ValidationLayer(Enum):
     COMPILE = "compile"
     IMPORT = "import"
     IMPORT_DEPS = "import_deps"
+    LINT = "lint"
     TEST = "test"
 
 

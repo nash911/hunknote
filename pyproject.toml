@@ -43,6 +43,8 @@ cohere = "^5.20.5"
 groq = "^1.0.0"
 # Core LLM interaction library
 litellm = "^1.82.0"
+# Static analysis
+pyflakes = "^3.2.0"
 # Evaluation libraries
 scikit-learn = "^1.8.0"
 
