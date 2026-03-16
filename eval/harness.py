@@ -26,7 +26,7 @@ from hunknote.compose.models import ComposePlan
 from hunknote.compose.parser import parse_unified_diff
 from hunknote.compose.planner import generate_compose_plan
 from eval.config import DEFAULT_AGENT_CONFIG, EVAL_RESULTS_DIR
-from eval.environment import TargetEnvManager
+from eval.environment import TargetEnv, TargetEnvManager
 from eval.judge import run_full_judge
 from eval.models import (
     DifficultyTier,
@@ -224,6 +224,12 @@ def _run_single_case(
             # 4. Stage the diff in the extracted repo
             _apply_patch_to_index(repo_dir, staged_patch)
 
+            # Prepare per-case artifact directory
+            case_artifact_dir = None
+            if run_dir:
+                case_artifact_dir = run_dir / test_case.id
+                case_artifact_dir.mkdir(parents=True, exist_ok=True)
+
             # 5. Run the Compose Agent
             plan, agent_stats = _run_agent(
                 repo_dir=repo_dir,
@@ -231,6 +237,8 @@ def _run_single_case(
                 inventory=inventory,
                 agent_config=agent_config,
                 llm_call_fn=llm_call_fn,
+                target_env=target_env,
+                case_artifact_dir=case_artifact_dir,
             )
 
             if plan is None:
@@ -336,6 +344,8 @@ def _run_agent(
     inventory: dict,
     agent_config: dict,
     llm_call_fn: Optional[Callable] = None,
+    target_env: Optional["TargetEnv"] = None,
+    case_artifact_dir: Optional[Path] = None,
 ) -> tuple[Optional[ComposePlan], dict]:
     """Run the Compose Agent and return its plan.
 
@@ -348,6 +358,9 @@ def _run_agent(
         inventory: Hunk inventory.
         agent_config: Agent configuration.
         llm_call_fn: Optional pre-built LLM call function.
+        target_env: Optional target environment with venv for validation.
+        case_artifact_dir: Optional directory to save debug artifacts
+                           (agent_trace.json, hunknote_compose_metadata.json).
 
     Returns:
         Tuple of (ComposePlan or None, stats dict).
@@ -394,6 +407,7 @@ def _run_agent(
             orch_config = OrchestratorConfig(
                 max_retries=agent_config.get("max_retries", 2),
                 max_commits=agent_config.get("max_commits", 8),
+                python_bin=str(target_env.python_path) if target_env else None,
             )
 
             orchestrator = AgentOrchestrator(
@@ -411,12 +425,26 @@ def _run_agent(
             stats["total_tokens"] = (
                 summary["total_input_tokens"] + summary["total_output_tokens"]
             )
+
+            # Save per-case debug artifacts
+            _save_case_artifacts(
+                case_artifact_dir, agent_trace=agent_trace, plan=plan,
+                agent_config=agent_config, stats=stats,
+                inventory=inventory, file_diffs=file_diffs,
+            )
+
             return plan, stats
 
         except AgentPipelineError as e:
             stats["error"] = f"Agent pipeline failed: {e}"
             if e.diagnosis:
                 stats["error"] += f" Diagnosis: {e.diagnosis}"
+            # Still save artifacts on failure for debugging
+            _save_case_artifacts(
+                case_artifact_dir, agent_trace=agent_trace, plan=None,
+                agent_config=agent_config, stats=stats,
+                inventory=inventory, file_diffs=file_diffs,
+            )
             return None, stats
         except Exception as e:
             logger.warning("Agent pipeline failed, falling back to single-shot: %s", e)
@@ -443,14 +471,93 @@ def _run_agent(
 
         if not compose_result.success:
             stats["error"] = compose_result.error or "Compose plan generation failed"
+            _save_case_artifacts(
+                case_artifact_dir, agent_trace=None, plan=compose_result.plan,
+                agent_config=agent_config, stats=stats,
+                inventory=inventory, file_diffs=file_diffs,
+            )
             return compose_result.plan, stats
 
+        _save_case_artifacts(
+            case_artifact_dir, agent_trace=None, plan=compose_result.plan,
+            agent_config=agent_config, stats=stats,
+            inventory=inventory, file_diffs=file_diffs,
+        )
         return compose_result.plan, stats
 
     except Exception as e:
         stats["error"] = str(e)
         return None, stats
 
+
+
+def _save_case_artifacts(
+    case_artifact_dir: Optional[Path],
+    agent_trace: Optional[object] = None,
+    plan: Optional[ComposePlan] = None,
+    agent_config: Optional[dict] = None,
+    stats: Optional[dict] = None,
+    inventory: Optional[dict] = None,
+    file_diffs: Optional[list] = None,
+) -> None:
+    """Save per-case debug artifacts (agent_trace.json, compose metadata).
+
+    Called after both agent and single-shot paths complete (success or failure).
+    """
+    if case_artifact_dir is None:
+        return
+
+    import json as json_mod
+    from datetime import datetime, timezone
+
+    case_artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Save agent_trace.json (if agent pipeline was used)
+    if agent_trace is not None:
+        try:
+            trace_data = {
+                "version": "1",
+                "summary": agent_trace.get_summary(),
+                "trace": agent_trace.root.to_dict() if hasattr(agent_trace.root, 'to_dict') else _trace_event_to_dict(agent_trace.root),
+            }
+            trace_path = case_artifact_dir / "agent_trace.json"
+            trace_path.write_text(json_mod.dumps(trace_data, indent=2, default=str))
+        except Exception:
+            logger.debug("Failed to save agent_trace.json", exc_info=True)
+
+    # 2. Save hunknote_compose_metadata.json
+    try:
+        metadata = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "agent" if (agent_config or {}).get("use_agent") else "single_shot",
+            "provider": (agent_config or {}).get("provider", "unknown"),
+            "model": (agent_config or {}).get("model", "unknown"),
+            "max_commits": (agent_config or {}).get("max_commits", 8),
+            "max_retries": (agent_config or {}).get("max_retries", 2),
+            "total_llm_calls": (stats or {}).get("total_llm_calls", 0),
+            "total_tokens": (stats or {}).get("total_tokens", 0),
+            "total_hunks": len(inventory) if inventory else 0,
+            "total_files": len(file_diffs) if file_diffs else 0,
+            "num_commits": len(plan.commits) if plan else 0,
+            "error": (stats or {}).get("error"),
+        }
+        # Add plan data if available
+        if plan:
+            metadata["plan"] = plan.model_dump()
+
+        meta_path = case_artifact_dir / "hunknote_compose_metadata.json"
+        meta_path.write_text(json_mod.dumps(metadata, indent=2, default=str))
+    except Exception:
+        logger.debug("Failed to save compose metadata", exc_info=True)
+
+
+def _trace_event_to_dict(event: object) -> dict:
+    """Convert a TraceEvent to a serialisable dict (fallback)."""
+    try:
+        from hunknote.compose.agent.tracing import _event_to_dict
+        return _event_to_dict(event)
+    except ImportError:
+        return {"message": str(event)}
 
 
 def _error_result(test_case: TestCase, error: str) -> EvalCaseResult:
