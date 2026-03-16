@@ -96,7 +96,7 @@ Return a JSON object with this exact structure:
       "type": "<feat|fix|docs|refactor|test|chore|build|ci|perf|style>",
       "scope": "<optional scope>",
       "ticket": null,
-      "title": "<short description in imperative mood, max 72 chars, WITHOUT type/scope prefix>",
+      "title": "<short description in imperative mood, WITHOUT type/scope prefix>",
       "bullets": ["<change 1>", "<change 2>"],
       "summary": null,
       "sections": null,
@@ -107,6 +107,14 @@ Return a JSON object with this exact structure:
 
 IMPORTANT: The "title" field must contain ONLY the description, NOT the conventional commit prefix.
 The type and scope are already separate JSON fields — do NOT repeat them inside the title.
+
+CHARACTER LIMIT: The final rendered commit header is "type(scope): title" or "type: title" (without scope).
+The ENTIRE header must be at most 72 characters. Plan accordingly:
+  - "type(scope): " is overhead — subtract its length from 72 to get max title length.
+  - Example: type="feat", scope="agent/validation" → overhead is "feat(agent/validation): " = 24 chars → title must be ≤ 48 chars.
+  - Example: type="fix", scope=null → overhead is "fix: " = 5 chars → title must be ≤ 67 chars.
+  If you pick a long scope, you MUST shorten the title to compensate.
+
   Correct:   "type": "feat", "scope": "api", "title": "Add pagination support to list endpoints"
   WRONG:     "type": "feat", "scope": "api", "title": "feat(api): Add pagination support to list endpoints"
 

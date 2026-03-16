@@ -117,12 +117,18 @@ def _build_message_prompt(
 {
   "type": "<feat|fix|refactor|test|docs|chore|style|perf|ci|build>",
   "scope": "<component/module affected, or null>",
-  "title": "<imperative mood, max 60 chars, NO type prefix>",
+  "title": "<imperative mood, NO type prefix>",
   "bullets": ["<specific change 1>", "<specific change 2>"]
 }
 
 Rules:
 - Title must NOT include the type or scope prefix (those are separate fields).
+- CHARACTER LIMIT: The final rendered commit header is "type(scope): title"
+  or "type: title" (without scope). The ENTIRE header must be at most 72
+  characters. Subtract the overhead of "type(scope): " from 72 to get max
+  title length. If you pick a long scope, shorten the title to compensate.
+  Example: type="feat", scope="agent/validation" → overhead=24 → title ≤ 48 chars.
+  Example: type="fix", scope=null → overhead=5 → title ≤ 67 chars.
 - Each bullet should reference specific function names, file names, or behaviors.
 - Do not use vague bullets like "Updated code" or "Made improvements".""")
 
