@@ -194,6 +194,11 @@ class AgentOrchestrator:
         self.trace.phase_end("phase6")
         self.trace.save_to_file(self.repo_root)
 
+        # Renumber commits to C1, C2, C3, ... (frozen commits may have
+        # temporary IDs like "frozen_0", "frozen_1" from retry cycles)
+        for i, commit in enumerate(self.planned_commits):
+            commit.id = f"C{i + 1}"
+
         # Convert to ComposePlan
         return ComposePlan(
             version="1",
