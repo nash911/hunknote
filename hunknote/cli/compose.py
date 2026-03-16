@@ -748,6 +748,16 @@ def compose_command(
                 typer.echo("Note: Using plan from file. The provided plan has invalid hunk IDs.", err=True)
             raise typer.Exit(1)
 
+        # Append residual commit for binary/empty/mode-change files
+        from hunknote.compose.residual import append_residual_to_plan
+        residual_files = append_residual_to_plan(plan, file_diffs, inventory, max_commits)
+        if residual_files:
+            typer.echo(
+                f"Note: {len(residual_files)} residual file(s) "
+                f"(binary, empty, mode-change) added as final commit.",
+                err=True,
+            )
+
         # Print plan
         typer.echo("")
         typer.echo("=" * 60)
@@ -772,14 +782,20 @@ def compose_command(
             else:
                 typer.echo(f"  {i}. {title}")
             # Count unique files in this commit
-            commit_files = set()
-            for hid in planned_commit.hunks:
-                hunk_ref = inventory.get(hid)
-                if hunk_ref:
-                    commit_files.add(hunk_ref.file_path)
-            num_files = len(commit_files)
-            file_label = "file" if num_files == 1 else "files"
-            typer.echo(f"     ({len(planned_commit.hunks)} hunks, {num_files} {file_label})")
+            if planned_commit.hunks:
+                commit_files = set()
+                for hid in planned_commit.hunks:
+                    hunk_ref = inventory.get(hid)
+                    if hunk_ref:
+                        commit_files.add(hunk_ref.file_path)
+                num_files = len(commit_files)
+                file_label = "file" if num_files == 1 else "files"
+                typer.echo(f"     ({len(planned_commit.hunks)} hunks, {num_files} {file_label})")
+            else:
+                # Residual commit — show residual file count
+                num_res = len(residual_files) if residual_files else 0
+                file_label = "file" if num_res == 1 else "files"
+                typer.echo(f"     ({num_res} {file_label})")
 
         # Print detailed previews
         typer.echo("")
