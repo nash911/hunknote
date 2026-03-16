@@ -20,6 +20,7 @@
 10. [Module 7: Phase 3 — Clustering](#module-7-phase-3--clustering)
 11. [Module 8: Phase 4 — Ordering](#module-8-phase-4--ordering)
 12. [Module 9: Phase 5a — Validation (Git Worktree)](#module-9-phase-5a--validation-git-worktree)
+    - [Module 9a: Per-Language Validation Details](#module-9a-per-language-validation-details) (Python, TypeScript/JS, Go, Rust, Java, C/C++, Ruby, Monorepo)
 13. [Module 10: Phase 5b — Failure Diagnosis (ReAct Agent)](#module-10-phase-5b--failure-diagnosis-react-agent)
 14. [Module 11: Phase 6 — Commit Message Generation](#module-11-phase-6--commit-message-generation)
 15. [Module 12: Orchestrator](#module-12-orchestrator)
@@ -1316,6 +1317,303 @@ subprocess.run(["git", "worktree", "remove", str(worktree_path), "--force"],
 - The `python -c "import X"` check needs to run inside the worktree directory with the right `PYTHONPATH` or `sys.path`. Use `cwd=worktree_path` and potentially set `PYTHONPATH=worktree_path`.
 - Each validation layer result (pass or fail) should be recorded in the trace with `trace.validation_check()`, `trace.validation_pass()`, or `trace.validation_fail()`.
 - Build `FrozenCommit` entries incrementally as each commit passes validation.
+
+### Module 9a: Per-Language Validation Details
+
+Phase 5a validation runs layered checks on each commit's touched files. Layers 1 (patch apply) and the commit/advance step are language-agnostic. Layers 2–6 are language-specific. This section specifies the exact checks, tools, and edge cases for each supported language and for monorepo projects.
+
+**Current validation layers:**
+
+| Layer | Name | Purpose | Speed |
+|-------|------|---------|-------|
+| 1 | `patch_apply` | `git apply --check` | <1s |
+| 2 | `syntax` | Syntax/parse check | <1s/file |
+| 3 | `import` | Runtime module import | <2s/file |
+| 4 | `import_deps` | AST scan of all imports (including lazy) | <1s/file |
+| 5 | `lint` | Static analysis for undefined names | <1s/file |
+| 6 | `test` | Run test suite (optional, eval-only) | 5–60s |
+
+Layers 3 and 4 are Python-specific in their current form. For other languages, the compile check (Layer 2) is often strict enough to subsume Layers 3–5 entirely. The per-language sections below specify which layers apply and how.
+
+**File:** `hunknote/compose/agent/phases/validate.py`
+
+The validation loop should detect the language of each touched file by extension and dispatch to the appropriate checker. Use a registry pattern:
+
+```python
+# Map file extensions to language identifiers
+EXTENSION_TO_LANGUAGE = {
+    ".py": "python",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".hpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
+    ".rb": "ruby",
+}
+
+def _detect_languages(py_files: list[str]) -> dict[str, list[str]]:
+    """Group touched files by language. Returns {language: [file_paths]}."""
+    by_lang: dict[str, list[str]] = {}
+    for fp in py_files:
+        ext = Path(fp).suffix.lower()
+        lang = EXTENSION_TO_LANGUAGE.get(ext)
+        if lang:
+            by_lang.setdefault(lang, []).append(fp)
+    return by_lang
+```
+
+#### 9a.1 Python
+
+**Status:** Fully implemented.
+
+**Tools:** `py_compile` (stdlib), `python -c "import X"`, `ast` (stdlib), `pyflakes` (required dependency).
+
+| Layer | Check | Command / Implementation |
+|-------|-------|------------------------|
+| 2 `syntax` | py_compile | `python -m py_compile {file}` |
+| 3 `import` | Runtime import | `python -c "import {module}"` with `PYTHONPATH=worktree_path` |
+| 4 `import_deps` | AST import scan | `ast.walk()` over all `Import`/`ImportFrom` nodes; verify each internal module exists as a file in the worktree |
+| 5 `lint` | Undefined names | `python -m pyflakes {file}` — filter output to only `"undefined name"` lines |
+
+**`_file_path_to_module` conversion:**
+- `src/foo/bar.py` → `src.foo.bar`
+- `src/foo/__init__.py` → `src.foo`
+- Skip: `setup.py`, root-level `conftest.py`
+- Do NOT skip test files — they need import validation
+
+**Edge cases:**
+- Dynamic imports (`importlib.import_module(...)`) are invisible to AST scan and pyflakes. Accepted risk — these are rare and typically guarded.
+- `try/except ImportError` blocks: pyflakes handles these correctly (does not flag the conditional import as undefined).
+- Star imports (`from module import *`): pyflakes flags undefined names conservatively; may produce false positives if the star import provides the name. Accepted risk — star imports in intermediate commits are unusual.
+- `TYPE_CHECKING` blocks: imports under `if TYPE_CHECKING:` are not available at runtime. pyflakes handles this correctly.
+
+**`python_bin` parameter:** When running inside eval environments, the Python binary may be in a venv (e.g., `.eval_venv/bin/python`). The validation functions accept an optional `python_bin` parameter. For pyflakes, run it as `{python_bin} -m pyflakes {file}` to use the correct interpreter.
+
+#### 9a.2 TypeScript / JavaScript
+
+**Status:** Not yet implemented.
+
+**Tools:** `tsc` (TypeScript compiler), `node --check` (Node.js syntax), `npx` for local tool execution.
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | TypeScript compile | `npx tsc --noEmit --pretty false` (whole-project check) |
+| 2 `syntax` (JS only) | Node syntax | `node --check {file}` |
+| 3 `import` | Not needed | `tsc --noEmit` already validates all imports |
+| 4 `import_deps` | Not needed | `tsc --noEmit` catches missing modules |
+| 5 `lint` | Not needed for TS | The type checker catches undefined names. For JS: `npx eslint --no-eslintrc --rule 'no-undef: error' {file}` |
+
+**Implementation notes:**
+- TypeScript's `tsc --noEmit` is a **whole-project** check, not per-file. Run it once per commit, not per file. It validates syntax, types, imports, and undefined names all at once.
+- For JavaScript-only projects (no `tsconfig.json`), fall back to `node --check {file}` for syntax + eslint for undefined names.
+- Check for `tsconfig.json` in the worktree root to decide between TS and JS mode.
+- Tool availability: check `shutil.which("npx")`. If not found, skip with a warning.
+- `tsc --noEmit` can be slow on large projects (5-15s). Acceptable for the validation loop since it replaces Layers 2–5 in a single call.
+- For monorepos with multiple `tsconfig.json` files, run `tsc -p {tsconfig_path} --noEmit` for each touched project.
+
+**Barrel exports / index.ts:**
+- TypeScript barrel files (`index.ts` that re-exports from submodules) are analogous to Python's `__init__.py`. If a barrel file re-exports a symbol that doesn't exist yet, `tsc` catches it.
+- The `import_deps` AST scan is unnecessary for TypeScript — the compiler handles it.
+
+**Edge cases:**
+- `// @ts-ignore` / `// @ts-nocheck` directives suppress type errors. If a hunk adds such a directive, the compile check may pass incorrectly. Accepted risk — these are intentional developer overrides.
+- Dynamic `require()` or `import()` expressions: invisible to `tsc --noEmit`. Same as Python's `importlib` — accepted risk.
+- `node_modules` resolution: `tsc` resolves against the project's `node_modules/`. Ensure `npm install` or `yarn install` has been run in the worktree before validation.
+
+#### 9a.3 Go
+
+**Status:** Not yet implemented.
+
+**Tools:** `go build`, `go vet` (included with Go toolchain).
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | Go compile | `go build ./...` (whole-project, checks syntax + types + imports) |
+| 3 `import` | Not needed | `go build` validates all imports |
+| 4 `import_deps` | Not needed | `go build` catches undefined references |
+| 5 `lint` | Go vet | `go vet ./...` (catches suspicious constructs, printf format mismatches, unreachable code) |
+
+**Implementation notes:**
+- Go compilation is **package-level**, not file-level. `go build ./...` compiles all packages in the module. Run once per commit, not per file.
+- Go's compiler is strict: undefined names, unused imports, and unused variables are all **compile errors**, not warnings. Layers 3–5 are effectively subsumed by Layer 2.
+- `go vet` adds deeper static analysis (e.g., `printf` format mismatches, unreachable code, suspicious assignments). Run it as Layer 5 for extra safety.
+- Tool availability: check `shutil.which("go")`. If not found, skip with a warning.
+- Environment: set `GOPATH` and ensure `go.mod` is present in the worktree root (or a parent).
+
+**Edge cases:**
+- `go build ./...` requires all dependencies to be downloaded. Run `go mod download` before validation if `go.sum` exists.
+- `//go:build` constraints: files with build tags may not compile on the validation host's OS/arch. Use `go build -tags ""` to compile without tags, or skip files with build constraints.
+- `_test.go` files: Go test files are in the same package but compiled separately. Use `go build ./...` (not `go test ./...`) to avoid running tests; test files are still compiled.
+- Implicit interface satisfaction: Go has no `implements` keyword. A hunk that changes a method signature breaks all implicit implementors. `go build` catches this at compile time.
+- `internal/` packages: Go enforces import restrictions on `internal/` directories. If a hunk moves code into `internal/`, callers outside the parent directory fail to compile. `go build` catches this.
+
+#### 9a.4 Rust
+
+**Status:** Not yet implemented.
+
+**Tools:** `cargo check` (Rust toolchain).
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | Cargo check | `cargo check` (whole-workspace, validates syntax + types + borrows + imports) |
+| 3 `import` | Not needed | `cargo check` validates all `use` statements |
+| 4 `import_deps` | Not needed | `cargo check` catches undefined references |
+| 5 `lint` | Clippy (optional) | `cargo clippy -- -D warnings` (stricter static analysis) |
+
+**Implementation notes:**
+- `cargo check` compiles the entire workspace without producing binaries. It validates syntax, types, lifetime/borrow rules, trait bounds, and module resolution.
+- It is a **whole-workspace** check. Run once per commit.
+- Rust's compiler is the strictest of all supported languages — Layers 3–5 are fully subsumed by Layer 2.
+- `cargo clippy` is optional (requires rustup component). If available, run it as Layer 5 for additional lints. Filter to deny-level warnings only.
+- Tool availability: check `shutil.which("cargo")`. If not found, skip with a warning.
+
+**Edge cases:**
+- `cargo check` requires dependencies to be fetched. Run `cargo fetch` before validation if `Cargo.lock` exists.
+- Cargo workspaces: `cargo check --workspace` checks all workspace members. Use this for monorepos with multiple crates.
+- Feature flags: `cargo check` uses default features. If the project requires non-default features, the case's `build_system.check_command` should specify them (e.g., `cargo check --features "serde,async"`).
+- Proc macros: procedural macro crates must compile before crates that use them. `cargo check` handles build ordering automatically.
+- `#[allow(unused)]` attributes suppress warnings. The compiler still checks for undefined names even with `allow(unused)`.
+
+#### 9a.5 Java
+
+**Status:** Not yet implemented.
+
+**Tools:** `javac` (JDK), optionally `mvn compile` or `gradle compileJava`.
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | Javac compile | `javac -d /tmp/classes -cp {classpath} {files}` or `mvn compile -q` |
+| 3 `import` | Not needed | `javac` validates all imports |
+| 4 `import_deps` | Not needed | `javac` catches undefined references |
+| 5 `lint` | Not needed | `javac` is strict enough for validation purposes |
+
+**Implementation notes:**
+- Java compilation requires a classpath. For Maven projects, use `mvn compile -q` which handles classpath resolution automatically. For Gradle, use `gradle compileJava -q`.
+- If no build system is detected, fall back to `javac -d /tmp/classes {files}` with the worktree's source root on the classpath.
+- Detect build system: check for `pom.xml` (Maven), `build.gradle` or `build.gradle.kts` (Gradle), or neither (raw javac).
+- Tool availability: check `shutil.which("javac")`, `shutil.which("mvn")`, `shutil.which("gradle")`.
+- Java's compiler is strict: undefined names, unresolved imports, and type mismatches are all compile errors.
+
+**Edge cases:**
+- Multi-module Maven/Gradle projects: use `mvn compile -pl {module} -am` to compile the affected module and its dependencies.
+- Annotation processors (`@Generated`, Lombok, etc.): these run at compile time and may produce generated sources. Ensure annotation processor JARs are on the classpath.
+- `src/main/java` vs `src/test/java`: test sources have a separate compilation classpath. Use `mvn test-compile` if test files are touched.
+- Package declarations: Java requires the file path to match the package declaration. If a hunk moves a class to a different package, the file must also be moved, or compilation fails.
+
+#### 9a.6 C / C++
+
+**Status:** Not yet implemented.
+
+**Tools:** `gcc`/`g++` (or `clang`/`clang++`), `make`, `cmake`.
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | Syntax-only compile | `gcc -fsyntax-only -Wall {file}` / `g++ -fsyntax-only -Wall {file}` |
+| 3 `import` | Header resolution | `gcc -fsyntax-only -I{include_dirs} {file}` (validates `#include` directives) |
+| 4 `import_deps` | Not needed | Compile check validates includes |
+| 5 `lint` | Not needed | Compiler warnings with `-Wall` catch most issues |
+
+**Implementation notes:**
+- C/C++ can be checked **per-file** with `gcc -fsyntax-only`, unlike whole-project languages. This is faster for the validation loop.
+- Include paths (`-I` flags) are critical. Detect them from:
+  - `compile_commands.json` (if present — generated by CMake or Bear)
+  - `Makefile` (parse `CFLAGS`/`CXXFLAGS`)
+  - CMakeLists.txt (run `cmake -B build` to generate `compile_commands.json`)
+  - Fall back to `-I{worktree_root}` and `-I{worktree_root}/include`
+- Use `gcc` for `.c` files, `g++` for `.cpp`/`.cc`/`.cxx`/`.hpp` files.
+- `-fsyntax-only` skips code generation and linking — much faster than a full build.
+- Tool availability: check `shutil.which("gcc")` and `shutil.which("g++")`. Fall back to `clang`/`clang++`.
+
+**Edge cases:**
+- Header files (`.h`, `.hpp`): these are not compiled directly. They are validated indirectly when a `.c`/`.cpp` file that includes them is compiled. If only a header is touched, find a source file that includes it (grep for `#include "header.h"`) and compile that.
+- Forward declarations: C/C++ allows forward-declaring types and functions. A hunk that adds a forward declaration without the actual definition is valid syntax — the linker would catch the missing definition, but `gcc -fsyntax-only` does not link. This is an accepted gap.
+- Preprocessor macros: `#define` / `#ifdef` blocks can make code conditionally present. `gcc -fsyntax-only` evaluates preprocessor directives, so undefined macros produce empty code (no error). If a hunk changes a macro definition, dependent code may silently change behavior without a compile error.
+- Platform-specific headers: `#include <windows.h>` won't resolve on Linux. Use `-D` flags to simulate the platform, or skip files with platform guards.
+
+#### 9a.7 Ruby
+
+**Status:** Not yet implemented.
+
+**Tools:** `ruby -c` (syntax check), `ruby -wc` (syntax + warnings).
+
+| Layer | Check | Command |
+|-------|-------|---------|
+| 2 `syntax` | Ruby syntax | `ruby -c {file}` |
+| 3 `import` | Not applicable | Ruby's `require` is runtime-only; cannot check statically |
+| 4 `import_deps` | Not applicable | Same — `require` is evaluated at runtime |
+| 5 `lint` | Ruby warnings | `ruby -wc {file}` (warnings mode catches some undefined references) |
+
+**Implementation notes:**
+- Ruby is dynamically typed like Python, but has a weaker static analysis story. `ruby -c` only checks syntax, not semantics.
+- `ruby -wc` adds warnings mode, which catches some issues (e.g., accessing an uninitialized instance variable) but NOT undefined local variable names — Ruby treats undefined locals as `nil` in some contexts or raises `NameError` at runtime.
+- For stronger lint, use `rubocop --only Lint` if available. RuboCop's `Lint/UselessAssignment`, `Lint/UnusedMethodArgument`, and `Lint/Void` rules catch some of the same issues as pyflakes. However, RuboCop requires a `.rubocop.yml` config and is slower.
+- Tool availability: check `shutil.which("ruby")`. For RuboCop: `shutil.which("rubocop")`.
+- Ruby has the same gap as Python before pyflakes: undefined names are not caught by syntax checking. The mitigation is weaker because there is no Ruby equivalent of pyflakes.
+
+**Edge cases:**
+- `require` vs `require_relative`: both are runtime. Neither can be statically checked without executing Ruby.
+- Monkey patching / open classes: Ruby allows reopening classes across files. A hunk that adds a method to class `Foo` in file A may depend on class `Foo` being defined in file B. No static tool catches this.
+- `Gemfile` / `Bundler`: ensure `bundle install` has been run in the worktree before validation. Without bundled gems, `ruby -c` still works (syntax only), but `ruby -wc` may warn about missing gems.
+- Autoloading (Zeitwerk, Rails): in Rails apps, classes are autoloaded by convention (file path → class name). Renaming a file without updating references is caught at runtime, not by `ruby -c`.
+
+#### 9a.8 Monorepo Handling
+
+**Status:** Not yet implemented.
+
+Monorepos contain multiple independent projects (packages, services, libraries) in a single git repository. Phase 5a must handle them correctly.
+
+**Detection:**
+- Check for monorepo indicators in the worktree root:
+  - `package.json` with `"workspaces"` key (npm/Yarn workspaces)
+  - `pnpm-workspace.yaml` (pnpm workspaces)
+  - `Cargo.toml` with `[workspace]` section (Rust workspace)
+  - `go.work` file (Go multi-module workspace)
+  - `pom.xml` with `<modules>` section (Maven multi-module)
+  - `settings.gradle` with `include` directives (Gradle multi-project)
+  - Multiple `pyproject.toml` or `setup.py` files at different directory levels (Python monorepo)
+
+**Validation strategy:**
+
+```python
+def _detect_monorepo_roots(worktree_path: Path) -> list[Path]:
+    """Find sub-project roots within a monorepo worktree."""
+    # Check for workspace config files
+    # Return list of sub-project root paths
+    ...
+
+def _find_project_root(worktree_path: Path, file_path: str) -> Path:
+    """Find the nearest project root for a given file."""
+    # Walk up from file's directory looking for build system markers
+    # (package.json, Cargo.toml, go.mod, pyproject.toml, etc.)
+    ...
+```
+
+**Key principle:** Validation commands must run with the correct working directory and build context. A TypeScript file in `packages/api/` must be compiled with `packages/api/tsconfig.json`, not the root `tsconfig.json`.
+
+**Per-language monorepo specifics:**
+
+| Language | Monorepo tool | Validation approach |
+|----------|--------------|---------------------|
+| Python | Multiple `pyproject.toml` / pip workspaces | Run `py_compile` and `pyflakes` per file (already file-level). For import checks, set `PYTHONPATH` to the sub-project root. |
+| TypeScript | npm/Yarn/pnpm workspaces | Run `tsc --noEmit -p {sub-project}/tsconfig.json` for each affected sub-project. |
+| Go | `go.work` or multiple `go.mod` | Run `go build ./...` in each affected module directory (where `go.mod` lives). |
+| Rust | Cargo workspace | `cargo check --workspace` checks all workspace members at once. Or `cargo check -p {package}` for targeted checks. |
+| Java | Maven/Gradle multi-module | `mvn compile -pl {module} -am` compiles the affected module + dependencies. `gradle :module:compileJava` for Gradle. |
+| C/C++ | CMake subdirectories | Run `cmake --build build --target {target}` for affected targets, or fall back to per-file `gcc -fsyntax-only` with include paths from `compile_commands.json`. |
+| Ruby | Gem workspaces / engines | Run `ruby -c` per file (already file-level). |
+
+**Cross-project dependencies in monorepos:**
+- A hunk in `packages/shared/` may be depended on by `packages/api/` and `packages/web/`. The agent's Phase 2 (dependency graph) must detect these cross-project links.
+- The validation loop should compile ALL affected sub-projects for each commit, not just the sub-project containing the touched files. To find affected projects: trace which sub-projects import from the modified sub-project.
+- For typed languages (TS, Go, Rust, Java), the compiler reports cross-project errors automatically when compiling the dependent project. For Python, the `import_deps` layer handles it.
+
+**Implementation order:**
+1. Add `_detect_languages()` dispatcher to the validation loop.
+2. Implement each language's checks as separate `_check_{language}_*` functions.
+3. Add monorepo detection and sub-project root resolution.
+4. Wire monorepo roots into the per-language compile commands.
 
 ---
 
