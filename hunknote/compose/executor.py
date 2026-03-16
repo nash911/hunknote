@@ -206,3 +206,107 @@ def execute_commit(
     if debug:
         print(f"  Commit created: {commit.id}")
 
+
+def execute_residual_commit(
+    repo_root: Path,
+    commit: PlannedCommit,
+    residual_files: list,
+    message: str,
+    pid: int,
+    debug: bool = False,
+) -> None:
+    """Execute the residual commit by staging files via git add.
+
+    Unlike regular commits which use ``git apply --cached``, residual
+    commits handle binary files, empty files, mode changes, renames,
+    and deletions that cannot be expressed as text patches.
+
+    Args:
+        repo_root: Repository root path.
+        commit: The residual PlannedCommit (hunks=[]).
+        residual_files: List of FileDiff objects to stage.
+        message: Rendered commit message.
+        pid: Process ID for unique filenames.
+        debug: Whether to print debug output.
+
+    Raises:
+        ComposeExecutionError: If the commit fails.
+    """
+    if not residual_files:
+        return
+
+    # Stage each residual file
+    file_paths = [fd.file_path for fd in residual_files]
+
+    # Also handle old paths for renames (the delete side)
+    for fd in residual_files:
+        if fd.is_renamed and fd.old_path:
+            file_paths.append(fd.old_path)
+        if fd.is_deleted_file:
+            # For deleted files, use git rm --cached
+            result = subprocess.run(
+                ["git", "rm", "--cached", "--force", "--", fd.file_path],
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+            )
+            if debug and result.returncode != 0:
+                print(f"  Warning: git rm --cached failed for {fd.file_path}: {result.stderr}")
+
+    # Stage remaining (non-deleted) files
+    non_deleted = [fd.file_path for fd in residual_files if not fd.is_deleted_file]
+    if non_deleted:
+        # Filter to files that actually exist on disk
+        existing = [f for f in non_deleted if (repo_root / f).exists()]
+        if existing:
+            result = subprocess.run(
+                ["git", "add", "--force", "--"] + existing,
+                capture_output=True,
+                text=True,
+                cwd=repo_root,
+            )
+            if result.returncode != 0:
+                raise ComposeExecutionError(
+                    f"Failed to stage residual files for {commit.id}: {result.stderr}"
+                )
+
+    # Verify something is staged
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    if not result.stdout.strip():
+        if debug:
+            print(f"  No residual changes to commit for {commit.id} — skipping")
+        return
+
+    if debug:
+        staged = result.stdout.strip().split("\n")
+        print(f"  Residual staged files: {len(staged)}")
+        for sf in staged[:10]:
+            print(f"    {sf}")
+
+    # Write message and commit
+    tmp_dir = repo_root / ".tmp"
+    tmp_dir.mkdir(exist_ok=True)
+
+    msg_file = tmp_dir / f"hunknote_compose_msg_{commit.id}_{pid}.txt"
+    msg_file.write_text(message)
+
+    result = subprocess.run(
+        ["git", "commit", "-F", str(msg_file)],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    if result.returncode != 0:
+        raise ComposeExecutionError(
+            f"Failed to commit residual {commit.id}: {result.stderr}"
+        )
+
+    if debug:
+        print(f"  Residual commit created: {commit.id}")
+
+
