@@ -124,6 +124,7 @@ def compose_command(
         create_snapshot,
         restore_from_snapshot,
         execute_commit,
+        execute_residual_commit,
         cleanup_temp_files,
         ComposePlan,
         ComposeExecutionError,
@@ -887,7 +888,36 @@ def compose_command(
 
                 typer.echo(f"  Creating commit {planned_commit.id}: {planned_commit.title[:50]}...", err=True)
 
-                # Build patch for this commit
+                # Residual commits (binary/empty/mode-change) have no hunks —
+                # they are staged via git add instead of git apply.
+                is_residual = not planned_commit.hunks
+
+                if is_residual and residual_files:
+                    # Convert to ExtendedCommitJSON for rendering
+                    extended_json = ExtendedCommitJSON(
+                        type=planned_commit.type,
+                        scope=planned_commit.scope,
+                        title=planned_commit.title,
+                        subject=planned_commit.title,
+                        body_bullets=planned_commit.bullets or [],
+                        summary=planned_commit.summary,
+                        ticket=planned_commit.ticket,
+                    )
+
+                    message = render_commit_message_styled(
+                        extended_json,
+                        style_config,
+                        override_style=effective_profile,
+                    )
+
+                    execute_residual_commit(
+                        repo_root, planned_commit, residual_files,
+                        message, pid, debug,
+                    )
+                    commits_created += 1
+                    continue
+
+                # Regular commit — build patch and apply
                 patch_content = build_commit_patch(planned_commit, inventory, file_diffs)
 
                 if not patch_content.strip():
