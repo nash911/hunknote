@@ -336,7 +336,7 @@ def _run_agent(
 ) -> tuple[Optional[ComposePlan], dict]:
     """Run the Compose Agent and return its plan.
 
-    Delegates to the hunknote compose planner (two-phase LLM flow).
+    Delegates to the hunknote compose planner (single-shot LLM flow).
     When the Compose Agent module becomes available, this will be
     extended to call it instead (controlled by agent_config["use_agent"]).
 
@@ -350,15 +350,10 @@ def _run_agent(
     Returns:
         Tuple of (ComposePlan or None, stats dict).
     """
-    from hunknote.compose.relationships import detect_file_relationships
-
     stats: dict = {
         "total_llm_calls": 0,
         "total_tokens": 0,
     }
-
-    # Detect file relationships for better grouping and ordering
-    file_relationships = detect_file_relationships(file_diffs, repo_dir)
 
     try:
         compose_result = generate_compose_plan(
@@ -369,7 +364,6 @@ def _run_agent(
             style=agent_config.get("style", "conventional"),
             branch="eval",
             recent_commits=[],
-            file_relationships=file_relationships,
             llm_call_fn=llm_call_fn,
             provider_name=agent_config.get("provider"),
             model_name=agent_config.get("model"),
