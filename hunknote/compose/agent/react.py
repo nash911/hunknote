@@ -148,7 +148,7 @@ def run_react_loop(
         result.total_output_tokens += llm_result.output_tokens
         result.total_thinking_tokens += llm_result.thinking_tokens
 
-        response_text = llm_result.raw_response
+        response_text = llm_result.raw_response or ""
 
         # Try to parse as final output
         final_json = _extract_final_output(response_text)

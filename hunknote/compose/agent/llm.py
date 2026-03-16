@@ -67,7 +67,7 @@ def create_llm_call_fn(
         except Exception as e:
             raise LLMError(f"LLM call failed ({provider}/{model}): {e}")
 
-        raw_response = response.choices[0].message.content
+        raw_response = response.choices[0].message.content or ""
         usage = response.usage
         input_tokens = usage.prompt_tokens if usage else 0
         output_tokens = usage.completion_tokens if usage else 0
