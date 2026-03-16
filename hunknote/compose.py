@@ -44,7 +44,12 @@ from hunknote.compose import (
     ComposeSnapshot,
     create_snapshot,
     execute_commit,
+    execute_residual_commit,
     restore_from_snapshot,
+    # Residual
+    append_residual_to_plan,
+    build_residual_commit,
+    collect_residual_files,
     # Cleanup
     cleanup_temp_files,
 )
@@ -78,6 +83,11 @@ __all__ = [
     "create_snapshot",
     "restore_from_snapshot",
     "execute_commit",
+    "execute_residual_commit",
+    # Residual
+    "append_residual_to_plan",
+    "build_residual_commit",
+    "collect_residual_files",
     # Cleanup
     "cleanup_temp_files",
 ]
