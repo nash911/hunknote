@@ -247,9 +247,11 @@ def compose_command(
         style_config = get_effective_style_config()
         effective_profile = override_style or style_config.profile
 
-        # Compute cache hash from diff + style + max_commits
-        cache_input = f"{diff_output}|style={effective_profile.value}|max_commits={max_commits}"
-        current_hash = compute_context_hash(cache_input)
+        # Compute cache hash from diff content only.
+        # Flags like --style, --max-commits, and --agent affect plan generation
+        # but do NOT invalidate the cache — only a changed diff or explicit
+        # --regenerate/-r forces a fresh plan.
+        current_hash = compute_context_hash(diff_output)
 
         # Get or load plan
         plan: Optional[ComposePlan] = None
