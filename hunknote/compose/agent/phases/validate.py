@@ -4,6 +4,7 @@ Applies each commit's patch in an isolated git worktree and runs
 layered validation checks. Bails on first failure.
 """
 
+import ast
 import logging
 import os
 import shutil
@@ -43,6 +44,8 @@ def run_phase5a_validate(
       Layer 1: git apply — does the patch apply cleanly?
       Layer 2: py_compile — are touched Python files syntactically valid?
       Layer 3: import check — can touched Python modules be imported?
+      Layer 4: import_deps — do all imports within touched files (including
+               lazy imports inside functions) reference modules that exist?
 
     Bails on first failure.
 
@@ -142,6 +145,18 @@ def run_phase5a_validate(
                 import_failure = _check_imports(worktree_path, py_files, i, group, trace)
                 if import_failure:
                     return import_failure, frozen_baseline
+
+            # Layer 4: Static import dependency analysis
+            # Catches lazy imports (inside functions) that reference modules
+            # not yet present in the worktree — the runtime import check above
+            # only triggers module-level imports.
+            if py_files:
+                trace.validation_check("phase5", group.group_id, "import_deps")
+                deps_failure = _check_import_deps(
+                    worktree_path, py_files, i, group, trace,
+                )
+                if deps_failure:
+                    return deps_failure, frozen_baseline
 
             # Commit in worktree to advance state
             subprocess.run(
@@ -283,10 +298,122 @@ def _file_path_to_module(file_path: str) -> Optional[str]:
         path = path[:-len(".__init__.py")]
     elif path.endswith(".py"):
         path = path[:-3]
-    # Skip test files and setup files
-    if path.startswith("test") or path == "setup" or path == "conftest":
+    # Skip standalone setup scripts (not importable as modules)
+    if path == "setup" or path == "conftest":
         return None
     return path
+
+
+def _check_import_deps(
+    worktree_path: Path,
+    py_files: list[str],
+    commit_index: int,
+    group: CommitGroup,
+    trace: AgentTrace,
+) -> Optional[ValidationFailure]:
+    """Static analysis: verify all imports within touched files resolve.
+
+    Unlike the runtime import check (Layer 3), this scans the full AST of
+    each file — including imports inside functions, conditionals, and
+    try/except blocks — and verifies that every referenced internal module
+    exists as a file in the worktree.
+
+    This catches the common case where a file uses lazy imports to reference
+    modules that haven't been added yet (e.g., CLI code importing from a
+    feature module via ``from pkg.feature import X`` inside a function body).
+    """
+    for fp in py_files:
+        full_path = worktree_path / fp
+        if not full_path.exists():
+            continue
+        try:
+            source = full_path.read_text()
+            tree = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError):
+            continue  # Already caught by syntax check
+
+        for node in ast.walk(tree):
+            module_name: Optional[str] = None
+
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module_name = alias.name
+                    missing = _check_internal_module_missing(
+                        worktree_path, module_name,
+                    )
+                    if missing:
+                        error = (
+                            f"{fp}:{node.lineno}: "
+                            f"import {module_name} — "
+                            f"module not found in worktree"
+                        )
+                        trace.validation_fail(
+                            "phase5", group.group_id, "import_deps", error,
+                        )
+                        return ValidationFailure(
+                            commit_index=commit_index,
+                            commit_group=group,
+                            layer=ValidationLayer.IMPORT_DEPS,
+                            error_output=error,
+                            file_path=fp,
+                        )
+
+            elif isinstance(node, ast.ImportFrom):
+                # Only check absolute imports (level == 0)
+                if node.module and node.level == 0:
+                    module_name = node.module
+                    missing = _check_internal_module_missing(
+                        worktree_path, module_name,
+                    )
+                    if missing:
+                        names = ", ".join(a.name for a in node.names)
+                        error = (
+                            f"{fp}:{node.lineno}: "
+                            f"from {module_name} import {names} — "
+                            f"module not found in worktree"
+                        )
+                        trace.validation_fail(
+                            "phase5", group.group_id, "import_deps", error,
+                        )
+                        return ValidationFailure(
+                            commit_index=commit_index,
+                            commit_group=group,
+                            layer=ValidationLayer.IMPORT_DEPS,
+                            error_output=error,
+                            file_path=fp,
+                        )
+
+    trace.validation_pass("phase5", group.group_id)
+    return None
+
+
+def _check_internal_module_missing(
+    worktree_path: Path, module_name: str,
+) -> bool:
+    """Return True if *module_name* is an internal project module that is missing.
+
+    An internal module is one whose top-level package exists as a directory in
+    the worktree (e.g. ``hunknote``, ``tests``, ``eval``).  If the top-level
+    name does NOT exist in the worktree, the module is assumed to be external
+    (stdlib or third-party) and is NOT flagged as missing.
+    """
+    parts = module_name.split(".")
+    top_level = worktree_path / parts[0]
+
+    # If the top-level package/file doesn't exist in the worktree,
+    # it's an external module — not our problem.
+    if not top_level.exists():
+        return False
+
+    # Internal module — check that the file actually exists.
+    # Could be a package (dir/__init__.py) or a module (dir/name.py).
+    mod_as_pkg = worktree_path / "/".join(parts) / "__init__.py"
+    if len(parts) == 1:
+        mod_as_file = worktree_path / (parts[0] + ".py")
+    else:
+        mod_as_file = worktree_path / "/".join(parts[:-1]) / (parts[-1] + ".py")
+
+    return not (mod_as_pkg.exists() or mod_as_file.exists())
 
 
 def _build_frozen_commit(

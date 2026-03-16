@@ -123,6 +123,7 @@ class ValidationLayer(Enum):
     SYNTAX = "syntax"
     COMPILE = "compile"
     IMPORT = "import"
+    IMPORT_DEPS = "import_deps"
     TEST = "test"
 
 

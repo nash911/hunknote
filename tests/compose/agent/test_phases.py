@@ -457,3 +457,178 @@ class TestRunPhase6Messages:
         )
         assert len(commits) == 1
         assert commits[0].id == "C1"
+
+
+# ── Phase 5a: Validation helpers ──
+
+
+from hunknote.compose.agent.phases.validate import (
+    _check_import_deps,
+    _check_internal_module_missing,
+    _file_path_to_module,
+)
+from hunknote.compose.agent.models import ValidationLayer
+
+
+class TestFilePathToModule:
+    """Tests for _file_path_to_module conversion."""
+
+    def test_regular_module(self):
+        assert _file_path_to_module("hunknote/cli/compose.py") == "hunknote.cli.compose"
+
+    def test_init_file(self):
+        assert _file_path_to_module("hunknote/compose/__init__.py") == "hunknote.compose"
+
+    def test_test_file_not_skipped(self):
+        """Test files should NOT be skipped — they need import validation."""
+        result = _file_path_to_module("tests/compose/agent/test_models.py")
+        assert result == "tests.compose.agent.test_models"
+
+    def test_test_init_not_skipped(self):
+        result = _file_path_to_module("tests/compose/__init__.py")
+        assert result == "tests.compose"
+
+    def test_setup_skipped(self):
+        assert _file_path_to_module("setup.py") is None
+
+    def test_non_python_skipped(self):
+        assert _file_path_to_module("README.md") is None
+
+
+class TestCheckInternalModuleMissing:
+    """Tests for _check_internal_module_missing."""
+
+    def test_external_module_not_flagged(self, tmp_path):
+        """Modules whose top-level package doesn't exist are external."""
+        assert _check_internal_module_missing(tmp_path, "requests.models") is False
+
+    def test_internal_module_exists_as_file(self, tmp_path):
+        (tmp_path / "hunknote" / "compose").mkdir(parents=True)
+        (tmp_path / "hunknote" / "compose" / "models.py").write_text("")
+        assert _check_internal_module_missing(tmp_path, "hunknote.compose.models") is False
+
+    def test_internal_module_exists_as_package(self, tmp_path):
+        (tmp_path / "hunknote" / "compose" / "agent").mkdir(parents=True)
+        (tmp_path / "hunknote" / "compose" / "agent" / "__init__.py").write_text("")
+        assert _check_internal_module_missing(tmp_path, "hunknote.compose.agent") is False
+
+    def test_internal_module_missing(self, tmp_path):
+        """Module whose top-level package exists but target file doesn't."""
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        assert _check_internal_module_missing(
+            tmp_path, "hunknote.compose.agent.models",
+        ) is True
+
+    def test_single_part_module_file(self, tmp_path):
+        (tmp_path / "setup.py").write_text("")
+        assert _check_internal_module_missing(tmp_path, "setup") is False
+
+    def test_single_part_module_dir(self, tmp_path):
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        assert _check_internal_module_missing(tmp_path, "hunknote") is False
+
+
+class TestCheckImportDeps:
+    """Tests for the AST-based import dependency analysis."""
+
+    @pytest.fixture
+    def trace(self):
+        return AgentTrace()
+
+    def test_detects_missing_lazy_import(self, tmp_path, trace):
+        """Catches a from...import inside a function body."""
+        # Set up worktree with top-level package but missing submodule
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        cli_file = tmp_path / "hunknote" / "cli.py"
+        cli_file.write_text(
+            "def run():\n"
+            "    from hunknote.agent.orchestrator import Agent\n"
+            "    return Agent()\n"
+        )
+        group = CommitGroup("C1", ["H1"], "cli", "feat")
+        result = _check_import_deps(
+            tmp_path, ["hunknote/cli.py"], 0, group, trace,
+        )
+        assert result is not None
+        assert result.layer == ValidationLayer.IMPORT_DEPS
+        assert "hunknote.agent.orchestrator" in result.error_output
+
+    def test_passes_when_module_exists(self, tmp_path, trace):
+        """No failure when imported module actually exists."""
+        (tmp_path / "hunknote" / "compose" / "agent").mkdir(parents=True)
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        (tmp_path / "hunknote" / "compose" / "__init__.py").write_text("")
+        (tmp_path / "hunknote" / "compose" / "agent" / "__init__.py").write_text("")
+        (tmp_path / "hunknote" / "compose" / "agent" / "models.py").write_text("")
+        cli_file = tmp_path / "hunknote" / "cli.py"
+        cli_file.write_text(
+            "from hunknote.compose.agent.models import HunkSummary\n"
+        )
+        group = CommitGroup("C1", ["H1"], "cli", "feat")
+        result = _check_import_deps(
+            tmp_path, ["hunknote/cli.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_ignores_external_modules(self, tmp_path, trace):
+        """External imports (stdlib, third-party) are not flagged."""
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        cli_file = tmp_path / "hunknote" / "cli.py"
+        cli_file.write_text(
+            "import os\n"
+            "import json\n"
+            "from pathlib import Path\n"
+            "import requests\n"
+        )
+        group = CommitGroup("C1", ["H1"], "cli", "feat")
+        result = _check_import_deps(
+            tmp_path, ["hunknote/cli.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_detects_missing_import_statement(self, tmp_path, trace):
+        """Catches 'import X.Y.Z' style (not just 'from X import Y')."""
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        cli_file = tmp_path / "hunknote" / "cli.py"
+        cli_file.write_text("import hunknote.compose.agent.react\n")
+        group = CommitGroup("C1", ["H1"], "cli", "feat")
+        result = _check_import_deps(
+            tmp_path, ["hunknote/cli.py"], 0, group, trace,
+        )
+        assert result is not None
+        assert "hunknote.compose.agent.react" in result.error_output
+
+    def test_skips_nonexistent_file(self, tmp_path, trace):
+        """Files that don't exist in the worktree are skipped gracefully."""
+        group = CommitGroup("C1", ["H1"], "cli", "feat")
+        result = _check_import_deps(
+            tmp_path, ["missing/file.py"], 0, group, trace,
+        )
+        assert result is None
+
+    def test_catches_test_file_importing_missing_module(self, tmp_path, trace):
+        """Test files importing from not-yet-added feature modules are caught."""
+        (tmp_path / "hunknote").mkdir()
+        (tmp_path / "hunknote" / "__init__.py").write_text("")
+        (tmp_path / "tests" / "agent").mkdir(parents=True)
+        (tmp_path / "tests" / "__init__.py").write_text("")
+        (tmp_path / "tests" / "agent" / "__init__.py").write_text("")
+        test_file = tmp_path / "tests" / "agent" / "test_models.py"
+        test_file.write_text(
+            "from hunknote.compose.agent.models import HunkSummary\n"
+            "\n"
+            "def test_hunk():\n"
+            "    pass\n"
+        )
+        group = CommitGroup("C2", ["H10"], "tests", "test")
+        result = _check_import_deps(
+            tmp_path, ["tests/agent/test_models.py"], 0, group, trace,
+        )
+        assert result is not None
+        assert result.layer == ValidationLayer.IMPORT_DEPS
+        assert "hunknote.compose.agent.models" in result.error_output
