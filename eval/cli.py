@@ -648,6 +648,186 @@ def compare_groups_cmd(
         typer.echo(f"Comparison dashboard: {html_path}")
 
 
+@eval_app.command("trace")
+def trace_cmd(
+    case_dir: str = typer.Argument(
+        ...,
+        help="Path to per-case artifact dir: eval_results/{timestamp}/{case_id}/",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show detailed narrative trace instead of compact summary",
+    ),
+) -> None:
+    """Display the agent trace for an evaluated case.
+
+    Reads agent_trace.json from the per-case artifact directory and renders
+    it with the same formatting as ``hunknote compose --trace``.
+
+    Example:
+        python eval/cli.py trace eval_results/2026-03-16_19-47-19/python_httpx_tier1_streaming_multipart/
+    """
+    _setup_logging()
+    case_path = Path(case_dir)
+    trace_file = case_path / "agent_trace.json"
+
+    if not trace_file.exists():
+        typer.echo(f"No agent_trace.json found in {case_path}", err=True)
+        typer.echo(
+            "This case may have been run with --no-agent (single-shot LLM), "
+            "or the trace was not saved.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    try:
+        from hunknote.compose.agent.tracing import AgentTrace
+
+        # Load trace from the artifact directory
+        # AgentTrace.load_from_file expects a repo_root and looks for
+        # .hunknote/agent_trace.json underneath it.  We have the file
+        # directly, so we load it manually.
+        import json as json_mod
+
+        data = json_mod.loads(trace_file.read_text())
+        trace = AgentTrace()
+        from hunknote.compose.agent.tracing import _dict_to_event
+        trace.root = _dict_to_event(data["trace"])
+        summary = data.get("summary", {})
+        trace._total_llm_calls = summary.get("total_llm_calls", 0)
+        trace._total_input_tokens = summary.get("total_input_tokens", 0)
+        trace._total_output_tokens = summary.get("total_output_tokens", 0)
+        trace._total_thinking_tokens = summary.get("total_thinking_tokens", 0)
+        trace._saved_duration_ms = summary.get("total_duration_ms")
+
+        typer.echo(trace.format_for_stderr(verbose=verbose))
+    except ImportError:
+        typer.echo(
+            "Agent tracing module not available. "
+            "Displaying raw JSON instead.\n",
+            err=True,
+        )
+        import json as json_mod
+        data = json_mod.loads(trace_file.read_text())
+        typer.echo(json_mod.dumps(data, indent=2))
+    except Exception as e:
+        typer.echo(f"Failed to load trace: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@eval_app.command("debug")
+def debug_cmd(
+    case_dir: str = typer.Argument(
+        ...,
+        help="Path to per-case artifact dir: eval_results/{timestamp}/{case_id}/",
+    ),
+) -> None:
+    """Display debug info for an evaluated case.
+
+    Reads hunknote_compose_metadata.json from the per-case artifact directory
+    and renders diagnostic information similar to ``hunknote compose --debug``.
+
+    Example:
+        python eval/cli.py debug eval_results/2026-03-16_19-47-19/python_httpx_tier1_streaming_multipart/
+    """
+    import json as json_mod
+
+    _setup_logging()
+    case_path = Path(case_dir)
+    meta_file = case_path / "hunknote_compose_metadata.json"
+
+    if not meta_file.exists():
+        typer.echo(f"No hunknote_compose_metadata.json found in {case_path}", err=True)
+        raise typer.Exit(1)
+
+    data = json_mod.loads(meta_file.read_text())
+
+    typer.echo("")
+    typer.echo("=" * 60)
+    typer.echo("              EVAL CASE DEBUG INFO")
+    typer.echo("=" * 60)
+    typer.echo("")
+
+    # Case identity
+    case_id = case_path.name
+    run_timestamp = case_path.parent.name
+    typer.echo(f"Case ID:       {case_id}")
+    typer.echo(f"Run:           {run_timestamp}")
+    typer.echo(f"Generated At:  {data.get('generated_at', 'N/A')}")
+    typer.echo("")
+
+    # Agent/model info
+    typer.echo("Agent Configuration:")
+    typer.echo(f"  Mode:        {data.get('mode', 'unknown')}")
+    typer.echo(f"  Provider:    {data.get('provider', 'unknown')}")
+    typer.echo(f"  Model:       {data.get('model', 'unknown')}")
+    typer.echo(f"  Max Commits: {data.get('max_commits', 'N/A')}")
+    typer.echo(f"  Max Retries: {data.get('max_retries', 'N/A')}")
+    typer.echo("")
+
+    # Usage statistics
+    typer.echo("Usage Statistics:")
+    total_tokens = data.get("total_tokens", 0)
+    llm_calls = data.get("total_llm_calls", 0)
+    typer.echo(f"  LLM Calls:   {llm_calls}")
+    typer.echo(f"  Total Tokens: {total_tokens:,}")
+    typer.echo("")
+
+    # Diff statistics
+    typer.echo("Diff Statistics:")
+    typer.echo(f"  Total Hunks: {data.get('total_hunks', 'N/A')}")
+    typer.echo(f"  Total Files: {data.get('total_files', 'N/A')}")
+    typer.echo(f"  Num Commits: {data.get('num_commits', 0)}")
+    typer.echo("")
+
+    # Error (if any)
+    error = data.get("error")
+    if error:
+        typer.echo(f"\033[31mError:\033[0m {error}")
+        typer.echo("")
+
+    # Plan details (if available)
+    plan_data = data.get("plan")
+    if plan_data:
+        commits = plan_data.get("commits", [])
+        typer.echo(f"Compose Plan ({len(commits)} commit{'s' if len(commits) != 1 else ''}):")
+        typer.echo("-" * 60)
+        for i, commit in enumerate(commits):
+            cid = commit.get("id", f"C{i+1}")
+            title = commit.get("title", "(no title)")
+            ctype = commit.get("type", "")
+            hunks = commit.get("hunks", [])
+            typer.echo(f"  {cid}: {title}")
+            typer.echo(f"       Type: {ctype}  |  Hunks: {len(hunks)}")
+            if hunks:
+                # Show first few hunk IDs
+                shown = hunks[:8]
+                rest = len(hunks) - 8
+                hunk_str = ", ".join(shown)
+                if rest > 0:
+                    hunk_str += f" (+{rest} more)"
+                typer.echo(f"       IDs: {hunk_str}")
+        typer.echo("")
+
+    # Available artifacts
+    typer.echo("Artifacts:")
+    for artifact_name in [
+        "agent_trace.json",
+        "hunknote_compose_metadata.json",
+    ]:
+        artifact_path = case_path / artifact_name
+        if artifact_path.exists():
+            size = artifact_path.stat().st_size
+            size_str = f"{size / 1024:.1f}KB" if size > 1024 else f"{size}B"
+            typer.echo(f"  ✓ {artifact_name} ({size_str})")
+        else:
+            typer.echo(f"  ✗ {artifact_name} (not found)")
+    typer.echo("")
+    typer.echo("=" * 60)
+
+
 @eval_app.command("cleanup")
 def cleanup_cmd() -> None:
     """Remove all cached venvs and bare repos."""

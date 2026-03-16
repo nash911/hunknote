@@ -134,12 +134,12 @@ eval/
 | **validation.py** | Applies each proposed commit as a patch, then runs: syntax check → import check → pytest (if enabled) → final-state comparison. Produces `MechanicalResult` with per-commit drill-down. |
 | **scoring.py** | Computes deterministic semantic metrics: Adjusted Rand Index (reference similarity), granularity penalty, dependency recall. No LLM calls. |
 | **judge.py** | Optional LLM-as-judge for subjective quality dimensions: cohesion, separation, ordering. |
-| **harness.py** | Orchestrates the full eval loop: extract repo → create venv → install deps → parse patch → run agent → validate → score → save results. |
+| **harness.py** | Orchestrates the full eval loop: extract repo → create venv → install deps → parse patch → run agent → validate → score → save results. Saves per-case debug artifacts (`agent_trace.json`, `hunknote_compose_metadata.json`) under `eval_results/<timestamp>/<case_id>/`. |
 | **reporting.py** | Serializes `EvalRunResult` to JSON, loads results, compares two runs for regressions. |
 | **analysis.py** | Generates: (1) Markdown analysis report, (2) ANSI terminal report with color-coded commit dots, (3) single-page HTML dashboard with interactive drill-down, (4) multi-run meta-analysis reports (Markdown, terminal, HTML, JSON) comparing consistency and failure root causes across runs. |
 | **meta_analysis.py** | Cross-group comparison: takes two or more `meta_analysis.json` files and produces Markdown, terminal, HTML, and JSON reports showing which group (model/provider/config) performs better on each metric and per-case. |
 | **config.py** | Constants: paths, suite definitions, default agent/judge config, scoring weights. |
-| **cli.py** | Typer CLI: `generate`, `generate-batch`, `run`, `list`, `report`, `analyze`, `compare`, `cleanup`. |
+| **cli.py** | Typer CLI: `generate`, `generate-batch`, `run`, `list`, `report`, `analyze`, `compare`, `compare-groups`, `trace`, `debug`, `cleanup`. |
 
 ---
 
@@ -301,8 +301,33 @@ eval_results/2026-03-14_17-17-01/
 ├── eval_results.json    # Machine-readable results
 ├── eval_logs.log        # Full evaluation logs
 ├── eval_analysis.md     # Detailed Markdown report
-└── eval_dashboard.html  # Interactive HTML dashboard
+├── eval_dashboard.html  # Interactive HTML dashboard
+└── python_httpx_tier1_streaming_multipart/  # Per-case artifacts
+    ├── agent_trace.json                     # Full agent trace (agent mode)
+    └── hunknote_compose_metadata.json       # Compose plan + debug metadata
 ```
+
+### Debugging Individual Cases
+
+After a run, each evaluated case has a per-case artifact directory under
+`eval_results/<timestamp>/<case_id>/` containing debug files.
+
+```bash
+# Show the agent trace (compact summary)
+python eval/cli.py trace eval_results/2026-03-16_21-13-08/python_httpx_tier1_streaming_multipart/
+
+# Show the agent trace (detailed verbose narrative)
+python eval/cli.py trace eval_results/2026-03-16_21-13-08/python_httpx_tier1_streaming_multipart/ --verbose
+
+# Show debug info (model, tokens, plan details, artifacts)
+python eval/cli.py debug eval_results/2026-03-16_21-13-08/python_httpx_tier1_streaming_multipart/
+```
+
+| Command | Description |
+|---------|-------------|
+| `trace <case_dir>` | Display the agent trace for an evaluated case. Same rendering as `hunknote compose --trace`. |
+| `trace <case_dir> --verbose` | Detailed narrative trace with LLM calls, validation steps, and remediation actions. |
+| `debug <case_dir>` | Display debug info: case identity, agent config, token usage, diff stats, compose plan, and available artifacts. |
 
 ---
 
