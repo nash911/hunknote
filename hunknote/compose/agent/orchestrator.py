@@ -49,6 +49,7 @@ class OrchestratorConfig:
     run_tests: bool = False
     style_config: object = None
     effective_profile: object = None
+    python_bin: Optional[str] = None  # Path to Python binary for validation (e.g. venv python)
 
 
 class AgentOrchestrator:
@@ -142,6 +143,7 @@ class AgentOrchestrator:
                 summaries=self.summaries,
                 start_from_index=self.revalidate_from,
                 run_tests=self.config.run_tests,
+                python_bin=self.config.python_bin,
             )
             self.trace.phase_end("phase5")
             self.trace.save_to_file(self.repo_root)

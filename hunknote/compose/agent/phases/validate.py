@@ -37,6 +37,7 @@ def run_phase5a_validate(
     summaries: Optional[dict[str, HunkSummary]] = None,
     start_from_index: int = 0,
     run_tests: bool = False,
+    python_bin: Optional[str] = None,
 ) -> tuple[Optional[ValidationFailure], FrozenBaseline]:
     """Validate the commit sequence in an isolated git worktree.
 
@@ -135,14 +136,14 @@ def run_phase5a_validate(
             # Layer 2: Syntax check (py_compile)
             if py_files:
                 trace.validation_check("phase5", group.group_id, "syntax")
-                syntax_failure = _check_syntax(worktree_path, py_files, i, group, trace)
+                syntax_failure = _check_syntax(worktree_path, py_files, i, group, trace, python_bin=python_bin)
                 if syntax_failure:
                     return syntax_failure, frozen_baseline
 
             # Layer 3: Import check
             if py_files:
                 trace.validation_check("phase5", group.group_id, "import")
-                import_failure = _check_imports(worktree_path, py_files, i, group, trace)
+                import_failure = _check_imports(worktree_path, py_files, i, group, trace, python_bin=python_bin)
                 if import_failure:
                     return import_failure, frozen_baseline
 
@@ -223,14 +224,16 @@ def _check_syntax(
     commit_index: int,
     group: CommitGroup,
     trace: AgentTrace,
+    python_bin: Optional[str] = None,
 ) -> Optional[ValidationFailure]:
     """Run py_compile on Python files."""
+    py_cmd = python_bin or "python"
     for fp in py_files:
         full_path = worktree_path / fp
         if not full_path.exists():
             continue
         result = subprocess.run(
-            ["python", "-m", "py_compile", str(full_path)],
+            [py_cmd, "-m", "py_compile", str(full_path)],
             capture_output=True, text=True, cwd=worktree_path, timeout=10,
         )
         if result.returncode != 0:
@@ -255,8 +258,10 @@ def _check_imports(
     commit_index: int,
     group: CommitGroup,
     trace: AgentTrace,
+    python_bin: Optional[str] = None,
 ) -> Optional[ValidationFailure]:
     """Check if Python modules can be imported."""
+    py_cmd = python_bin or "python"
     for fp in py_files:
         full_path = worktree_path / fp
         if not full_path.exists():
@@ -268,7 +273,7 @@ def _check_imports(
         env = os.environ.copy()
         env["PYTHONPATH"] = str(worktree_path)
         result = subprocess.run(
-            ["python", "-c", f"import {module}"],
+            [py_cmd, "-c", f"import {module}"],
             capture_output=True, text=True,
             cwd=worktree_path, timeout=15,
             env=env,
