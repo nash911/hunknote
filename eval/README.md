@@ -54,6 +54,12 @@ python eval/cli.py run --case python_httpx_tier2_move_utils_to_models
 # Run only tier-3 cases
 python eval/cli.py run --tier 3
 
+# Run the full suite 3 times (auto meta-analysis at the end)
+python eval/cli.py run --suite full --num-runs 3
+
+# Run 5 runs for a specific repo (for statistical significance)
+python eval/cli.py run --repo httpx --num-runs 5
+
 # Analyze a previous run
 python eval/cli.py analyze eval_results/<timestamp>/eval_results.json
 
@@ -259,6 +265,7 @@ python eval/cli.py run \
     --model gemini-2.5-flash \
     --max-commits 8 \
     --max-retries 2 \
+    --num-runs 3 \           # Repeat 3 times, auto meta-analysis at the end
     --no-agent        # Use single-shot LLM (agent module not yet implemented)
 ```
 
@@ -273,6 +280,7 @@ python eval/cli.py run \
 | `--model` | LLM model | From config |
 | `--max-commits` | Max commits per plan | 8 |
 | `--max-retries` | Max retries for agent | 2 |
+| `--num-runs` | Number of times to repeat the full evaluation loop. With N > 1, meta-analysis is auto-generated at the end. | 1 |
 | `--agent/--no-agent` | Use Compose Agent or single-shot LLM | `--agent` (falls back if unavailable) |
 | `--judge` | Enable LLM-as-judge scoring | Off |
 | `--judge-model` | Model for LLM-as-judge | From config |
