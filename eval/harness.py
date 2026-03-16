@@ -355,6 +355,51 @@ def _run_agent(
         "total_tokens": 0,
     }
 
+    use_agent = agent_config.get("use_agent", False)
+
+    if use_agent and llm_call_fn is not None:
+        try:
+            from hunknote.compose.agent.orchestrator import (
+                AgentOrchestrator,
+                AgentPipelineError,
+                OrchestratorConfig,
+            )
+            from hunknote.compose.agent.tracing import AgentTrace
+
+            agent_trace = AgentTrace()
+            orch_config = OrchestratorConfig(
+                max_retries=agent_config.get("max_retries", 2),
+                max_commits=agent_config.get("max_commits", 8),
+            )
+
+            orchestrator = AgentOrchestrator(
+                file_diffs=file_diffs,
+                inventory=inventory,
+                repo_root=repo_dir,
+                llm_call_fn=llm_call_fn,
+                config=orch_config,
+                trace=agent_trace,
+            )
+
+            plan = orchestrator.run()
+            summary = agent_trace.get_summary()
+            stats["total_llm_calls"] = summary["total_llm_calls"]
+            stats["total_tokens"] = (
+                summary["total_input_tokens"] + summary["total_output_tokens"]
+            )
+            return plan, stats
+
+        except AgentPipelineError as e:
+            stats["error"] = f"Agent pipeline failed: {e}"
+            if e.diagnosis:
+                stats["error"] += f" Diagnosis: {e.diagnosis}"
+            return None, stats
+        except Exception as e:
+            logger.warning("Agent pipeline failed, falling back to single-shot: %s", e)
+            stats["agent_fallback"] = str(e)
+            # Fall through to single-shot below
+
+    # Single-shot LLM flow (default or fallback)
     try:
         compose_result = generate_compose_plan(
             file_diffs=file_diffs,
