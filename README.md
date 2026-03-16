@@ -492,6 +492,8 @@ hunknote compose --debug
 | `-r, --regenerate` | Force regenerate the plan, ignoring cache |
 | `-j, --json` | Show the cached compose plan JSON for debugging |
 | `--from-plan` | Load plan from external JSON file (skip LLM) |
+| `--agent` | Use the multi-phase agentic pipeline instead of single-shot planner |
+| `--trace` | Show detailed agent execution trace on stderr (requires `--agent`) |
 | `--debug` | Print diagnostics |
 
 ### Caching
@@ -505,6 +507,149 @@ Compose uses smart caching similar to the main command:
 - Use `-r` to force regeneration
 - Use `-j` to inspect the cached plan
 - Cache is automatically invalidated after successful commit execution
+
+## Compose Agent (Multi-Phase Agentic Pipeline)
+
+The Compose Agent is an advanced, multi-step agentic pipeline that replaces the single-shot LLM planner for the Compose command. It uses a 6-phase architecture with validation gates, a ReAct reasoning loop, and automatic retry with failure diagnosis to produce higher-quality atomic commit stacks.
+
+### Enabling the Agent
+
+```bash
+# Use the agent pipeline instead of single-shot planner
+hunknote compose --agent
+
+# Enable full trace output (LLM calls, tool use, validations)
+hunknote compose --agent --trace
+
+# Combine with other compose flags
+hunknote compose --agent --max-commits 4 --style conventional --commit
+```
+
+### Architecture Overview
+
+The Compose Agent runs a deterministic state machine through 6 phases, with a validation-retry loop between phases 5 and 3:
+
+```
+Phase 1: Summarize ──→ Phase 2: Dependency Graph ──→ Phase 3: Cluster
+                                                          │
+                                    ┌─────────────────────┘
+                                    ▼
+                              Phase 4: Order ──→ Phase 5a: Validate
+                                                      │
+                                         ┌────────────┤
+                                         ▼ (fail)     ▼ (pass)
+                                   Phase 5b: ──→ Phase 6: Messages
+                                   Diagnose        │
+                                     │             ▼
+                                     └──→    ComposePlan
+                                   (retry)
+```
+
+### Phase 1: Hunk Summarization
+
+Summarizes each hunk in the diff using LLM calls. Outputs structured `HunkSummary` objects containing:
+- **Intent**: What the change does (e.g., "Add retry logic with exponential backoff")
+- **Category**: feature, bugfix, refactor, test, docs, config
+- **Symbols modified/referenced**: Function names, class names, variables
+
+Uses **dynamic batching** to group hunks by file while respecting a token budget. Small files are merged into multi-file batches; large files are split into sub-batches.
+
+### Phase 2: Dependency Graph (ReAct Agent)
+
+A ReAct (Reasoning + Acting) agent investigates inter-hunk dependencies using tools:
+
+| Tool | Description |
+|------|-------------|
+| `ripgrep` | Search the repo for patterns |
+| `read_file` | Read HEAD version of a file |
+| `read_staged_file` | Read staged version (HEAD + all hunks applied) |
+| `get_hunk` | Get full diff and metadata for a hunk |
+| `list_hunks` | Overview of all hunks with IDs and paths |
+
+The agent follows a Thought → Action → Observation loop, producing a dependency graph with two edge types:
+- **Directional** (`A → B`): A depends on B — they can be in separate commits but B must come first
+- **Bidirectional** (`A ↔ B`): A and B must be in the same commit (e.g., function definition + its import)
+
+### Phase 3: Commit Clustering
+
+Single LLM call that groups hunks into candidate commit groups (`_G1`, `_G2`, ...) based on:
+- Hunk summaries from Phase 1
+- Dependency graph from Phase 2
+- Bidirectional constraints (must-colocate groups)
+
+**Validation gate** checks: no duplicate hunks, all mutable hunks assigned, frozen hunks excluded, group count within limits. If the gate fails, the LLM is re-prompted with specific violation details (up to 3 attempts).
+
+### Phase 4: Topological Ordering
+
+Orders commit groups using Kahn's algorithm on the group-level DAG (lifted from hunk-level directional edges). When multiple groups have zero in-degree simultaneously, an LLM tie-break decides ordering with a heuristic fallback:
+
+**Heuristic priority**: infrastructure/refactors → features → bugfixes → tests → docs
+
+Groups are renamed from temporary IDs (`_G1`, `_G2`) to final IDs (`C1`, `C2`, ...) reflecting commit order.
+
+### Phase 5a: Git Worktree Validation
+
+Creates an isolated git worktree and validates each commit sequentially through layered checks:
+
+| Layer | Check | What it catches |
+|-------|-------|-----------------|
+| 1 | `git apply --check` | Patch conflicts, missing context |
+| 2 | `py_compile` | Syntax errors in touched Python files |
+| 3 | `import` check | Missing imports, circular dependencies |
+
+Successfully validated commits are **frozen** — they become read-only and cannot be modified by subsequent retries. Only mutable (not-yet-validated) hunks can be rearranged.
+
+### Phase 5b: Failure Diagnosis (ReAct Agent)
+
+When validation fails, a ReAct agent diagnoses the root cause and proposes a remediation:
+
+| Action | Effect |
+|--------|--------|
+| `recluster` | Add dependency edges, re-run Phase 3 + 4 |
+| `reorder` | Re-run Phase 4 only |
+| `split_commit` | Break a commit into sub-groups, re-run Phase 4 |
+| `unlock_and_recluster` | Unfreeze commits from an index, recluster (last resort) |
+| `fail` | Pipeline cannot be fixed by regrouping |
+
+The retry loop runs up to `max_retries` (default: 3) times.
+
+### Phase 6: Commit Message Generation
+
+Generates commit messages for each ordered group. Each message includes the group's theme, category, and the full diff context. Previous commits in the stack are provided as context for coherent messaging.
+
+Outputs `PlannedCommit` objects compatible with the existing style rendering pipeline (default, blueprint, conventional, ticket, kernel).
+
+### Frozen/Mutable State Model
+
+The agent maintains a clear separation between validated and pending work:
+
+- **Frozen commits**: Passed all validation layers. Their hunks are locked — they cannot be reassigned or reordered.
+- **Mutable hunks**: Not yet committed. These are the only hunks available for reclustering during retries.
+
+This ensures that successfully validated commits are never accidentally broken by a retry cycle.
+
+### Tracing
+
+The `--trace` flag outputs a detailed execution trace to stderr, including:
+- Phase start/end with duration
+- Every LLM call (system prompt, user prompt, response, tokens, latency)
+- Tool calls and results
+- Validation gate checks (pass/fail/violations)
+- Remediation actions applied
+
+The trace is also saved incrementally to `.hunknote/agent_trace.json` for post-mortem analysis.
+
+### Agent vs Single-Shot Planner
+
+| Aspect | Single-Shot | Agent |
+|--------|-------------|-------|
+| LLM calls | 1 | 5+ (one per phase, more with retries) |
+| Dependency analysis | None | Full graph with tool-assisted investigation |
+| Validation | Post-hoc only | In-pipeline with automated retry |
+| Failure recovery | None | Diagnosis + remediation loop |
+| Hunk ordering | Implicit | Explicit topological sort |
+| Cost | Lower | Higher (more LLM calls) |
+| Quality | Good for simple diffs | Better for complex, cross-file changes |
 
 ## How It Works
 

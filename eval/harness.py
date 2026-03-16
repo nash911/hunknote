@@ -336,9 +336,8 @@ def _run_agent(
 ) -> tuple[Optional[ComposePlan], dict]:
     """Run the Compose Agent and return its plan.
 
-    Delegates to the hunknote compose planner (single-shot LLM flow).
-    When the Compose Agent module becomes available, this will be
-    extended to call it instead (controlled by agent_config["use_agent"]).
+    When agent_config["use_agent"] is True and the agent pipeline is available,
+    uses the multi-phase agent. Otherwise falls back to the single-shot planner.
 
     Args:
         repo_dir: Path to the repo.
