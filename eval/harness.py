@@ -110,6 +110,7 @@ def run_eval(
             judge_config=judge_config,
             llm_call_fn=llm_call_fn,
             judge_llm_call_fn=judge_llm_call_fn,
+            run_dir=run_dir,
         )
         run_result.cases.append(case_result)
 
@@ -160,6 +161,7 @@ def _run_single_case(
     judge_config: Optional[dict] = None,
     llm_call_fn: Optional[Callable] = None,
     judge_llm_call_fn: Optional[Callable[[str, str], str]] = None,
+    run_dir: Optional[Path] = None,
 ) -> EvalCaseResult:
     """Run evaluation for a single test case.
 
@@ -169,6 +171,7 @@ def _run_single_case(
         judge_config: Judge configuration (None = skip).
         llm_call_fn: Pre-built LLM call function.
         judge_llm_call_fn: Pre-built judge LLM call function.
+        run_dir: Run output directory for per-case artifacts.
 
     Returns:
         EvalCaseResult with all scores and metrics.
