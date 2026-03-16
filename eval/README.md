@@ -51,6 +51,12 @@ python eval/cli.py run --repo marshmallow --tier 3
 # Run a single test case
 python eval/cli.py run --case python_httpx_tier2_move_utils_to_models
 
+# Run multiple specific cases
+python eval/cli.py run \
+    --case python_httpx_tier1_digest_auth_cookies \
+    --case python_httpx_tier1_streaming_multipart \
+    --case python_httpx_tier2_url_percent_escaping
+
 # Run only tier-3 cases
 python eval/cli.py run --tier 3
 
@@ -274,7 +280,7 @@ python eval/cli.py run \
 | `--suite` | Suite to run: `smoke`, `standard`, `full` | `standard` |
 | `--repo` | Filter by source repo name (e.g. `httpx`, `rich`, `marshmallow`) | None (all repos) |
 | `--tier` | Filter by difficulty tier (1-5) | None (all tiers) |
-| `--case` | Run a single test case by ID | None |
+| `--case` | Run specific case(s) by ID (repeat for multiple) | None |
 | `--language` | Filter by language | None |
 | `--provider` | LLM provider | From config |
 | `--model` | LLM model | From config |

@@ -356,6 +356,28 @@ def _run_agent(
 
     use_agent = agent_config.get("use_agent", False)
 
+    # Build llm_call_fn from agent_config if not provided externally
+    if use_agent and llm_call_fn is None:
+        try:
+            from hunknote.compose.agent.llm import create_llm_call_fn
+            from hunknote.llm import get_provider
+            from hunknote.config import load_config, ACTIVE_PROVIDER, ACTIVE_MODEL
+
+            load_config()
+            provider_name = agent_config.get("provider", ACTIVE_PROVIDER.value)
+            model_name = agent_config.get("model", ACTIVE_MODEL)
+            provider_instance = get_provider()
+            api_key = provider_instance.get_api_key()
+            llm_call_fn = create_llm_call_fn(
+                provider=provider_name,
+                model=model_name,
+                api_key=api_key,
+            )
+        except Exception as e:
+            logger.warning("Failed to create LLM call function for agent: %s", e)
+            stats["error"] = f"Failed to create LLM call function: {e}"
+            # Fall through to single-shot which builds its own
+
     if use_agent and llm_call_fn is not None:
         try:
             from hunknote.compose.agent.orchestrator import (

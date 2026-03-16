@@ -252,7 +252,7 @@ def run_eval_cmd(
     suite: str = typer.Option("standard", help="Suite: smoke, standard, full"),
     language: Optional[str] = typer.Option(None, help="Filter by language"),
     tier: Optional[int] = typer.Option(None, help="Filter by tier"),
-    case: Optional[str] = typer.Option(None, help="Run a specific case by ID"),
+    case: Optional[list[str]] = typer.Option(None, help="Run specific case(s) by ID. Repeat for multiple: --case id1 --case id2"),
     repo: Optional[str] = typer.Option(
         None,
         help="Filter by source repo name (e.g. 'httpx', 'rich', 'marshmallow'). "
@@ -305,10 +305,14 @@ def run_eval_cmd(
     cases = discover_cases(language=lang, tier=diff_tier)
 
     if case:
-        cases = [c for c in cases if c.id == case]
+        case_ids = set(case)
+        cases = [c for c in cases if c.id in case_ids]
         if not cases:
-            typer.echo(f"Case not found: {case}", err=True)
+            typer.echo(f"No cases found matching: {', '.join(case)}", err=True)
             raise typer.Exit(1)
+        missing = case_ids - {c.id for c in cases}
+        if missing:
+            typer.echo(f"Warning: cases not found: {', '.join(sorted(missing))}", err=True)
     else:
         # When explicit filters (--tier, --repo) are set and the user
         # hasn't provided --suite, skip the suite filter so that explicit
@@ -352,7 +356,10 @@ def run_eval_cmd(
     use_agent = agent
     if use_agent:
         try:
-            from hunknote.compose.agents import AgentOrchestrator  # noqa: F401
+            from hunknote.compose.agent.orchestrator import AgentOrchestrator  # noqa: F401
+            typer.echo(
+                f"Using Compose Agent with provider '{agent_config['provider']}' "
+                f"and model '{agent_config['model']}'")
         except (ImportError, ModuleNotFoundError, AttributeError):
             typer.echo(
                 "Compose Agent module not available — falling back to single-shot LLM.",
@@ -423,15 +430,7 @@ def run_eval_cmd(
         typer.echo(f"{'=' * 60}")
 
         try:
-            from eval.analysis import run_meta_analysis
-
-            md_path, terminal_report = run_meta_analysis(
-                result_paths, web=True
-            )
-            typer.echo(terminal_report)
-            typer.echo(f"Meta-analysis report: {md_path}")
-            typer.echo(f"Meta-analysis JSON:   {md_path.parent / 'meta_analysis.json'}")
-            typer.echo(f"Meta dashboard:       {md_path.parent / 'meta_dashboard.html'}")
+            _run_analyze(result_paths, web=True)
         except Exception:
             logger.warning("Failed to generate meta-analysis", exc_info=True)
 
@@ -563,8 +562,6 @@ def analyze_cmd(
     (consistency, false-positive detection, failure-root-cause classification).
     Always produces Markdown; with --web also produces an HTML dashboard.
     """
-    from eval.analysis import run_analysis, run_meta_analysis
-
     _setup_logging()
 
     paths = [Path(p) for p in result_paths]
@@ -574,21 +571,36 @@ def analyze_cmd(
             raise typer.Exit(1)
 
     out = Path(output_dir) if output_dir else None
+    _run_analyze(paths, web=web, output_dir=out)
+
+
+def _run_analyze(
+    paths: list[Path],
+    web: bool = False,
+    output_dir: Optional[Path] = None,
+) -> None:
+    """Shared analysis logic used by both ``analyze`` CLI and post-run hook.
+
+    With a single path  → per-run analysis.
+    With multiple paths → meta-analysis across runs.
+    """
+    from eval.analysis import run_analysis, run_meta_analysis
 
     if len(paths) == 1:
-        md_path, terminal_report = run_analysis(paths[0], web=web, output_dir=out)
+        md_path, terminal_report = run_analysis(paths[0], web=web, output_dir=output_dir)
         typer.echo(terminal_report)
         typer.echo(f"Analysis report: {md_path}")
         if web:
             html_path = md_path.parent / "eval_dashboard.html"
             typer.echo(f"Web dashboard:   {html_path}")
     else:
-        md_path, terminal_report = run_meta_analysis(paths, web=web, output_dir=out)
+        md_path, terminal_report = run_meta_analysis(paths, web=web, output_dir=output_dir)
         typer.echo(terminal_report)
-        typer.echo(f"Meta-analysis report: {md_path}")
+        typer.echo(f"Meta-analysis report:    {md_path}")
+        typer.echo(f"Meta-analysis JSON:      {md_path.parent / 'meta_analysis.json'}")
         if web:
             html_path = md_path.parent / "meta_dashboard.html"
-            typer.echo(f"Meta dashboard:      {html_path}")
+            typer.echo(f"Meta-analysis dashboard: {html_path}")
 
 
 @eval_app.command("compare-groups")
