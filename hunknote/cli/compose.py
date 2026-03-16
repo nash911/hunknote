@@ -82,6 +82,16 @@ def compose_command(
         "--show",
         help="Show the full diff for a compose commit ID (e.g., --show C1)",
     ),
+    agent: bool = typer.Option(
+        False,
+        "--agent",
+        help="Use multi-phase agent pipeline for smarter commit splitting",
+    ),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        help="Show full agent trace output (only with --agent)",
+    ),
 ) -> None:
     """Split staged changes into a clean commit stack.
 
@@ -287,8 +297,109 @@ def compose_command(
                     typer.echo("Regenerating...", err=True)
                     plan = None
 
-        if plan is None:
-            # Generate plan via LLM
+            # Show saved agent trace if --trace flag is used with cached plan
+            if plan is not None and trace:
+                from hunknote.compose.agent.tracing import AgentTrace
+                saved_trace = AgentTrace.load_from_file(repo_root)
+                if saved_trace:
+                    typer.echo("", err=True)
+                    typer.echo(saved_trace.format_for_stderr(verbose=False), err=True)
+                    typer.echo("", err=True)
+                    typer.echo(saved_trace.format_for_stderr(verbose=True), err=True)
+                else:
+                    typer.echo("No agent trace file found (plan may have been generated without --agent).", err=True)
+
+        if plan is None and agent:
+            # Agent pipeline flow
+            typer.echo("Generating compose plan (agent mode)...", err=True)
+
+            try:
+                from hunknote.compose.agent.orchestrator import (
+                    AgentOrchestrator,
+                    AgentPipelineError,
+                    OrchestratorConfig,
+                )
+                from hunknote.compose.agent.tracing import AgentTrace
+                from hunknote.compose.agent.llm import create_llm_call_fn
+                from hunknote.config import ACTIVE_PROVIDER, ACTIVE_MODEL
+                from hunknote.llm import get_provider
+
+                # Create LLM call function
+                provider_instance = get_provider()
+                api_key = provider_instance.get_api_key()
+                llm_call_fn = create_llm_call_fn(
+                    provider=ACTIVE_PROVIDER.value,
+                    model=ACTIVE_MODEL,
+                    api_key=api_key,
+                )
+
+                agent_trace = AgentTrace()
+                orch_config = OrchestratorConfig(
+                    max_retries=3,
+                    max_commits=max_commits,
+                    style_config=style_config,
+                    effective_profile=effective_profile,
+                )
+
+                orchestrator = AgentOrchestrator(
+                    file_diffs=file_diffs,
+                    inventory=inventory,
+                    repo_root=repo_root,
+                    llm_call_fn=llm_call_fn,
+                    config=orch_config,
+                    trace=agent_trace,
+                )
+
+                plan = orchestrator.run()
+
+                # Show trace output
+                typer.echo("", err=True)
+                typer.echo(agent_trace.format_for_stderr(verbose=False), err=True)
+                if trace:
+                    typer.echo("", err=True)
+                    typer.echo(agent_trace.format_for_stderr(verbose=True), err=True)
+
+                # Get token stats from trace
+                summary = agent_trace.get_summary()
+                llm_model = ACTIVE_MODEL
+                llm_input_tokens = summary["total_input_tokens"]
+                llm_output_tokens = summary["total_output_tokens"]
+                llm_thinking_tokens = summary["total_thinking_tokens"]
+
+                # Save to cache
+                changed_files = [f.file_path for f in file_diffs if not f.is_binary]
+                save_compose_cache(
+                    repo_root=repo_root,
+                    context_hash=current_hash,
+                    plan_json=json.dumps(plan.model_dump(), indent=2),
+                    model=llm_model,
+                    input_tokens=llm_input_tokens,
+                    output_tokens=llm_output_tokens,
+                    changed_files=changed_files,
+                    total_hunks=len(inventory),
+                    num_commits=len(plan.commits),
+                    style=effective_profile.value,
+                    max_commits=max_commits,
+                    thinking_tokens=llm_thinking_tokens,
+                )
+
+                hunk_ids_data = _build_hunk_ids_data(inventory, file_diffs, plan)
+                save_compose_hunk_ids(repo_root, hunk_ids_data)
+
+            except AgentPipelineError as e:
+                typer.echo(f"Agent pipeline failed: {e}", err=True)
+                if e.diagnosis:
+                    typer.echo(f"Diagnosis: {e.diagnosis}", err=True)
+                raise typer.Exit(1)
+            except MissingAPIKeyError as e:
+                typer.echo(f"Error: {e}", err=True)
+                raise typer.Exit(1)
+            except Exception as e:
+                typer.echo(f"Error in agent pipeline: {e}", err=True)
+                raise typer.Exit(1)
+
+        elif plan is None:
+            # Generate plan via LLM (single-shot flow)
             typer.echo("Generating compose plan...", err=True)
 
             # Detect file relationships for coherent commit grouping
@@ -812,6 +923,10 @@ def compose_command(
             # Cleanup temp files and invalidate compose cache
             cleanup_temp_files(repo_root, pid)
             invalidate_compose_cache(repo_root)
+
+            # Clear agent trace file if it exists
+            from hunknote.compose.agent.tracing import AgentTrace as _AT
+            _AT.clear_trace_file(repo_root)
 
         except ComposeExecutionError as e:
             typer.echo(f"\nError during execution: {e}", err=True)
