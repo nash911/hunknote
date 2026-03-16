@@ -262,6 +262,14 @@ def run_eval_cmd(
     provider: Optional[str] = typer.Option(None, help="LLM provider"),
     max_retries: int = typer.Option(2, help="Max retries for agent"),
     max_commits: int = typer.Option(8, help="Max commits per plan"),
+    num_runs: int = typer.Option(
+        1,
+        "--num-runs",
+        help="Number of times to run the full evaluation loop. "
+             "Each run is saved in a separate timestamped folder. "
+             "With num_runs > 1, a meta-analysis is automatically "
+             "generated at the end comparing all runs.",
+    ),
     agent: bool = typer.Option(
         True,  # Default to True to use Compose Agent if available, but allow fallback to single-shot LLM
         "--agent/--no-agent",
@@ -272,8 +280,13 @@ def run_eval_cmd(
     judge_model: Optional[str] = typer.Option(None, help="Model for LLM-as-judge"),
     output_dir: Optional[str] = typer.Option(None, help="Output directory for results"),
 ) -> None:
-    """Run the evaluation suite."""
-    from eval.config import DEFAULT_AGENT_CONFIG, DEFAULT_JUDGE_CONFIG
+    """Run the evaluation suite.
+
+    With --num-runs N (N > 1), the entire evaluation is repeated N times,
+    each saving results to a separate timestamped folder.  After all runs
+    complete, a meta-analysis is automatically generated comparing the runs.
+    """
+    from eval.config import DEFAULT_AGENT_CONFIG, DEFAULT_JUDGE_CONFIG, EVAL_RESULTS_DIR
     from eval.harness import run_eval
     from eval.registry import discover_cases, filter_cases_by_suite
 
@@ -281,6 +294,10 @@ def run_eval_cmd(
     start_time = time.time()
 
     _setup_logging()
+
+    if num_runs < 1:
+        typer.echo("Error: --num-runs must be >= 1", err=True)
+        raise typer.Exit(1)
 
     # Discover and filter cases
     lang = Language(language) if language else None
@@ -354,33 +371,76 @@ def run_eval_cmd(
 
     out = Path(output_dir) if output_dir else None
 
-    result = run_eval(
-        cases=cases,
-        agent_config=agent_config,
-        judge_config=judge_config,
-        output_dir=out,
-    )
+    if num_runs > 1:
+        typer.echo(f"\n{'=' * 60}")
+        typer.echo(f"  Multi-run mode: {num_runs} runs")
+        typer.echo(f"{'=' * 60}")
 
-    # Print summary
-    summary = result.get_summary()
-    typer.echo(f"\nResults: {summary['passed']}/{summary['total']} passed")
-    typer.echo(f"Average score: {summary['avg_score']:.3f}")
-    typer.echo(f"Mechanical pass rate: {summary.get('mechanical_pass_rate', 0):.1%}")
+    # ── Run loop ──
+    result_paths: list[Path] = []
+
+    for run_idx in range(num_runs):
+        if num_runs > 1:
+            typer.echo(f"\n{'─' * 60}")
+            typer.echo(f"  Run {run_idx + 1}/{num_runs}")
+            typer.echo(f"{'─' * 60}")
+
+        result = run_eval(
+            cases=cases,
+            agent_config=agent_config,
+            judge_config=judge_config,
+            output_dir=out,
+        )
+
+        # Collect the result path (harness saves under eval_results/<timestamp>/)
+        # The result JSON is at eval_results/<timestamp>/eval_results.json
+        results_base = out or EVAL_RESULTS_DIR
+        # Find the most recently created directory (the one just written)
+        run_dirs = sorted(results_base.iterdir(), key=lambda d: d.name)
+        if run_dirs:
+            latest_dir = run_dirs[-1]
+            result_json = latest_dir / "eval_results.json"
+            if result_json.exists():
+                result_paths.append(result_json)
+
+        # Print per-run summary
+        summary = result.get_summary()
+        typer.echo(f"\nRun {run_idx + 1} results: {summary['passed']}/{summary['total']} passed")
+        typer.echo(f"Average score: {summary['avg_score']:.3f}")
+        typer.echo(f"Mechanical pass rate: {summary.get('mechanical_pass_rate', 0):.1%}")
+
+        failures = result.get_failures()
+        if failures:
+            typer.echo(f"\nFailures ({len(failures)}):")
+            for f in failures:
+                error = f.error or "mechanical failure"
+                typer.echo(f"  - {f.case_id}: {error}")
+
+    # ── Post-run meta-analysis (for multi-run) ──
+    if num_runs > 1 and len(result_paths) >= 2:
+        typer.echo(f"\n{'=' * 60}")
+        typer.echo(f"  Running meta-analysis across {len(result_paths)} runs")
+        typer.echo(f"{'=' * 60}")
+
+        try:
+            from eval.analysis import run_meta_analysis
+
+            md_path, terminal_report = run_meta_analysis(
+                result_paths, web=True
+            )
+            typer.echo(terminal_report)
+            typer.echo(f"Meta-analysis report: {md_path}")
+            typer.echo(f"Meta-analysis JSON:   {md_path.parent / 'meta_analysis.json'}")
+            typer.echo(f"Meta dashboard:       {md_path.parent / 'meta_dashboard.html'}")
+        except Exception:
+            logger.warning("Failed to generate meta-analysis", exc_info=True)
 
     # Total time taken
     total_duration = time.time() - start_time
     total_duration_minutes = int(total_duration // 60)
     total_duration_seconds = total_duration % 60
-    typer.echo(f"Total duration: "
+    typer.echo(f"\nTotal duration ({num_runs} run{'s' if num_runs > 1 else ''}): "
                f"{total_duration_minutes}:{total_duration_seconds:.1f} minutes")
-
-
-    failures = result.get_failures()
-    if failures:
-        typer.echo(f"\nFailures ({len(failures)}):")
-        for f in failures:
-            error = f.error or "mechanical failure"
-            typer.echo(f"  - {f.case_id}: {error}")
 
 
 @eval_app.command("compare")
