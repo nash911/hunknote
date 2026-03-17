@@ -26,8 +26,10 @@ from hunknote.compose import (
     # Parser
     parse_unified_diff,
     # Inventory
+    build_file_ops_inventory,
     build_hunk_inventory,
     format_inventory_for_llm,
+    is_file_op_id,
     # Validation
     PlanValidationError,
     validate_plan,
@@ -64,8 +66,10 @@ __all__ = [
     # Parser
     "parse_unified_diff",
     # Inventory
+    "build_file_ops_inventory",
     "build_hunk_inventory",
     "format_inventory_for_llm",
+    "is_file_op_id",
     # Validation
     "PlanValidationError",
     "validate_plan",
