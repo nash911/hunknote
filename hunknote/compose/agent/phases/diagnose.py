@@ -20,6 +20,7 @@ from hunknote.compose.agent.models import (
 )
 from hunknote.compose.agent.react import ReActConfig, run_react_loop
 from hunknote.compose.agent.tracing import AgentTrace
+from hunknote.compose.inventory import hunk_sort_key
 from hunknote.compose.models import HunkRef
 from hunknote.llm.base import RawLLMResult
 
@@ -88,7 +89,7 @@ def run_phase5b_diagnose(
             )
 
     system_additions.append("\nMUTABLE HUNKS (these are the hunks you can rearrange):")
-    for hid in sorted(mutable_hunk_ids, key=lambda x: int(x.split("_")[0][1:]))[:30]:
+    for hid in sorted(mutable_hunk_ids, key=hunk_sort_key)[:30]:
         s = summaries.get(hid)
         if s:
             system_additions.append(f"  {hid}: {s.file_path} — {s.intent[:60]}")

@@ -7,6 +7,8 @@ nonexistent hunk IDs, duplicate assignments, etc.
 
 from dataclasses import dataclass
 
+from hunknote.compose.inventory import hunk_sort_key
+
 
 @dataclass
 class GateViolation:
@@ -171,7 +173,7 @@ def build_correction_prompt(
     lines.append("VALID HUNK IDs you may use:")
     sorted_ids = sorted(
         mutable_hunk_ids,
-        key=lambda x: int(x.split("_")[0][1:]) if "_" in x else 0,
+        key=hunk_sort_key,
     )
     lines.append(", ".join(sorted_ids))
     lines.append("")

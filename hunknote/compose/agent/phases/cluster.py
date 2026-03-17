@@ -23,6 +23,7 @@ from hunknote.compose.agent.models import (
     HunkSummary,
 )
 from hunknote.compose.agent.tracing import AgentTrace
+from hunknote.compose.inventory import hunk_sort_key
 from hunknote.llm.base import RawLLMResult
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ def _build_cluster_prompt(
 
     # Mutable hunks with summaries
     lines.append("[MUTABLE HUNKS — assign each to exactly one group]")
-    for hid in sorted(mutable_hunk_ids, key=lambda x: int(x.split("_")[0][1:])):
+    for hid in sorted(mutable_hunk_ids, key=hunk_sort_key):
         summary = summaries.get(hid)
         if summary:
             new_flag = " [NEW FILE]" if summary.is_new_file else ""

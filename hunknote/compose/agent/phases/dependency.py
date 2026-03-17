@@ -193,12 +193,12 @@ def _build_initial_context(
     graph: DependencyGraph,
 ) -> str:
     """Build the initial context message for the ReAct agent."""
-    from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX
+    from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX, hunk_sort_key
 
     # Separate regular hunks from file operations
     regular_ids = sorted(
         [hid for hid in inventory if not is_file_op_id(hid)],
-        key=lambda x: int(x.split("_")[0][1:]),
+        key=hunk_sort_key,
     )
     file_op_ids = sorted(
         [hid for hid in inventory if is_file_op_id(hid)],

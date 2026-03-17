@@ -293,12 +293,12 @@ def _run_get_hunk(
 
 def _run_list_hunks(inventory: dict[str, HunkRef]) -> ToolResult:
     """List all hunk IDs with file paths and headers."""
-    from hunknote.compose.inventory import is_file_op_id
+    from hunknote.compose.inventory import is_file_op_id, hunk_sort_key
 
     lines: list[str] = []
     for hid in sorted(
         (k for k in inventory if not is_file_op_id(k)),
-        key=lambda x: int(x.split("_")[0][1:]),
+        key=hunk_sort_key,
     ):
         h = inventory[hid]
         lines.append(f"{hid}: {h.file_path}  {h.header.strip()}")

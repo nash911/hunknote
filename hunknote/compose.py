@@ -29,6 +29,7 @@ from hunknote.compose import (
     build_file_ops_inventory,
     build_hunk_inventory,
     format_inventory_for_llm,
+    hunk_sort_key,
     is_file_op_id,
     # Validation
     PlanValidationError,
@@ -69,6 +70,7 @@ __all__ = [
     "build_file_ops_inventory",
     "build_hunk_inventory",
     "format_inventory_for_llm",
+    "hunk_sort_key",
     "is_file_op_id",
     # Validation
     "PlanValidationError",

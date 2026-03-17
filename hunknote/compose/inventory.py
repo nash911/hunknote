@@ -98,6 +98,37 @@ def is_file_op_id(hunk_id: str) -> bool:
     return hunk_id.startswith(RENAME_PREFIX) or hunk_id.startswith(DELETE_PREFIX)
 
 
+def hunk_sort_key(hunk_id: str) -> tuple[int, int]:
+    """Return a sort key for hunk IDs.
+
+    Handles both regular (``H<n>_<hash>``) and synthetic
+    (``R_<n>_<hash>``, ``D_<n>_<hash>``) IDs.
+
+    Regular hunks sort first (group 0), then renames (group 1),
+    then deletions (group 2).  Within each group, items are sorted
+    by their numeric index.
+    """
+    parts = hunk_id.split("_")
+    if hunk_id.startswith(RENAME_PREFIX):
+        # R_<n>_<hash> → parts = ["R", "<n>", "<hash>"]
+        try:
+            return (1, int(parts[1]))
+        except (IndexError, ValueError):
+            return (1, 0)
+    elif hunk_id.startswith(DELETE_PREFIX):
+        # D_<n>_<hash> → parts = ["D", "<n>", "<hash>"]
+        try:
+            return (2, int(parts[1]))
+        except (IndexError, ValueError):
+            return (2, 0)
+    else:
+        # H<n>_<hash> → parts = ["H<n>", "<hash>"]
+        try:
+            return (0, int(parts[0][1:]))
+        except (IndexError, ValueError):
+            return (0, 0)
+
+
 def format_inventory_for_llm(
     file_diffs: list[FileDiff], max_snippet_lines: int = 5
 ) -> str:
