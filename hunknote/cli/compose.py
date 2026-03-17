@@ -244,6 +244,12 @@ def compose_command(
         # Build hunk inventory
         inventory = build_hunk_inventory(file_diffs)
 
+        # Add synthetic entries for pure renames and hunkless deletions
+        # so the LLM can assign them to commits via dependency-aware placement.
+        from hunknote.compose.inventory import build_file_ops_inventory
+        file_ops = build_file_ops_inventory(file_diffs)
+        inventory.update(file_ops)
+
         # Get effective style for caching
         style_config = get_effective_style_config()
         effective_profile = override_style or style_config.profile

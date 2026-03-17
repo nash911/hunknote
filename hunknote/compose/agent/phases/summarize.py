@@ -47,6 +47,27 @@ def run_phase1_summarize(
 
     summaries: dict[str, HunkSummary] = {}
 
+    # Pre-populate summaries for synthetic file-operation entries
+    # (RENAME_*, DELETE_*) — they have no diff content to summarize.
+    from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX
+    for hunk_id, hunk in inventory.items():
+        if not is_file_op_id(hunk_id):
+            continue
+        if hunk_id.startswith(RENAME_PREFIX):
+            summaries[hunk_id] = HunkSummary(
+                hunk_id=hunk_id,
+                file_path=hunk.file_path,
+                intent=f"Rename file: {hunk.header}",
+                category="refactor",
+            )
+        elif hunk_id.startswith(DELETE_PREFIX):
+            summaries[hunk_id] = HunkSummary(
+                hunk_id=hunk_id,
+                file_path=hunk.file_path,
+                intent=f"Delete file: {hunk.header}",
+                category="chore",
+            )
+
     # Build file_diff lookup for new file detection
     fd_by_path: dict[str, FileDiff] = {fd.file_path: fd for fd in file_diffs}
 

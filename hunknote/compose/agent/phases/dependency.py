@@ -34,11 +34,29 @@ There are two types of dependencies:
   Example: A changes a function's behavior, B updates the test for that behavior.
   If either is committed alone, the test fails.
 
+FILE OPERATIONS (renames and deletions):
+Some entries are file-level operations (RENAME_* or DELETE_*) with no content hunks.
+These are critical for correctness:
+
+- A RENAME entry (e.g. RENAME_1_abc123) means a file was renamed via git mv.
+  If a regular hunk updates import statements to reference the NEW file path,
+  that hunk DEPENDS on the rename (directional: hunk → rename).
+  If a hunk modifies code in the renamed file using the OLD path references,
+  it may also depend on the rename.
+
+- A DELETE entry (e.g. DELETE_1_abc123) means a file was deleted via git rm.
+  If a regular hunk removes imports or references to the deleted file, the
+  delete and that hunk should be BIDIRECTIONAL (same commit).
+
+Use the list_file_operations tool to see full details of renames and deletions.
+Use ripgrep to search for import statements or references to renamed/deleted paths.
+
 You have access to tools to investigate the codebase. Use them to:
 1. Trace symbol references (who defines X? who calls X?)
 2. Check if a behavior change has corresponding test updates
 3. Find string-level dependencies (config keys, API paths, env vars)
 4. Verify import chains
+5. Check whether renames/deletions have corresponding import updates
 
 Be thorough but efficient. Focus on hunks that modify or reference shared symbols.
 Trivial changes (comments, formatting) rarely have dependencies.
@@ -175,9 +193,20 @@ def _build_initial_context(
     graph: DependencyGraph,
 ) -> str:
     """Build the initial context message for the ReAct agent."""
+    from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX
+
+    # Separate regular hunks from file operations
+    regular_ids = sorted(
+        [hid for hid in inventory if not is_file_op_id(hid)],
+        key=lambda x: int(x.split("_")[0][1:]),
+    )
+    file_op_ids = sorted(
+        [hid for hid in inventory if is_file_op_id(hid)],
+    )
+
     lines = ["Here are all the hunks to analyze:", ""]
 
-    for hid in sorted(inventory.keys(), key=lambda x: int(x.split("_")[0][1:])):
+    for hid in regular_ids:
         hunk = inventory[hid]
         summary = summaries.get(hid)
 
@@ -194,6 +223,30 @@ def _build_initial_context(
         lines.append(line)
         lines.append("")
 
+    # File operations section
+    if file_op_ids:
+        lines.append("FILE OPERATIONS (must be assigned to a commit):")
+        lines.append("")
+        for hid in file_op_ids:
+            hunk = inventory[hid]
+            if hid.startswith(RENAME_PREFIX):
+                lines.append(
+                    f"  {hid}: RENAME — {hunk.header}"
+                )
+                lines.append(
+                    f"    Any hunk that updates imports to use the new path "
+                    f"depends on this rename."
+                )
+            elif hid.startswith(DELETE_PREFIX):
+                lines.append(
+                    f"  {hid}: DELETE — {hunk.header}"
+                )
+                lines.append(
+                    f"    Any hunk that removes references to this file "
+                    f"should be in the same commit."
+                )
+            lines.append("")
+
     # Show pre-existing edges
     if graph.edges:
         lines.append("Pre-existing edges (auto-detected):")
@@ -208,5 +261,11 @@ def _build_initial_context(
         "hunks that share symbols or touch related functionality, then use tools "
         "to verify."
     )
+    if file_op_ids:
+        lines.append(
+            "Pay special attention to FILE OPERATIONS — use ripgrep to find "
+            "which hunks update imports referencing the renamed/deleted paths, "
+            "and add appropriate dependency edges."
+        )
 
     return "\n".join(lines)

@@ -28,6 +28,7 @@ from hunknote.compose.agent.phases.order import run_phase4_order
 from hunknote.compose.agent.phases.summarize import run_phase1_summarize
 from hunknote.compose.agent.phases.validate import run_phase5a_validate
 from hunknote.compose.agent.tracing import AgentTrace, TraceEvent, TraceEventType
+from hunknote.compose.inventory import build_file_ops_inventory, is_file_op_id
 from hunknote.compose.models import ComposePlan, FileDiff, HunkRef, PlannedCommit
 from hunknote.llm.base import RawLLMResult
 
@@ -65,11 +66,22 @@ class AgentOrchestrator:
         trace: Optional[AgentTrace] = None,
     ):
         self.file_diffs = file_diffs
-        self.inventory = inventory
+        self.inventory = dict(inventory)  # copy — we may add synthetic entries
         self.repo_root = repo_root
         self.llm_call_fn = llm_call_fn
         self.config = config
         self.trace = trace or AgentTrace()
+
+        # Merge synthetic file-operation entries (renames, hunkless deletions)
+        # into the inventory so they flow through the full pipeline.
+        self.file_ops = build_file_ops_inventory(file_diffs)
+        self.inventory.update(self.file_ops)
+        if self.file_ops:
+            logger.info(
+                "Added %d synthetic file-op entries to inventory: %s",
+                len(self.file_ops),
+                ", ".join(self.file_ops.keys()),
+            )
 
         # Pipeline state
         self.summaries: dict[str, HunkSummary] = {}

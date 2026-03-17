@@ -70,6 +70,16 @@ TOOL_DEFINITIONS = [
         "description": "List all hunk IDs with their file paths and header lines. Use this for a quick overview.",
         "parameters": {},
     },
+    {
+        "name": "list_file_operations",
+        "description": (
+            "List all file-level operations (renames and hunkless deletions) "
+            "with their synthetic IDs, old/new paths, and diff headers.  "
+            "Use this to understand which files were renamed or deleted "
+            "and to determine dependencies with regular hunks."
+        ),
+        "parameters": {},
+    },
 ]
 
 
@@ -91,6 +101,8 @@ def execute_tool(
         return _run_get_hunk(inventory, hunk_summaries, **args)
     elif tool_name == "list_hunks":
         return _run_list_hunks(inventory)
+    elif tool_name == "list_file_operations":
+        return _run_list_file_operations(inventory)
     else:
         return ToolResult(
             tool_name=tool_name, success=False,
@@ -281,8 +293,13 @@ def _run_get_hunk(
 
 def _run_list_hunks(inventory: dict[str, HunkRef]) -> ToolResult:
     """List all hunk IDs with file paths and headers."""
+    from hunknote.compose.inventory import is_file_op_id
+
     lines: list[str] = []
-    for hid in sorted(inventory.keys(), key=lambda x: int(x.split("_")[0][1:])):
+    for hid in sorted(
+        (k for k in inventory if not is_file_op_id(k)),
+        key=lambda x: int(x.split("_")[0][1:]),
+    ):
         h = inventory[hid]
         lines.append(f"{hid}: {h.file_path}  {h.header.strip()}")
     full_output = "\n".join(lines)
@@ -291,3 +308,33 @@ def _run_list_hunks(inventory: dict[str, HunkRef]) -> ToolResult:
         tool_name="list_hunks", success=True, output=output,
         full_output=full_output, truncated=truncated,
     )
+
+
+def _run_list_file_operations(inventory: dict[str, HunkRef]) -> ToolResult:
+    """List all synthetic file-operation entries (renames and deletions)."""
+    from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX
+
+    lines: list[str] = []
+    for hid in sorted(k for k in inventory if is_file_op_id(k)):
+        h = inventory[hid]
+        if hid.startswith(RENAME_PREFIX):
+            lines.append(f"{hid}: RENAME  {h.header}")
+            lines.append(f"  New path: {h.file_path}")
+            lines.append(f"  Diff header: {' | '.join(h.lines)}")
+        elif hid.startswith(DELETE_PREFIX):
+            lines.append(f"{hid}: DELETE  {h.header}")
+            lines.append(f"  Path: {h.file_path}")
+            lines.append(f"  Diff header: {' | '.join(h.lines)}")
+        lines.append("")
+
+    if not lines:
+        full_output = "(no file operations — no renames or hunkless deletions)"
+    else:
+        full_output = "\n".join(lines)
+
+    output, truncated = _truncate(full_output)
+    return ToolResult(
+        tool_name="list_file_operations", success=True, output=output,
+        full_output=full_output, truncated=truncated,
+    )
+

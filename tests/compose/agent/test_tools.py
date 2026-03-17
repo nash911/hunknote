@@ -56,7 +56,7 @@ class TestToolDefinitions:
     def test_expected_tools_exist(self):
         """All expected tools are defined."""
         names = {t["name"] for t in TOOL_DEFINITIONS}
-        expected = {"ripgrep", "read_file", "read_staged_file", "get_hunk", "list_hunks"}
+        expected = {"ripgrep", "read_file", "read_staged_file", "get_hunk", "list_hunks", "list_file_operations"}
         assert expected == names
 
 

@@ -125,13 +125,15 @@ The ENTIRE header must be at most 72 characters. Plan accordingly:
   WRONG:     "type": "refactor", "scope": "cache", "title": "refactor(cache): Replace dict lookup with constant-time set"
 
 [RULES]
-1. Reference ONLY hunk IDs from the inventory above
+1. Reference ONLY hunk IDs from the inventory above (including RENAME_* and DELETE_* IDs from the FILE OPERATIONS section, if present)
 2. Each hunk must appear in exactly ONE commit
 3. Maximum {max_commits} commits
 4. Keep new file hunks together in one commit
 5. Order: infrastructure → features → tests → docs
 6. Use appropriate commit type based on changes
 7. If a change in one file requires a corresponding change in another file to keep the codebase valid (e.g., changing a default and updating its tests, renaming a function and updating call sites, modifying an interface and its implementations), those hunks MUST be in the same commit — never leave the codebase in a broken state
+8. RENAME_* entries must be in the SAME commit as any hunks that update imports or references to use the new file path
+9. DELETE_* entries must be in the SAME commit as any hunks that remove imports or references to the deleted file
 
 Output ONLY the JSON object:"""
 
