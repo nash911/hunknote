@@ -512,14 +512,20 @@ def _check_lint(
 def _filter_string_annotation_errors(
     file_path: Path, pyflakes_lines: list[str],
 ) -> list[str]:
-    """Remove pyflakes 'undefined name' errors caused by string annotations.
+    """Remove pyflakes 'undefined name' false positives.
 
-    A string annotation like ``x: Optional["Foo"]`` causes pyflakes to report
-    ``undefined name 'Foo'``, but Python never evaluates string annotations at
-    runtime (PEP 484 forward references), so there is no ``NameError``.
+    Filters out two categories of false positives:
 
-    For each error, extract the name and line number, read the source line,
-    and check whether the name appears inside quotes.  If so, suppress it.
+    1. **String annotations** — ``x: Optional["Foo"]`` causes pyflakes to
+       report ``undefined name 'Foo'``, but Python never evaluates string
+       annotations at runtime (PEP 484 forward references).
+
+    2. **Type-ignore suppressed names** — Lines containing
+       ``# type: ignore[name-defined]`` indicate the developer intentionally
+       uses a name that type-checkers can't resolve (e.g. ``get_ipython()``
+       — an IPython builtin that is never imported but is always available
+       in interactive shells).  These will always fail pyflakes regardless
+       of hunk ordering, so they are not actionable by the agent.
     """
     try:
         source_lines = file_path.read_text().splitlines()
@@ -536,6 +542,12 @@ def _filter_string_annotation_errors(
             # If the name appears as a string literal on this line,
             # it's a string annotation — suppress.
             if f'"{name}"' in src or f"'{name}'" in src:
+                continue
+            # If the line has a type: ignore[name-defined] comment,
+            # the developer has explicitly suppressed the undefined-name
+            # warning. This name will never be importable regardless of
+            # hunk ordering (e.g. IPython builtins), so suppress.
+            if "type: ignore[name-defined]" in src or "type:ignore[name-defined]" in src:
                 continue
         real.append(err_line)
     return real

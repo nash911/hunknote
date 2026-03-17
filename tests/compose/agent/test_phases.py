@@ -820,6 +820,59 @@ class TestFilterStringAnnotationErrors:
         result = _filter_string_annotation_errors(missing, errors)
         assert result == errors
 
+    def test_suppresses_type_ignore_name_defined(self, tmp_path):
+        """Errors on lines with # type: ignore[name-defined] are suppressed."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'def check_ipython():\n'
+            '    ip = get_ipython()  # type: ignore[name-defined]\n'
+            '    return ip\n'
+        )
+        errors = [f"{py_file}:2:10: undefined name 'get_ipython'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert result == []
+
+    def test_keeps_error_without_type_ignore(self, tmp_path):
+        """Errors on lines WITHOUT type: ignore are kept."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'def check():\n'
+            '    ip = get_ipython()\n'
+            '    return ip\n'
+        )
+        errors = [f"{py_file}:2:10: undefined name 'get_ipython'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert len(result) == 1
+        assert "get_ipython" in result[0]
+
+    def test_type_ignore_no_space(self, tmp_path):
+        """Also handles type:ignore without space."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'def check():\n'
+            '    x = magic_func()  # type:ignore[name-defined]\n'
+            '    return x\n'
+        )
+        errors = [f"{py_file}:2:9: undefined name 'magic_func'"]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert result == []
+
+    def test_mixed_type_ignore_and_real(self, tmp_path):
+        """Only type-ignore lines are suppressed, real ones kept."""
+        py_file = tmp_path / "mod.py"
+        py_file.write_text(
+            'def check():\n'
+            '    ip = get_ipython()  # type: ignore[name-defined]\n'
+            '    x = real_undef + 1\n'
+        )
+        errors = [
+            f"{py_file}:2:10: undefined name 'get_ipython'",
+            f"{py_file}:3:9: undefined name 'real_undef'",
+        ]
+        result = _filter_string_annotation_errors(py_file, errors)
+        assert len(result) == 1
+        assert "real_undef" in result[0]
+
 
 class TestCheckLintStringAnnotations:
     """Integration tests: _check_lint with string annotations."""
