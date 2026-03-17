@@ -48,7 +48,7 @@ def run_phase1_summarize(
     summaries: dict[str, HunkSummary] = {}
 
     # Pre-populate summaries for synthetic file-operation entries
-    # (RENAME_*, DELETE_*) — they have no diff content to summarize.
+    # (R_*, D_*) — they have no diff content to summarize.
     from hunknote.compose.inventory import is_file_op_id, RENAME_PREFIX, DELETE_PREFIX
     for hunk_id, hunk in inventory.items():
         if not is_file_op_id(hunk_id):

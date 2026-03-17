@@ -16,7 +16,7 @@ def build_commit_patch(
     """Build a patch file for a single commit.
 
     Handles both regular hunks and synthetic file-operation entries
-    (``RENAME_*``, ``DELETE_*``).  For file-ops the stored diff-header
+    (``R_*``, ``D_*``).  For file-ops the stored diff-header
     lines are emitted directly — ``git apply --cached`` understands
     rename and deletion headers without content hunks.
 

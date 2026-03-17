@@ -35,16 +35,16 @@ There are two types of dependencies:
   If either is committed alone, the test fails.
 
 FILE OPERATIONS (renames and deletions):
-Some entries are file-level operations (RENAME_* or DELETE_*) with no content hunks.
+Some entries are file-level operations (R_* or D_*) with no content hunks.
 These are critical for correctness:
 
-- A RENAME entry (e.g. RENAME_1_abc123) means a file was renamed via git mv.
+- A RENAME entry (e.g. R_1_abc123) means a file was renamed via git mv.
   If a regular hunk updates import statements to reference the NEW file path,
   that hunk DEPENDS on the rename (directional: hunk → rename).
   If a hunk modifies code in the renamed file using the OLD path references,
   it may also depend on the rename.
 
-- A DELETE entry (e.g. DELETE_1_abc123) means a file was deleted via git rm.
+- A DELETE entry (e.g. D_1_abc123) means a file was deleted via git rm.
   If a regular hunk removes imports or references to the deleted file, the
   delete and that hunk should be BIDIRECTIONAL (same commit).
 

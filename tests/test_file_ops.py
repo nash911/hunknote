@@ -68,7 +68,7 @@ class TestBuildFileOpsInventory:
     """Tests for build_file_ops_inventory."""
 
     def test_pure_rename_gets_synthetic_entry(self):
-        """A rename with no hunks produces a RENAME_* entry."""
+        """A rename with no hunks produces a R_* entry."""
         diffs = [_file_diff("src/helpers.py", is_renamed=True, old_path="src/utils.py")]
         ops = build_file_ops_inventory(diffs)
 
@@ -86,7 +86,7 @@ class TestBuildFileOpsInventory:
         assert len(ops) == 0
 
     def test_hunkless_deletion_gets_synthetic_entry(self):
-        """A deletion of an empty file gets a DELETE_* entry."""
+        """A deletion of an empty file gets a D_* entry."""
         diffs = [_file_diff("src/__init__.py", is_deleted_file=True)]
         ops = build_file_ops_inventory(diffs)
 
@@ -152,10 +152,10 @@ class TestIsFileOpId:
     """Tests for is_file_op_id."""
 
     def test_rename_id(self):
-        assert is_file_op_id("RENAME_1_abc123") is True
+        assert is_file_op_id("R_1_abc123") is True
 
     def test_delete_id(self):
-        assert is_file_op_id("DELETE_1_abc123") is True
+        assert is_file_op_id("D_1_abc123") is True
 
     def test_regular_hunk_id(self):
         assert is_file_op_id("H1_abc123") is False
@@ -180,7 +180,7 @@ class TestFormatInventoryWithFileOps:
         formatted = format_inventory_for_llm(diffs)
 
         assert "[FILE OPERATIONS]" in formatted
-        assert "RENAME_" in formatted
+        assert "R_" in formatted
         assert "src/utils.py" in formatted
         assert "src/helpers.py" in formatted
 
@@ -211,7 +211,7 @@ class TestFormatInventoryWithFileOps:
             _file_diff("src/old.py", is_deleted_file=True),
         ]
         formatted = format_inventory_for_llm(diffs)
-        assert "DELETE_" in formatted
+        assert "D_" in formatted
         assert "src/old.py" in formatted
 
 
@@ -222,7 +222,7 @@ class TestBuildCommitPatchWithFileOps:
     """Tests for build_commit_patch including synthetic file-op entries."""
 
     def test_rename_only_commit(self):
-        """A commit with only a RENAME_* entry emits the diff header."""
+        """A commit with only a R_* entry emits the diff header."""
         rename_diff = _file_diff("src/helpers.py", is_renamed=True, old_path="src/utils.py")
         ops = build_file_ops_inventory([rename_diff])
         rename_id = list(ops.keys())[0]
@@ -569,7 +569,7 @@ class TestListFileOperationsTool:
 
 
 class TestListHunksExcludesFileOps:
-    """list_hunks should NOT show RENAME_*/DELETE_* entries."""
+    """list_hunks should NOT show R_*/D_* entries."""
 
     def test_file_ops_excluded_from_list_hunks(self):
         from hunknote.compose.agent.tools import execute_tool
@@ -583,5 +583,5 @@ class TestListHunksExcludesFileOps:
 
         result = execute_tool("list_hunks", {}, Path("/tmp"), inventory)
         assert "H1_abc" in result.output
-        assert "RENAME_" not in result.output
+        assert "R_" not in result.output
 

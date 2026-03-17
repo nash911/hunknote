@@ -12,8 +12,8 @@ from hunknote.compose.models import FileDiff, HunkRef
 # Prefixes for synthetic hunk IDs representing file-level operations.
 # These are distinct from regular hunk IDs (H<n>_<hash>) so every
 # downstream component can identify them.
-RENAME_PREFIX = "RENAME_"
-DELETE_PREFIX = "DELETE_"
+RENAME_PREFIX = "R_"
+DELETE_PREFIX = "D_"
 
 
 def build_hunk_inventory(file_diffs: list[FileDiff]) -> dict[str, HunkRef]:
@@ -42,8 +42,8 @@ def build_file_ops_inventory(file_diffs: list[FileDiff]) -> dict[str, HunkRef]:
     clustering, ordering, and patch-building phases.
 
     Synthetic IDs use distinct prefixes:
-      - ``RENAME_<n>_<hash>`` for renames
-      - ``DELETE_<n>_<hash>`` for hunkless deletions
+      - ``R_<n>_<hash>`` for renames
+      - ``D_<n>_<hash>`` for hunkless deletions
 
     The ``lines`` field of each synthetic HunkRef stores the raw diff
     header lines so ``build_commit_patch`` can emit them.
