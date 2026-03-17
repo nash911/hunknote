@@ -92,6 +92,18 @@ class AgentOrchestrator:
         self.planned_commits: list[PlannedCommit] = []
         self.retry_count = 0
         self.revalidate_from = 0
+        self._empty_mod_retry_used = False
+
+        # Scale max_retries with complexity: more hunks need more attempts.
+        # User-specified config.max_retries is a floor; we add extra for
+        # complex cases.
+        n_hunks = len(self.inventory)
+        if n_hunks > 50:
+            self._effective_max_retries = max(config.max_retries, 4)
+        elif n_hunks > 20:
+            self._effective_max_retries = max(config.max_retries, 3)
+        else:
+            self._effective_max_retries = config.max_retries
 
     def run(self) -> ComposePlan:
         """Execute the full agent pipeline and return a ComposePlan.
@@ -144,7 +156,7 @@ class AgentOrchestrator:
         self.trace.save_to_file(self.repo_root)
 
         # Phase 5: Validate + retry loop
-        while self.retry_count <= self.config.max_retries:
+        while self.retry_count <= self._effective_max_retries:
             self.trace.phase_start(
                 "phase5",
                 f"Validating commit sequence (attempt {self.retry_count + 1})",
@@ -163,9 +175,9 @@ class AgentOrchestrator:
             if failure is None:
                 break  # All commits validated
 
-            if self.retry_count >= self.config.max_retries:
+            if self.retry_count >= self._effective_max_retries:
                 raise AgentPipelineError(
-                    f"Validation failed after {self.config.max_retries} retries",
+                    f"Validation failed after {self._effective_max_retries} retries",
                     diagnosis=(
                         f"Commit {failure.commit_index} failed at "
                         f"{failure.layer.value}: {failure.error_output[:500]}"
@@ -192,6 +204,74 @@ class AgentOrchestrator:
                     "Agent determined the failure cannot be resolved by regrouping",
                     diagnosis=remediation.diagnosis,
                 )
+
+            # Check if the remediation has any actual modifications.
+            # An empty remediation (recluster/unlock_and_recluster with no new
+            # edges or merge groups) will produce the same clustering and fail
+            # again.  REORDER and SPLIT_COMMIT don't require modifications.
+            # In that case, re-run the diagnose phase ONE more time with an
+            # explicit instruction to provide concrete modifications.
+            needs_mods = remediation.action in (
+                RemediationAction.RECLUSTER,
+                RemediationAction.UNLOCK_AND_RECLUSTER,
+            )
+            has_mods = bool(
+                remediation.modifications.get("merge_hunks_into_same_commit")
+                or remediation.modifications.get("add_dependency_edges")
+                or remediation.modifications.get("split_into")
+            )
+            if needs_mods and not has_mods and not self._empty_mod_retry_used:
+                self._empty_mod_retry_used = True
+                self.trace.emit(TraceEvent(
+                    event_type=TraceEventType.WARNING,
+                    phase="orchestrator",
+                    message=(
+                        f"Remediation {remediation.action.value} has empty "
+                        "modifications — re-running diagnosis with explicit "
+                        "instructions to provide concrete merge/edge modifications."
+                    ),
+                ))
+
+                # Augment the failure with a hint about the empty mods
+                augmented_failure = ValidationFailure(
+                    commit_index=failure.commit_index,
+                    commit_group=failure.commit_group,
+                    layer=failure.layer,
+                    error_output=(
+                        f"{failure.error_output}\n\n"
+                        "IMPORTANT: The previous diagnosis attempt returned "
+                        "an empty modifications dict. You MUST include concrete "
+                        "modifications: either 'merge_hunks_into_same_commit' "
+                        "(a list of hunk-ID groups to merge) or "
+                        "'add_dependency_edges' (new edges to add to the "
+                        "dependency graph). Without these, the reclustering "
+                        "will produce the same broken result."
+                    ),
+                    file_path=failure.file_path,
+                )
+
+                # Re-run Phase 5b with the augmented failure
+                self.trace.phase_start(
+                    "phase5b",
+                    f"Re-diagnosing failure at commit {failure.commit_index} "
+                    "(empty-mod retry)",
+                )
+                mutable_ids = self._get_mutable_hunk_ids()
+                remediation = run_phase5b_diagnose(
+                    augmented_failure, self.ordered_groups,
+                    self.dependency_graph, self.summaries,
+                    self.frozen_baseline, mutable_ids,
+                    self.inventory, self.repo_root,
+                    self.llm_call_fn, self.trace,
+                )
+                self.trace.phase_end("phase5b")
+                self.trace.save_to_file(self.repo_root)
+
+                if remediation.action == RemediationAction.FAIL:
+                    raise AgentPipelineError(
+                        "Agent determined the failure cannot be resolved by regrouping",
+                        diagnosis=remediation.diagnosis,
+                    )
 
             self._apply_remediation(remediation)
             self.retry_count += 1
